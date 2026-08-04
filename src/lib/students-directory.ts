@@ -10,7 +10,7 @@ import type {
 import { INTERVENTIONS } from "./mock-data";
 
 // Demo "today" used everywhere in the RescueLoop dataset
-export const DEMO_TODAY = new Date("2026-02-01T00:00:00");
+export const DEMO_TODAY = new Date();
 
 // ── Saved view definitions ────────────────────────────────────
 export type SavedViewId =

@@ -16,21 +16,39 @@ const STEPS = [
   },
   {
     number: "II",
+    title: "Understand",
+    description:
+      "Evidence is gathered: progress deviation, last lesson, similar student patterns, and campaign cooldown checks.",
+  },
+  {
+    number: "III",
     title: "Review",
     description:
       "The creator sees why the student was selected, checks the evidence and edits or approves the intervention.",
   },
   {
-    number: "III",
+    number: "IV",
     title: "Support",
     description:
-      "The student receives a respectful message with a clear way to continue, ask for help or stop reminders.",
+      "The student receives a respectful message from their creator with a clear way to continue or stop reminders.",
   },
   {
-    number: "IV",
-    title: "Measure",
+    number: "V",
+    title: "Observe",
     description:
-      "RescueLoop observes what happened next and classifies the outcome using transparent attribution rules.",
+      "RescueLoop watches whether the student opened the support, replied, resumed lessons or reversed a cancellation.",
+  },
+  {
+    number: "VI",
+    title: "Prove",
+    description:
+      "The outcome is classified as confirmed, strongly associated, or estimated — never combined into one total.",
+  },
+  {
+    number: "VII",
+    title: "Improve",
+    description:
+      "Repeated blockers are connected to specific lessons, surfacing course improvements with real evidence.",
   },
 ];
 
@@ -188,19 +206,19 @@ export function RecoveryProcessSection() {
 }
 
 function ProcessVisualPanel({ step, reduced }: { step: number; reduced: boolean }) {
-  // Detect panel — student event stream + evidence
+  // I — Detect: events that produced the candidate
   if (step === 0) {
     return (
       <div className="space-y-3">
-        <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">STUDENT EVENT STREAM</p>
+        <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">CANDIDATE EVENTS</p>
         <RevealLine delay={0.1} reduced={reduced}>
-          <span className="text-[var(--dark-secondary)]">Maya Thompson</span>
+          <span className="text-[var(--dark-secondary)]">Maya Chen · Agency Growth System · $79/mo</span>
         </RevealLine>
         <RevealLine delay={0.3} reduced={reduced}>
-          <span className="font-mono text-[13px] text-white">38% progress</span>
+          <span className="font-mono text-[13px] text-white">38% complete</span>
         </RevealLine>
         <RevealLine delay={0.5} reduced={reduced}>
-          <span className="text-[var(--dark-secondary)]">No activity for 8 days</span>
+          <span className="text-[var(--dark-secondary)]">No lesson activity for 8 days</span>
         </RevealLine>
         <RevealLine delay={0.7} reduced={reduced}>
           <span className="text-[var(--dark-secondary)]">Renews in 4 days</span>
@@ -210,39 +228,64 @@ function ProcessVisualPanel({ step, reduced }: { step: number; reduced: boolean 
         </RevealLine>
         <div className="mt-4 border-t border-[var(--dark-hairline)] pt-3">
           <RevealLine delay={1.1} reduced={reduced}>
-            <span className="font-mono text-[11px] tracking-wide text-[var(--recovery-green)]">DETECTED</span>
+            <span className="font-mono text-[11px] tracking-wide text-[var(--recovery-green)]">CANDIDATE DETECTED</span>
           </RevealLine>
         </div>
       </div>
     );
   }
 
-  // Review panel — queue inspector + message preview
+  // II — Understand: evidence, sample history, campaign conditions
   if (step === 1) {
+    return (
+      <div className="space-y-3">
+        <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">EVIDENCE SUMMARY</p>
+        <RevealLine delay={0.1} reduced={reduced}>
+          <span className="text-white">Progress deviation:</span>{" "}
+          <span className="text-[var(--dark-secondary)]">-62% vs baseline pace</span>
+        </RevealLine>
+        <RevealLine delay={0.3} reduced={reduced}>
+          <span className="text-white">Last lesson:</span>{" "}
+          <span className="text-[var(--dark-secondary)]">Lesson 11 — Onboarding a Client</span>
+        </RevealLine>
+        <RevealLine delay={0.5} reduced={reduced}>
+          <span className="text-white">Similar student pattern:</span>{" "}
+          <span className="text-[var(--dark-secondary)]">matched (n=42)</span>
+        </RevealLine>
+        <RevealLine delay={0.7} reduced={reduced}>
+          <span className="text-white">Campaign cooldown:</span>{" "}
+          <span className="text-[var(--dark-secondary)]">clear — no prior send</span>
+        </RevealLine>
+        <RevealLine delay={0.9} reduced={reduced}>
+          <span className="text-white">Renewal context:</span>{" "}
+          <span className="text-[var(--dark-secondary)]">membership active, 4 days to renewal</span>
+        </RevealLine>
+      </div>
+    );
+  }
+
+  // III — Review: message preview, cooldown, creator approval
+  if (step === 2) {
     return (
       <div className="space-y-3">
         <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">CREATOR QUEUE INSPECTOR</p>
         <RevealLine delay={0.1} reduced={reduced}>
           <span className="text-white">Why flagged:</span>{" "}
-          <span className="text-[var(--dark-secondary)]">Stalled at Lesson 12</span>
+          <span className="text-[var(--dark-secondary)]">Stalled at Lesson 12 for 8 days</span>
         </RevealLine>
         <RevealLine delay={0.3} reduced={reduced}>
-          <span className="text-white">Evidence:</span>{" "}
-          <span className="text-[var(--dark-secondary)]">10 days inactive · 38% · renews Feb 15</span>
-        </RevealLine>
-        <RevealLine delay={0.5} reduced={reduced}>
           <span className="text-white">Recommended:</span>{" "}
           <span className="text-[var(--dark-secondary)]">Mid-Course Rescue</span>
         </RevealLine>
         <div className="mt-3 rounded-[4px] border border-[var(--dark-hairline)] bg-[var(--dark-section)] p-3">
-          <RevealLine delay={0.7} reduced={reduced}>
+          <RevealLine delay={0.5} reduced={reduced}>
             <span className="font-mono text-[11px] text-[var(--dark-secondary)]">MESSAGE PREVIEW</span>
           </RevealLine>
-          <RevealLine delay={0.9} reduced={reduced}>
-            <span className="text-[13px] text-white">Hi Maya, you're over a third through — that's real progress…</span>
+          <RevealLine delay={0.7} reduced={reduced}>
+            <span className="text-[13px] text-white">Hi Maya — Aditya from Agency Growth System here. You're 38% through. Want a quick onboarding checklist?</span>
           </RevealLine>
         </div>
-        <RevealLine delay={1.1} reduced={reduced}>
+        <RevealLine delay={0.9} reduced={reduced}>
           <span className="inline-flex items-center gap-2 rounded-[4px] bg-[var(--warning)]/20 px-3 py-1 font-mono text-[11px] text-[var(--warning)]">
             MANUAL APPROVAL REQUIRED
           </span>
@@ -251,21 +294,21 @@ function ProcessVisualPanel({ step, reduced }: { step: number; reduced: boolean 
     );
   }
 
-  // Support panel — mobile student experience
-  if (step === 2) {
+  // IV — Support: student-facing experience
+  if (step === 3) {
     return (
       <div className="space-y-3">
         <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">STUDENT EXPERIENCE</p>
         <RevealLine delay={0.1} reduced={reduced}>
-          <span className="text-white">Hi Maya 👋</span>
+          <span className="text-white">Hi Maya — Aditya from Agency Growth System here.</span>
         </RevealLine>
         <RevealLine delay={0.3} reduced={reduced}>
-          <span className="text-[var(--dark-secondary)]">You're at 38% — that's real progress.</span>
+          <span className="text-[var(--dark-secondary)]">You're 38% through. Next lesson takes ~12 minutes.</span>
         </RevealLine>
         <div className="mt-3 space-y-2">
           <RevealLine delay={0.5} reduced={reduced}>
             <span className="inline-flex items-center gap-2 rounded-[6px] border border-[var(--recovery-green)] bg-[var(--recovery-green)]/10 px-3 py-2 text-[13px] text-[var(--recovery-green)]">
-              Continue course
+              Continue with Lesson 12
             </span>
           </RevealLine>
           <RevealLine delay={0.7} reduced={reduced}>
@@ -278,40 +321,100 @@ function ProcessVisualPanel({ step, reduced }: { step: number; reduced: boolean 
               Remind me tomorrow
             </span>
           </RevealLine>
+          <RevealLine delay={1.1} reduced={reduced}>
+            <span className="inline-flex items-center gap-2 rounded-[6px] border border-[var(--dark-hairline)] px-3 py-2 text-[13px] text-[var(--dark-secondary)]">
+              Stop course reminders
+            </span>
+          </RevealLine>
         </div>
       </div>
     );
   }
 
-  // Measure panel — outcome evidence + attribution tier
-  return (
-    <div className="space-y-3">
-      <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">OUTCOME EVIDENCE</p>
-      <RevealLine delay={0.1} reduced={reduced}>
-        <span className="text-white">Student returned</span>
-      </RevealLine>
-      <RevealLine delay={0.3} reduced={reduced}>
-        <span className="text-[var(--dark-secondary)]">Lesson completed</span>
-      </RevealLine>
-      <RevealLine delay={0.5} reduced={reduced}>
-        <span className="font-mono text-[13px] text-white">Progress 38% → 42%</span>
-      </RevealLine>
-      <RevealLine delay={0.7} reduced={reduced}>
-        <span className="text-[var(--dark-secondary)]">Cancellation reversed</span>
-      </RevealLine>
-      <div className="mt-4 border-t border-[var(--dark-hairline)] pt-3">
+  // V — Observe: open, response, lesson events
+  if (step === 4) {
+    return (
+      <div className="space-y-3">
+        <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">OBSERVED EVENTS</p>
+        <RevealLine delay={0.1} reduced={reduced}>
+          <span className="font-mono text-[13px] text-white">Support opened</span>{" "}
+          <span className="text-[var(--dark-secondary)]">— 2 hours after send</span>
+        </RevealLine>
+        <RevealLine delay={0.3} reduced={reduced}>
+          <span className="font-mono text-[13px] text-white">Student responded</span>{" "}
+          <span className="text-[var(--dark-secondary)]">— chose "Continue"</span>
+        </RevealLine>
+        <RevealLine delay={0.5} reduced={reduced}>
+          <span className="font-mono text-[13px] text-white">Lesson 12 started</span>
+        </RevealLine>
+        <RevealLine delay={0.7} reduced={reduced}>
+          <span className="font-mono text-[13px] text-white">Lesson 12 completed</span>
+        </RevealLine>
         <RevealLine delay={0.9} reduced={reduced}>
-          <span className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">ATTRIBUTION</span>
+          <span className="font-mono text-[13px] text-white">Progress 38% → 42%</span>
         </RevealLine>
         <RevealLine delay={1.1} reduced={reduced}>
-          <span className="inline-flex items-center gap-2 rounded-[4px] bg-[var(--recovery-green)]/15 px-3 py-1 font-mono text-[12px] text-[var(--recovery-green)]">
-            STRONGLY ASSOCIATED
-          </span>
-        </RevealLine>
-        <RevealLine delay={1.3} reduced={reduced}>
-          <span className="text-[12px] text-[var(--dark-secondary)]">Not combined with estimated value.</span>
+          <span className="text-[var(--dark-secondary)]">Cancellation reversed</span>
         </RevealLine>
       </div>
+    );
+  }
+
+  // VI — Prove: evidence chain + attribution classification
+  if (step === 5) {
+    return (
+      <div className="space-y-3">
+        <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">EVIDENCE CHAIN</p>
+        <RevealLine delay={0.1} reduced={reduced}>
+          <span className="text-[var(--dark-secondary)]">Candidate detected → Creator approved → Intervention delivered</span>
+        </RevealLine>
+        <RevealLine delay={0.3} reduced={reduced}>
+          <span className="text-[var(--dark-secondary)]">Student opened → Student resumed → Lesson completed</span>
+        </RevealLine>
+        <RevealLine delay={0.5} reduced={reduced}>
+          <span className="text-[var(--dark-secondary)]">Cancellation reversed → Payment continued</span>
+        </RevealLine>
+        <div className="mt-4 border-t border-[var(--dark-hairline)] pt-3">
+          <RevealLine delay={0.7} reduced={reduced}>
+            <span className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">ATTRIBUTION</span>
+          </RevealLine>
+          <RevealLine delay={0.9} reduced={reduced}>
+            <span className="inline-flex items-center gap-2 rounded-[4px] bg-[var(--recovery-green)]/15 px-3 py-1 font-mono text-[12px] text-[var(--recovery-green)]">
+              CONFIRMED
+            </span>
+          </RevealLine>
+          <RevealLine delay={1.1} reduced={reduced}>
+            <span className="text-[12px] text-[var(--dark-secondary)]">Payment verified. Not combined with estimated value.</span>
+          </RevealLine>
+        </div>
+      </div>
+    );
+  }
+
+  // VII — Improve: blockers connected to Lesson 7, recommended course change
+  return (
+    <div className="space-y-3">
+      <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">COURSE IMPROVEMENT SIGNAL</p>
+      <RevealLine delay={0.1} reduced={reduced}>
+        <span className="text-white">Multiple stalls connected to Lesson 7</span>
+      </RevealLine>
+      <RevealLine delay={0.3} reduced={reduced}>
+        <span className="text-[var(--dark-secondary)]">7 students reported "setup unclear"</span>
+      </RevealLine>
+      <RevealLine delay={0.5} reduced={reduced}>
+        <span className="font-mono text-[13px] text-white">Stall rate: 24% (course avg: 10%)</span>
+      </RevealLine>
+      <div className="mt-3 rounded-[4px] border border-[var(--dark-hairline)] bg-[var(--dark-section)] p-3">
+        <RevealLine delay={0.7} reduced={reduced}>
+          <span className="font-mono text-[11px] text-[var(--dark-secondary)]">RECOMMENDATION</span>
+        </RevealLine>
+        <RevealLine delay={0.9} reduced={reduced}>
+          <span className="text-[13px] text-white">Add a short setup walkthrough and downloadable checklist to Lesson 7.</span>
+        </RevealLine>
+      </div>
+      <RevealLine delay={1.1} reduced={reduced}>
+        <span className="text-[12px] text-[var(--dark-secondary)]">Status: Investigating → Planned. Measurement period required before claiming success.</span>
+      </RevealLine>
     </div>
   );
 }

@@ -42,19 +42,20 @@ export function FinalCta() {
               {/* Content */}
               <div className="flex-1">
                 <h2 className="mb-6 font-serif text-[clamp(2.25rem,5vw,4rem)] leading-[0.98] tracking-[-0.02em] text-[var(--ink-primary)]">
-                  Bring the right{" "}
-                  <span className="italic text-[var(--ink-secondary)]">students back.</span>
+                  Help the right{" "}
+                  <span className="italic text-[var(--ink-secondary)]">students continue.</span>
                 </h2>
                 <p className="mb-10 max-w-[480px] text-[16px] leading-relaxed text-[var(--ink-secondary)] lg:text-[17px]">
-                  Explore how RescueLoop turns silent disengagement into
-                  respectful, measurable student support.
+                  Explore the RescueLoop demonstration and see how one
+                  responsible recovery workflow moves from evidence to action
+                  to outcome.
                 </p>
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Link
                     href="/overview"
                     className="press group inline-flex items-center justify-center gap-2 rounded-[10px] bg-[var(--ink-primary)] px-6 py-3.5 text-[14px] font-medium text-white"
                   >
-                    Explore the demo
+                    Explore interactive demo
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
                   </Link>
                   <Link

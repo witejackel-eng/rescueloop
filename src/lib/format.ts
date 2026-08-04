@@ -151,7 +151,7 @@ export const attributionMeta: Record<
 
 export function relativeDay(dateStr: string): string {
   const d = new Date(dateStr);
-  const now = new Date("2026-02-01");
+  const now = new Date();
   const diff = Math.round((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   if (diff === 0) return "today";
   if (diff === 1) return "tomorrow";

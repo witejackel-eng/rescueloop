@@ -11,7 +11,7 @@ import type { InterventionState, Momentum, Student } from "@/lib/types";
 import { getInterventionForStudent } from "@/lib/students-directory";
 import { interventionStateMeta } from "@/lib/format";
 
-const TODAY = new Date("2026-02-01T00:00:00");
+const TODAY = new Date();
 
 function daysUntil(dateStr: string): number {
   const d = new Date(`${dateStr}T00:00:00`);

@@ -12,7 +12,7 @@ import { springLayout } from "@/design-system/motion";
 const LINKS = [
   { label: "Product", href: "#product" },
   { label: "How it works", href: "#process" },
-  { label: "Outcomes", href: "#outcomes" },
+  { label: "Student experience", href: "#student-experience" },
   { label: "Safety", href: "#safety" },
   { label: "Pricing", href: "#pricing" },
   { label: "FAQ", href: "#faq" },
@@ -88,13 +88,13 @@ export function FloatingNav() {
               href="/overview"
               className="hidden text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] md:inline"
             >
-              Sign in
+              Private pilot
             </Link>
             <Link
               href="/overview"
               className="hidden items-center gap-1.5 rounded-[8px] bg-[var(--ink-primary)] px-3.5 py-2 text-[13px] font-medium text-white transition-transform press md:inline-flex"
             >
-              View live demo
+              Explore demo
               <ArrowRight className="size-3.5" />
             </Link>
             <button
@@ -153,7 +153,7 @@ export function FloatingNav() {
                   onClick={() => setMobileOpen(false)}
                   className="flex items-center justify-center gap-1.5 rounded-[10px] bg-[var(--ink-primary)] px-4 py-3 text-[15px] font-medium text-white"
                 >
-                  View live demo
+                  View interactive demo
                   <ArrowRight className="size-4" />
                 </Link>
                 <Link
@@ -161,7 +161,7 @@ export function FloatingNav() {
                   onClick={() => setMobileOpen(false)}
                   className="flex items-center justify-center rounded-[10px] border border-[var(--hairline)] px-4 py-3 text-[15px] font-medium text-[var(--ink-secondary)]"
                 >
-                  Sign in
+                  Private pilot
                 </Link>
               </motion.div>
             </nav>
