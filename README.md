@@ -119,6 +119,50 @@ src/
 
 **Typed domain models** (`src/lib/types.ts`) define every entity: `Company`, `Course`, `Product`, `Membership`, `Student`, `StudentCourseState`, `Campaign`, `Intervention`, `BlockerResponse`, `ValueEvent`, `Notification`, `FrictionFinding`, and more. Mock data conforms to these types so the real backend can replace `mock-data.ts` without touching UI code.
 
+## Visual system and animation
+
+The landing page uses a premium editorial visual system inspired by the Optimus reference, translated into RescueLoop's student-success context.
+
+### Signature hero
+
+The hero uses a full-viewport composition with:
+- **Kinetic headline** — the final word cycles through `start → continue → finish → stay` with character-by-character blur-to-sharp reveal animation (2.8s per word, pauses when tab hidden, respects reduced motion)
+- **Recovery Loop Canvas** — an original ASCII orbit illustration where student signals travel along a circular loop representing Signal → Review → Support → Return. Stalled nodes are amber; recovered nodes turn green. Uses `requestAnimationFrame`, pauses when offscreen, scales particle count by viewport
+- **Technical grid** — extremely low-contrast 12×8 grid with a radial mask that fades near the headline for readability
+- **Subtle noise texture** at 0.025 opacity
+- **Workflow marquee** — an infinite horizontal rail of truthful product concepts (Detect → Review → Approve → Respond → Resume → Attribute → Improve) using CSS transforms, pausing on hover
+
+### Motion tokens
+
+All animation uses a central motion configuration (`src/design-system/motion.ts`):
+- 160–240ms for controls and micro-interactions
+- 600ms for scroll reveals
+- 900ms for hero entrances
+- 2.8s for kinetic word cycling
+- 5.5s for process-section auto-advance
+- 32s for marquee loops
+- Springs (stiffness 260, damping 28) for layout animations
+
+### Animated feature illustrations
+
+Four original inline-SVG illustrations with sequential CSS/Framer Motion animation:
+1. **Signal Detection** — progress timeline with lesson dots, fading momentum line, detection pulse, evidence card
+2. **Rescue Queue** — student rows entering a queue, one selected, inspector content revealing in sequence, manual-approval badge
+3. **Student Support** — mobile card with calm options, one highlighting, branch to a resumed outcome
+4. **Honest Attribution** — three separated evidence tiers (Confirmed / Associated / Estimated), outcome event moving into the correct tier
+
+### Dark process section
+
+A high-contrast dark section ("From lost momentum to renewed progress") with four steps (Detect → Review → Support → Measure). Auto-advances every 5.5s with a progress bar, pauses on manual interaction. A sticky visual panel reveals content line-by-line with blur-to-sharp transitions, showing a different RescueLoop-specific operational panel per step.
+
+### Final CTA
+
+A cursor-responsive panel with a radial spotlight that follows the mouse, plus an animated recovery-ring SVG with orbiting evidence nodes and flowing dashed arcs.
+
+### Demo honesty
+
+All demo surfaces are clearly labeled "Interactive demo · simulated workspace". Sync status reads "Demo sync" rather than implying real-time data. Recovered value is labeled "Illustrative" rather than "Confirmed" in the dashboard. No fake testimonials, customer logos, security certifications, or real-time claims.
+
 ## Design principles
 
 1. **Calm, not flashy.** The product feels like a trustworthy command centre, not a trading terminal or cybersecurity interface.

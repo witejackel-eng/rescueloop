@@ -1,8 +1,9 @@
 import { FloatingNav } from "@/components/marketing/floating-nav";
-import { MarketingHero } from "@/components/marketing/hero";
+import { RescueHero } from "@/components/marketing/hero/rescue-hero";
 import { OutcomeStrip } from "@/components/marketing/outcome-strip";
+import { FeatureRows } from "@/components/marketing/feature-rows";
 import { RevenueLeakageSection } from "@/components/marketing/revenue-leakage-section";
-import { ProcessSection } from "@/components/marketing/process-section";
+import { RecoveryProcessSection } from "@/components/marketing/process/recovery-process-section";
 import { WorkflowShowcase } from "@/components/marketing/workflow-showcase";
 import { CourseIntelligenceSection } from "@/components/marketing/course-intelligence";
 import { SafetySection } from "@/components/marketing/safety-section";
@@ -16,10 +17,11 @@ export default function MarketingPage() {
   return (
     <main className="bg-[var(--canvas)]">
       <FloatingNav />
-      <MarketingHero />
+      <RescueHero />
       <OutcomeStrip />
+      <FeatureRows />
       <RevenueLeakageSection />
-      <ProcessSection />
+      <RecoveryProcessSection />
       <WorkflowShowcase />
       <CourseIntelligenceSection />
       <SafetySection />
