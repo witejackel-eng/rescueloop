@@ -1,113 +1,120 @@
-// RescueLoop motion configuration
-// Central transition + spring definitions used across the entire app.
+// RescueLoop motion tokens — consistent timings across the entire app.
+// Adapted from the Optimus reference discipline with RescueLoop-specific values.
 
-export const EASE = [0.16, 1, 0.3, 1] as const;
-export const EASE_OUT = [0.22, 1, 0.36, 1] as const;
-export const EASE_IN_OUT = [0.65, 0, 0.35, 1] as const;
-
-// Micro response — buttons, rows, controls
-export const micro = {
-  duration: 0.12,
-  ease: EASE,
+export const motionTokens = {
+  fast: 160,
+  standard: 240,
+  reveal: 600,
+  hero: 900,
+  stagger: 45,
+  wordCycle: 2800, // ~2.8s between kinetic word changes
+  processStep: 5500, // 5.5s auto-advance for process section
+  marquee: 32000, // ~32s for one marquee loop
 } as const;
 
-// Standard transition — most UI state changes
-export const standard = {
-  duration: 0.22,
-  ease: EASE,
-} as const;
+export const easeOut = [0.22, 1, 0.36, 1] as const;
+export const easeInOut = [0.65, 0, 0.35, 1] as const;
+export const easeReveal = [0.16, 1, 0.3, 1] as const;
 
-// Panel transition — sheets, drawers, inspectors
-export const panel = {
-  duration: 0.32,
-  ease: EASE,
-} as const;
-
-// Spring for sheets / inspectors
-export const springSheet = {
+// Spring for layout animations (nav indicator, segmented controls)
+export const spring = {
   type: "spring" as const,
-  stiffness: 420,
-  damping: 36,
+  stiffness: 260,
+  damping: 28,
 };
 
-// Soft layout spring — shared layout animations, segmented controls
-export const springLayout = {
+// Softer spring for panels and sheets
+export const springPanel = {
   type: "spring" as const,
   stiffness: 300,
   damping: 32,
 };
 
-// Snappy spring for segmented control thumbs
-export const springSegment = {
-  type: "spring" as const,
-  stiffness: 440,
-  damping: 38,
-};
-
-// Press response transform
+// Press response
 export const pressScale = {
-  whileHover: { scale: 1.0 },
   whileTap: { scale: 0.98 },
-  transition: micro,
+  transition: { duration: motionTokens.fast / 1000, ease: easeOut },
 };
 
-// Character reveal variants (blur + opacity per character)
+// Character reveal — blur resolves, chars rise from below
 export const charReveal = {
-  hidden: { opacity: 0, filter: "blur(8px)" },
+  hidden: { opacity: 0, y: 12, filter: "blur(8px)" },
   visible: (i: number) => ({
     opacity: 1,
+    y: 0,
     filter: "blur(0px)",
     transition: {
-      delay: i * 0.018,
-      duration: 0.32,
-      ease: EASE,
+      delay: i * 0.035,
+      duration: 0.4,
+      ease: easeOut,
     },
   }),
+  exit: {
+    opacity: 0,
+    y: -8,
+    filter: "blur(6px)",
+    transition: { duration: 0.2, ease: easeOut },
+  },
 };
 
-// Stagger container
-export const staggerContainer = (stagger = 0.04, delayChildren = 0) => ({
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: stagger,
-      delayChildren,
-    },
-  },
-});
-
-// Slide-in for list items
-export const slideInUp = {
-  hidden: { opacity: 0, y: 8 },
+// Scroll reveal variants
+export const scrollReveal = {
+  hidden: { opacity: 0, y: 24 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: standard,
-  },
-  exit: {
-    opacity: 0,
-    y: -4,
-    transition: micro,
+    transition: { duration: motionTokens.reveal / 1000, ease: easeReveal },
   },
 };
 
-// Fade for overlays
+export const scrollRevealLeft = {
+  hidden: { opacity: 0, x: -24 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: { duration: motionTokens.reveal / 1000, ease: easeReveal },
+  },
+};
+
+// Stagger container
+export const staggerContainer = (stagger = 0.045, delayChildren = 0) => ({
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: stagger, delayChildren },
+  },
+});
+
+// ── Backward-compatible aliases (existing components use these names) ──
+export const EASE = easeOut;
+export const EASE_OUT = easeOut;
+export const EASE_IN_OUT = easeInOut;
+
+export const micro = { duration: motionTokens.fast / 1000, ease: easeOut } as const;
+export const standard = { duration: motionTokens.standard / 1000, ease: easeOut } as const;
+export const panel = { duration: 0.32, ease: easeOut } as const;
+
+export const springLayout = spring;
+export const springSheet = springPanel;
+export const springSegment = { type: "spring" as const, stiffness: 440, damping: 38 };
+
+export const slideInUp = {
+  hidden: { opacity: 0, y: 8 },
+  visible: { opacity: 1, y: 0, transition: standard },
+  exit: { opacity: 0, y: -4, transition: micro },
+};
+
 export const fadeOverlay = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: standard },
   exit: { opacity: 0, transition: micro },
 };
 
-// Reduced-motion variants
+export function motionProps(reduced: boolean) {
+  return { initial: "hidden", animate: "visible", exit: "exit" };
+}
+
 export const reducedVariants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { duration: 0.15 } },
   exit: { opacity: 0, transition: { duration: 0.1 } },
 };
-
-// Helper to pick variants based on reduced motion
-export function motionProps(reduced: boolean) {
-  return reduced
-    ? { initial: "hidden", animate: "visible", exit: "exit" }
-    : { initial: "hidden", animate: "visible", exit: "exit" };
-}

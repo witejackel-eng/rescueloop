@@ -75,9 +75,10 @@ export function FloatingNav() {
               <a
                 key={link.href}
                 href={link.href}
-                className="text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+                className="group relative text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
               >
                 {link.label}
+                <span className="absolute -bottom-1 left-0 h-px w-0 bg-[var(--ink-primary)] transition-all duration-300 group-hover:w-full" />
               </a>
             ))}
           </nav>

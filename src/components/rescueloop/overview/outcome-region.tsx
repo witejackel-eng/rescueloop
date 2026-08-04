@@ -19,7 +19,7 @@ export function OutcomeRegion() {
       <div className="flex flex-col gap-6 border-b border-[var(--hairline)] p-6 lg:border-b-0 lg:border-r lg:p-8">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--ink-muted)]">
-            Confirmed recovered value
+            Illustrative recovered value
           </p>
           <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-2">
             <span className="font-serif text-[var(--ink-primary)] text-[72px] leading-[0.95] sm:text-[88px]">

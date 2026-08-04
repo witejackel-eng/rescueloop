@@ -177,10 +177,10 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
               </kbd>
             </button>
 
-            {/* Sync status */}
-            <div className="hidden items-center gap-1.5 lg:flex" title={`Last sync: ${LAST_SYNC}`}>
+            {/* Sync status — demo-honest label */}
+            <div className="hidden items-center gap-1.5 lg:flex" title="Simulated sync — demo workspace">
               <RefreshCw className="size-3.5 text-[var(--ink-muted)]" />
-              <span className="font-mono text-[11px] text-[var(--ink-muted)]">{LAST_SYNC}</span>
+              <span className="font-mono text-[11px] text-[var(--ink-muted)]">Demo sync · {LAST_SYNC}</span>
             </div>
 
             {/* Automation state */}
