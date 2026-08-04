@@ -1,171 +1,213 @@
 // Authentication and authorization helpers for Whop-embedded routes.
-// Every helper reads the Whop user token from the request, verifies it
-// server-side, and returns the authenticated context.
-// Never trust companyId, experienceId, or userId from the URL alone.
+//
+// Uses the official @whop/sdk pattern:
+//   const { userId } = await whopsdk.verifyUserToken(request.headers)
+//   const access = await whopsdk.users.checkAccess(companyId, { id: userId })
+//
+// Typed errors distinguish:
+// - Missing token
+// - Invalid or expired token
+// - Whop API unavailable
+// - Insufficient company access
+// - Installation missing
+//
+// Never trusts companyId, experienceId, or userId from the URL alone.
 
 import { headers } from "next/headers";
-import { verifyWhopUserToken, checkCompanyAdminAccess } from "@/lib/whop/client";
+import { whopsdk } from "@/lib/whop/client";
 import { db } from "@/lib/db";
+import {
+  APIError,
+  APIConnectionError,
+  AuthenticationError,
+} from "@whop/sdk";
+
+// ─── Typed auth errors ───────────────────────────────────────
+
+export class MissingTokenError extends Error {
+  constructor() {
+    super("Missing Whop user token");
+  }
+}
+
+export class InvalidTokenError extends Error {
+  constructor(message?: string) {
+    super(message ?? "Invalid or expired Whop user token");
+  }
+}
+
+export class WhopUnavailableError extends Error {
+  constructor(message?: string) {
+    super(message ?? "Whop API is currently unavailable");
+  }
+}
+
+export class InsufficientAccessError extends Error {
+  constructor(resource: string) {
+    super(`Not authorized for this ${resource}`);
+  }
+}
+
+export class InstallationMissingError extends Error {
+  constructor(companyId: string) {
+    super(`RescueLoop is not installed for company ${companyId}`);
+  }
+}
+
+// ─── Authenticated contexts ──────────────────────────────────
 
 export interface AuthenticatedUser {
   whopUserId: string;
   internalUserId: string | null;
 }
 
-export interface CompanyContext extends AuthenticatedUser {
+export interface CompanyAdminContext extends AuthenticatedUser {
   organizationId: string;
   companyId: string;
-  role: "owner" | "admin" | "member";
 }
+
+// ─── Core auth helpers ───────────────────────────────────────
 
 /**
  * Require a verified Whop user token for the current request.
- * Reads the token from the x-whop-user-token header or the `token` query param.
- * Throws a 401 response if the token is missing or invalid.
+ *
+ * Reads the token from the request headers using the SDK's built-in
+ * header extraction. Throws typed errors for each failure mode.
  */
 export async function requireWhopUser(): Promise<AuthenticatedUser> {
   const headerList = await headers();
-  const token =
-    headerList.get("x-whop-user-token") ??
-    headerList.get("authorization")?.replace("Bearer ", "");
 
-  if (!token) {
-    throw new Response(JSON.stringify({ error: "Missing user token" }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
+  let userId: string;
+  try {
+    // The SDK's verifyUserToken accepts a Headers object directly and
+    // extracts the token from the standard Whop header.
+    const payload = await whopsdk.verifyUserToken(headerList, {
+      dontThrow: true,
     });
-  }
 
-  const whopUserId = await verifyWhopUserToken(token);
-  if (!whopUserId) {
-    throw new Response(JSON.stringify({ error: "Invalid user token" }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
+    if (!payload || !payload.userId) {
+      // Check if a token was even present to distinguish missing vs invalid
+      const hasToken = headerList.get("x-whop-user-token");
+      if (!hasToken) {
+        throw new MissingTokenError();
+      }
+      throw new InvalidTokenError();
+    }
+
+    userId = payload.userId;
+  } catch (error) {
+    if (
+      error instanceof MissingTokenError ||
+      error instanceof InvalidTokenError
+    ) {
+      throw error;
+    }
+    // SDK connection errors mean Whop is unavailable
+    if (
+      error instanceof APIConnectionError ||
+      error instanceof APIError
+    ) {
+      // Redact the full error to avoid leaking details; log server-side
+      console.error("[whop-auth] API error during token verification", {
+        type: error.constructor.name,
+      });
+      throw new WhopUnavailableError();
+    }
+    // Unknown error — treat as invalid token (redacted)
+    console.error("[whop-auth] Unexpected error during token verification", {
+      type: error instanceof Error ? error.constructor.name : "unknown",
     });
+    throw new InvalidTokenError("Token verification failed");
   }
 
   // Look up the internal user record
   const user = await db.user.findUnique({
-    where: { whopUserId },
+    where: { whopUserId: userId },
     select: { id: true },
   });
 
   return {
-    whopUserId,
+    whopUserId: userId,
     internalUserId: user?.id ?? null,
   };
 }
 
 /**
  * Require administrative access to a specific Whop company.
- * Verifies the Whop user token AND checks company membership.
- * Never trusts the companyId from the URL alone.
+ *
+ * Uses the official checkAccess endpoint:
+ *   const access = await whopsdk.users.checkAccess(companyId, { id: userId })
+ *   require access.access_level === "admin"
+ *
+ * Never trusts the companyId from the URL alone — always verifies via Whop.
  */
 export async function requireCompanyAdmin(
   companyId: string,
-): Promise<CompanyContext> {
+): Promise<CompanyAdminContext> {
   const user = await requireWhopUser();
 
-  // Verify admin access via the Whop API
-  const isAdmin = await checkCompanyAdminAccess(user.whopUserId, companyId);
-  if (!isAdmin) {
-    throw new Response(
-      JSON.stringify({ error: "Not authorized for this company" }),
-      {
-        status: 403,
-        headers: { "content-type": "application/json" },
-      },
-    );
+  // Verify admin access via the official Whop API
+  let accessLevel: string;
+  try {
+    const access = await whopsdk.users.checkAccess(companyId, {
+      id: user.whopUserId,
+    });
+    accessLevel = access.access_level;
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      throw new InvalidTokenError("Whop authentication failed");
+    }
+    if (error instanceof APIConnectionError) {
+      throw new WhopUnavailableError();
+    }
+    // Other API errors (not found, permission denied) → no access
+    console.error("[whop-auth] checkAccess failed", {
+      companyId,
+      type: error instanceof Error ? error.constructor.name : "unknown",
+    });
+    throw new InsufficientAccessError("company");
+  }
+
+  if (accessLevel !== "admin") {
+    throw new InsufficientAccessError("company");
   }
 
   // Find the RescueLoop organization associated with this Whop company
   const installation = await db.whopInstallation.findUnique({
     where: { whopCompanyId: companyId },
-    include: { organization: { include: { members: true } } },
+    include: {
+      organization: {
+        include: {
+          members: {
+            where: { userId: user.internalUserId ?? undefined },
+        },
+      },
+    },
+  },
   });
 
   if (!installation || installation.status !== "active") {
-    throw new Response(
-      JSON.stringify({ error: "RescueLoop not installed for this company" }),
-      {
-        status: 404,
-        headers: { "content-type": "application/json" },
-      },
-    );
+    throw new InstallationMissingError(companyId);
   }
 
-  const member = installation.organization.members.find(
-    (m) => m.userId === user.internalUserId,
-  );
-
+  const member = installation.organization.members[0];
   if (!member || (member.role !== "owner" && member.role !== "admin")) {
-    throw new Response(
-      JSON.stringify({ error: "Not an organization admin" }),
-      {
-        status: 403,
-        headers: { "content-type": "application/json" },
-      },
-    );
+    throw new InsufficientAccessError("organization");
   }
 
   return {
     ...user,
     organizationId: installation.organization.id,
     companyId,
-    role: member.role,
   };
 }
 
 /**
- * Require organization access for a given organization ID.
- * Verifies that the authenticated user is a member of the organization.
- */
-export async function requireOrganizationAccess(
-  organizationId: string,
-): Promise<CompanyContext & { organizationId: string }> {
-  const user = await requireWhopUser();
-
-  if (!user.internalUserId) {
-    throw new Response(
-      JSON.stringify({ error: "User not linked to an organization" }),
-      {
-        status: 403,
-        headers: { "content-type": "application/json" },
-      },
-    );
-  }
-
-  const member = await db.organizationMember.findUnique({
-    where: {
-      organizationId_userId: {
-        organizationId,
-        userId: user.internalUserId,
-      },
-    },
-  });
-
-  if (!member) {
-    throw new Response(
-      JSON.stringify({ error: "Not authorized for this organization" }),
-      {
-        status: 403,
-        headers: { "content-type": "application/json" },
-      },
-    );
-  }
-
-  return {
-    ...user,
-    organizationId,
-    companyId: "", // Not company-scoped
-    role: member.role,
-  };
-}
-
-/**
- * Require student access via a signed intervention token.
- * Used for student-facing routes (/experiences/[experienceId]/rescue/[token]).
- * The token is opaque, signed, and expiring — it does not expose internal IDs.
+ * Require student access via an opaque access token.
+ * The token is a random string; only its SHA-256 hash is stored.
+ * Verifies: token exists, not expired, not revoked, organisation/
+ * intervention/student relationships match, intervention is still
+ * eligible for student interaction.
  */
 export async function requireStudentInterventionAccess(
   token: string,
@@ -173,13 +215,12 @@ export async function requireStudentInterventionAccess(
   interventionId: string;
   organizationId: string;
   studentId: string;
+  tokenId: string;
 }> {
-  const { getEnv } = await import("@/lib/env");
-  const env = getEnv();
-  const { verifyStudentToken } = await import("@/lib/crypto/student-tokens");
+  const { verifyStudentAccessToken } = await import("@/lib/crypto/student-access-tokens");
 
-  const payload = verifyStudentToken(token, env.STUDENT_LINK_SIGNING_SECRET);
-  if (!payload) {
+  const tokenRecord = await verifyStudentAccessToken(token);
+  if (!tokenRecord) {
     throw new Response(
       JSON.stringify({ error: "Invalid or expired link" }),
       {
@@ -189,9 +230,9 @@ export async function requireStudentInterventionAccess(
     );
   }
 
-  // Verify the intervention still exists and is active
+  // Verify the intervention still exists and is in a state that allows student interaction
   const intervention = await db.intervention.findUnique({
-    where: { id: payload.i },
+    where: { id: tokenRecord.interventionId },
     select: {
       id: true,
       organizationId: true,
@@ -200,11 +241,21 @@ export async function requireStudentInterventionAccess(
     },
   });
 
-  if (!intervention || intervention.organizationId !== payload.o) {
+  if (!intervention || intervention.organizationId !== tokenRecord.organizationId) {
     throw new Response(
       JSON.stringify({ error: "Intervention not found" }),
       {
         status: 404,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  }
+
+  if (intervention.studentId !== tokenRecord.studentId) {
+    throw new Response(
+      JSON.stringify({ error: "Token does not match student" }),
+      {
+        status: 403,
         headers: { "content-type": "application/json" },
       },
     );
@@ -229,8 +280,36 @@ export async function requireStudentInterventionAccess(
   }
 
   return {
-    interventionId: payload.i,
-    organizationId: payload.o,
-    studentId: payload.s,
+    interventionId: tokenRecord.interventionId,
+    organizationId: tokenRecord.organizationId,
+    studentId: tokenRecord.studentId,
+    tokenId: tokenRecord.tokenId,
   };
+}
+
+// ─── Error → Response conversion ─────────────────────────────
+
+export function authErrorToResponse(error: unknown): Response {
+  if (error instanceof Response) return error;
+
+  if (error instanceof MissingTokenError) {
+    return Response.json({ error: "Missing user token" }, { status: 401 });
+  }
+  if (error instanceof InvalidTokenError) {
+    return Response.json({ error: "Invalid or expired token" }, { status: 401 });
+  }
+  if (error instanceof WhopUnavailableError) {
+    return Response.json({ error: "Authentication service unavailable" }, { status: 503 });
+  }
+  if (error instanceof InsufficientAccessError) {
+    return Response.json({ error: error.message }, { status: 403 });
+  }
+  if (error instanceof InstallationMissingError) {
+    return Response.json({ error: error.message }, { status: 404 });
+  }
+
+  console.error("[whop-auth] Unhandled auth error", {
+    type: error instanceof Error ? error.constructor.name : "unknown",
+  });
+  return Response.json({ error: "Authentication failed" }, { status: 500 });
 }
