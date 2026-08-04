@@ -1,163 +1,135 @@
-// Tests for the attribution engine.
-// Verifies: classification rules, confirmed vs associated vs estimated,
-// no combined totals, payment-only confirmation.
+// Tests for the conservative Activation Rescue attribution engine.
+//
+// Key rules:
+// - Course activity after notification = strongly_associated ($0)
+// - Ordinary subsequent payments = estimated, NOT confirmed
+// - One payment cannot be attributed twice (unique constraint)
+// - Confirmed is NOT available for Activation Rescue in this phase
 
 import { describe, it, expect } from "vitest";
-import { classifyProgressOutcome } from "@/lib/attribution/engine";
+import {
+  classifyActivationProgressOutcome,
+  classifyObservedPayment,
+} from "@/lib/attribution/engine";
 
-describe("attribution-engine", () => {
+describe("attribution-engine (Activation Rescue)", () => {
   const now = new Date("2026-08-04T12:00:00Z");
   const oneHourAgo = new Date("2026-08-04T11:00:00Z");
   const oneDayAgo = new Date("2026-08-03T12:00:00Z");
 
-  describe("classifyProgressOutcome", () => {
+  describe("classifyActivationProgressOutcome", () => {
+    it("returns strongly_associated when course activity occurs within the policy window", () => {
+      const result = classifyActivationProgressOutcome({
+        interventionDeliveredAt: oneHourAgo,
+        courseStartedAt: now,
+        progressResumedAt: null,
+      });
+
+      expect(result.state).toBe("strongly_associated");
+      expect(result.amountCents).toBe(0); // No financial value
+    });
+
+    it("returns rejected when activity occurs outside the policy window", () => {
+      const twentyDaysAgo = new Date("2026-07-15T12:00:00Z");
+
+      const result = classifyActivationProgressOutcome({
+        interventionDeliveredAt: twentyDaysAgo,
+        courseStartedAt: now,
+        progressResumedAt: null,
+      });
+
+      expect(result.state).toBe("rejected");
+    });
+
     it("returns unattributed when no intervention was delivered", () => {
-      const result = classifyProgressOutcome({
+      const result = classifyActivationProgressOutcome({
         interventionDeliveredAt: null,
         courseStartedAt: now,
         progressResumedAt: null,
-        paymentSucceededAt: null,
-        membershipPriceCents: 7900,
       });
 
       expect(result.state).toBe("unattributed");
-      expect(result.amountCents).toBe(0);
     });
 
-    it("returns strongly_associated when course started after delivery", () => {
-      const result = classifyProgressOutcome({
+    it("returns unattributed when course activity happened before delivery", () => {
+      const result = classifyActivationProgressOutcome({
+        interventionDeliveredAt: now,
+        courseStartedAt: oneDayAgo,
+        progressResumedAt: null,
+      });
+
+      expect(result.state).toBe("unattributed");
+    });
+
+    it("never claims financial value for course activity", () => {
+      const result = classifyActivationProgressOutcome({
         interventionDeliveredAt: oneHourAgo,
         courseStartedAt: now,
         progressResumedAt: null,
-        paymentSucceededAt: null,
-        membershipPriceCents: 7900,
       });
 
-      expect(result.state).toBe("strongly_associated");
-      expect(result.amountCents).toBe(0); // No financial value yet
-    });
-
-    it("returns strongly_associated when progress resumed after delivery", () => {
-      const result = classifyProgressOutcome({
-        interventionDeliveredAt: oneHourAgo,
-        courseStartedAt: null,
-        progressResumedAt: now,
-        paymentSucceededAt: null,
-        membershipPriceCents: 7900,
-      });
-
-      expect(result.state).toBe("strongly_associated");
       expect(result.amountCents).toBe(0);
+      expect(result.formula).toContain("No financial value");
     });
+  });
 
-    it("returns confirmed when payment succeeds after course engagement", () => {
-      const result = classifyProgressOutcome({
+  describe("classifyObservedPayment", () => {
+    it("classifies as estimated when course activity occurred before payment", () => {
+      const result = classifyObservedPayment({
         interventionDeliveredAt: oneDayAgo,
-        courseStartedAt: oneHourAgo,
-        progressResumedAt: null,
         paymentSucceededAt: now,
         membershipPriceCents: 7900,
+        courseActivityOccurred: true,
       });
 
-      expect(result.state).toBe("confirmed");
-      expect(result.amountCents).toBe(7900);
-    });
-
-    it("returns estimated when payment succeeds but no course engagement", () => {
-      const result = classifyProgressOutcome({
-        interventionDeliveredAt: oneDayAgo,
-        courseStartedAt: null,
-        progressResumedAt: null,
-        paymentSucceededAt: now,
-        membershipPriceCents: 7900,
-      });
-
+      // Estimated, NOT confirmed — ordinary payments are not confirmed revenue
       expect(result.state).toBe("estimated");
       expect(result.amountCents).toBe(7900);
+      expect(result.formula).toContain("Not confirmed");
     });
 
-    it("does not confirm when course activity happened before intervention", () => {
-      const result = classifyProgressOutcome({
-        interventionDeliveredAt: now,
-        courseStartedAt: oneDayAgo, // Before intervention
-        progressResumedAt: null,
-        paymentSucceededAt: oneHourAgo,
+    it("classifies as unattributed when no course activity occurred", () => {
+      const result = classifyObservedPayment({
+        interventionDeliveredAt: oneDayAgo,
+        paymentSucceededAt: now,
         membershipPriceCents: 7900,
+        courseActivityOccurred: false,
       });
 
-      // Course started before intervention — not attributable
+      expect(result.state).toBe("unattributed");
+    });
+
+    it("NEVER classifies an ordinary payment as confirmed", () => {
+      // Even with course activity + payment, it's estimated, not confirmed.
+      // This is the key conservative rule for Activation Rescue.
+      const result = classifyObservedPayment({
+        interventionDeliveredAt: oneDayAgo,
+        paymentSucceededAt: now,
+        membershipPriceCents: 7900,
+        courseActivityOccurred: true,
+      });
+
       expect(result.state).not.toBe("confirmed");
     });
 
-    it("does not confirm when payment happened before intervention", () => {
-      const result = classifyProgressOutcome({
-        interventionDeliveredAt: now,
-        courseStartedAt: oneHourAgo,
-        progressResumedAt: null,
-        paymentSucceededAt: oneDayAgo, // Before intervention
-        membershipPriceCents: 7900,
-      });
-
-      expect(result.state).not.toBe("confirmed");
-    });
-
-    it("never combines confirmed and estimated value", () => {
-      const confirmed = classifyProgressOutcome({
+    it("includes evidence chain", () => {
+      const result = classifyObservedPayment({
         interventionDeliveredAt: oneDayAgo,
-        courseStartedAt: oneHourAgo,
-        progressResumedAt: null,
         paymentSucceededAt: now,
         membershipPriceCents: 7900,
-      });
-
-      const estimated = classifyProgressOutcome({
-        interventionDeliveredAt: oneDayAgo,
-        courseStartedAt: null,
-        progressResumedAt: null,
-        paymentSucceededAt: now,
-        membershipPriceCents: 7900,
-      });
-
-      // Each result is a separate classification — never summed
-      expect(confirmed.state).toBe("confirmed");
-      expect(estimated.state).toBe("estimated");
-      expect(confirmed.amountCents + estimated.amountCents).toBe(15800); // But they are separate events
-    });
-
-    it("includes evidence chain in the result", () => {
-      const result = classifyProgressOutcome({
-        interventionDeliveredAt: oneDayAgo,
-        courseStartedAt: oneHourAgo,
-        progressResumedAt: null,
-        paymentSucceededAt: now,
-        membershipPriceCents: 7900,
+        courseActivityOccurred: true,
       });
 
       expect(result.evidence.length).toBeGreaterThan(0);
-      expect(result.evidence.some((e) => e.eventType === "intervention_delivered")).toBe(true);
-      expect(result.evidence.some((e) => e.eventType === "course_started")).toBe(true);
       expect(result.evidence.some((e) => e.eventType === "payment_succeeded")).toBe(true);
     });
 
-    it("includes a human-readable formula", () => {
-      const result = classifyProgressOutcome({
-        interventionDeliveredAt: oneDayAgo,
-        courseStartedAt: oneHourAgo,
-        progressResumedAt: null,
-        paymentSucceededAt: now,
-        membershipPriceCents: 7900,
-      });
-
-      expect(result.formula).toContain("Confirmed");
-    });
-
     it("includes a policy version", () => {
-      const result = classifyProgressOutcome({
+      const result = classifyObservedPayment({
         interventionDeliveredAt: oneDayAgo,
-        courseStartedAt: oneHourAgo,
-        progressResumedAt: null,
         paymentSucceededAt: now,
         membershipPriceCents: 7900,
+        courseActivityOccurred: true,
       });
 
       expect(result.policyVersion).toMatch(/^\d{4}-\d{2}-\d{2}$/);
