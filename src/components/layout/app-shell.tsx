@@ -248,7 +248,7 @@ export function AppHeader() {
       </div>
 
       {/* Desktop horizontal nav */}
-      <nav className="hidden border-t border-[#E3E5DF] bg-[#FFFFFF] lg:block">
+      <nav className="hidden border-t border-[#E3E5DF] bg-[#FFFFFF] lg:block" aria-label="Main navigation">
         <div className="mx-auto flex max-w-[1400px] items-center gap-1 px-4 lg:px-6">
           {NAV_ITEMS.map((item) => {
             const active = pathname.startsWith(item.href);
@@ -285,8 +285,18 @@ export function AppHeader() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-[#F4F4F1]">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-[#147D68] focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
+      >
+        Skip to content
+      </a>
       <AppHeader />
-      <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 lg:px-6 lg:py-8">
+      <main
+        id="main-content"
+        className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 lg:px-6 lg:py-8"
+        tabIndex={-1}
+      >
         {children}
       </main>
       <footer className="border-t border-[#E3E5DF] bg-[#FFFFFF] py-4">
