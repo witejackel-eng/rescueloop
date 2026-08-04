@@ -6,10 +6,12 @@
 //  - enqueues the durable delivery job (best-effort — Inngest may be absent)
 //  - writes an audit log entry
 
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { recordAuditEvent } from "@/lib/audit";
-import { inngest, EVENTS } from "@/server/jobs/client";
+import { getInngestClient, EVENTS } from "@/server/jobs/client";
 import {
   requireCompanyAdmin,
   authErrorToResponse,
@@ -84,7 +86,7 @@ export async function POST(
 
   // Enqueue delivery (best-effort — do not fail the approval if Inngest is down)
   try {
-    await inngest.send({
+    await getInngestClient().send({
       name: EVENTS.deliverIntervention,
       data: { interventionId },
     });

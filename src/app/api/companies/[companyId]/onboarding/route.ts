@@ -5,6 +5,8 @@
 // admin-configured safety settings. Manual approval is always mandatory in the
 // private pilot — the route forces approvalMode = "manual".
 
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
