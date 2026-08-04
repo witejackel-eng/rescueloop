@@ -87,20 +87,46 @@ This goes in `STUDENT_LINK_SIGNING_SECRET`.
 
 ## Step 8 — Configure Vercel environment variables
 
-In the Vercel project settings, add these environment variables:
+Vercel separates **Development**, **Preview**, and **Production** environments.
+Variables configured in **Preview** do NOT automatically appear in **Production**.
+Configure each environment separately.
 
-| Variable | Value |
-|---|---|
-| `DATABASE_URL` | Neon pooled connection string |
-| `DIRECT_URL` | Neon direct connection string |
-| `WHOP_API_KEY` | Whop App API Key |
-| `NEXT_PUBLIC_WHOP_APP_ID` | Whop App ID |
-| `WHOP_WEBHOOK_SECRET` | Whop Webhook Secret |
-| `APP_URL` | `https://rescueloop.vercel.app` |
-| `STUDENT_LINK_SIGNING_SECRET` | The secret generated in Step 7 |
-| `CRON_SECRET` | A random string for cron job auth |
-| `JOB_PROVIDER_SECRET` | Inngest signing key |
-| `INNGEST_EVENT_KEY` | Inngest event key |
+### Environment variable matrix
+
+| Variable | Scope | Required for demo build | Required for backend | Secret |
+|---|---|---:|---:|---:|
+| `NEXT_PUBLIC_WHOP_APP_ID` | Public | No | Yes | No |
+| `NEXT_PUBLIC_POSTHOG_KEY` | Public | No | Optional | No |
+| `NEXT_PUBLIC_POSTHOG_HOST` | Public | No | Optional | No |
+| `DATABASE_URL` | Server | No | Yes | Yes |
+| `DIRECT_URL` | Server | No | Yes | Yes |
+| `WHOP_API_KEY` | Server | No | Yes | Yes |
+| `WHOP_WEBHOOK_SECRET` | Server | No | Yes | Yes |
+| `APP_URL` | Server | No | Yes | No |
+| `STUDENT_LINK_SIGNING_SECRET` | Server | No | Yes | Yes |
+| `CRON_SECRET` | Server | No | Yes | Yes |
+| `INNGEST_EVENT_KEY` | Server | No | Yes | Yes |
+| `JOB_PROVIDER_SECRET` | Server | No | Optional | Yes |
+| `SENTRY_DSN` | Server | No | Optional | Yes |
+
+### Build-only public demo
+
+The public demo (landing page, `/overview`, `/rescue-queue`, `/students`,
+`/campaigns`, `/insights`, `/value`, `/settings`, `/student-rescue`,
+`/onboarding`, `/legal/*`) builds and deploys **without any environment
+variables**. No Whop credentials, no database URL, and no Inngest key are
+required for the demo to build and run.
+
+### Backend preview
+
+To enable the backend company routes (`/companies/[companyId]/*`) and
+webhook ingestion, configure all "Required for backend" variables in the
+Vercel **Preview** environment.
+
+### Real Whop integration
+
+To enable real Whop integration in production, configure all variables in
+the Vercel **Production** environment after completing Steps 1–7.
 
 **Important:** Never prefix server secrets with `NEXT_PUBLIC_`.
 Only `NEXT_PUBLIC_WHOP_APP_ID`, `NEXT_PUBLIC_POSTHOG_KEY`, and
