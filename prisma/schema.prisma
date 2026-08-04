@@ -84,6 +84,7 @@ enum InterventionState {
   scheduled
   queued
   delivery_attempted
+  notification_accepted
   delivered
   failed
   stopped
@@ -295,6 +296,7 @@ model Course {
   id              String   @id @default(cuid())
   organizationId  String
   externalCourseId String  // Whop course ID
+  externalExperienceId String? // Whop experience ID (required for notification delivery)
   name            String
   lessonCount     Int      @default(0)
   createdAt       DateTime @default(now()) @db.Timestamptz
@@ -425,6 +427,7 @@ model ProgressEvent {
   organizationId  String
   studentId       String
   courseId        String
+  externalInteractionId String? // Whop's course_lesson_interaction ID — unique per student+lesson
   lessonIndex     Int
   lessonTitle     String?
   action          String   // "completed", "started", "stalled"
@@ -434,6 +437,8 @@ model ProgressEvent {
 
   course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
+  // Prevent the same Whop lesson interaction from being counted twice
+  @@unique([organizationId, studentId, externalInteractionId])
   @@index([organizationId, studentId, courseId])
   @@index([occurredAt])
   @@map("progress_events")
@@ -614,7 +619,7 @@ model StudentResponse {
   responseType    ResponseType
   blockerType     BlockerType?
   note            String?
-  signedToken     String   @unique
+  accessTokenId   String?  // Reference to the StudentAccessToken used (not the raw token)
   ipAddress       String?
   userAgent       String?
   createdAt       DateTime @default(now()) @db.Timestamptz
@@ -625,6 +630,26 @@ model StudentResponse {
   @@index([interventionId])
   @@index([studentId])
   @@map("student_responses")
+}
+
+// Opaque student access tokens.
+// The raw token is never stored — only its SHA-256 hash.
+// Tokens are scoped to a specific intervention + student + organisation.
+model StudentAccessToken {
+  id             String   @id @default(cuid())
+  organizationId String
+  interventionId String
+  studentId      String
+  tokenHash      String   @unique // SHA-256 hash of the raw token
+  expiresAt      DateTime @db.Timestamptz
+  revokedAt      DateTime? @db.Timestamptz
+  lastUsedAt     DateTime? @db.Timestamptz
+  consumedAt     DateTime? @db.Timestamptz // Set for one-time actions
+  createdAt      DateTime @default(now()) @db.Timestamptz
+
+  @@index([organizationId, studentId])
+  @@index([interventionId])
+  @@map("student_access_tokens")
 }
 
 model BlockerResponse {
@@ -725,6 +750,9 @@ model ValueEvent {
   currency        String   @default("USD")
   formula         String?  // explanation of how the amount was derived
   policyVersion   String   @default("2026-08-01")
+  // Reference to the source payment event that created this value event.
+  // Unique constraint prevents one payment from creating duplicate value events.
+  paymentEventId  String?  @unique
   createdAt       DateTime @default(now()) @db.Timestamptz
 
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -732,6 +760,7 @@ model ValueEvent {
   evidence        AttributionEvidence[]
 
   @@index([organizationId, attributionLevel])
+  @@index([interventionId])
   @@map("value_events")
 }
 
