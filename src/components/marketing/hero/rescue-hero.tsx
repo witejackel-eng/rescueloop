@@ -48,7 +48,7 @@ export function RescueHero() {
       </div>
 
       {/* Content */}
-      <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-[1400px] flex-col justify-center px-6 pb-32 pt-32 lg:px-12 lg:pt-28">
+      <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-[1400px] flex-col justify-center px-6 pb-32 pt-28 lg:px-12 lg:pt-32">
         {/* Eyebrow */}
         <motion.div
           initial={fade(0)}
