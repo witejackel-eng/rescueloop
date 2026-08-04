@@ -8,18 +8,18 @@ export default defineConfig({
     exclude: ["node_modules", ".next"],
     server: {
       deps: {
-        // Don't process CSS in tests
-        inline: [],
+        // Inline server-only so it resolves in the test environment
+        inline: ["server-only"],
       },
     },
   },
   css: {
-    // Disable PostCSS processing in test mode
     postcss: {},
   },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "server-only": path.resolve(__dirname, "src/lib/__mocks__/server-only.ts"),
     },
   },
 });
