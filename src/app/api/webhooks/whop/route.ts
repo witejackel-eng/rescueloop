@@ -1,79 +1,57 @@
 // Whop webhook ingestion endpoint.
 // POST /api/webhooks/whop
 //
-// Requirements:
-// - Read the raw request body
-// - Verify webhook signature with the Whop SDK
-// - Reject invalid signatures
-// - Extract a stable webhook ID
-// - Store the receipt before processing (idempotent)
-// - Return quickly
-// - Process the event asynchronously via Inngest
+// Uses the official @whop/sdk Standard Webhooks implementation:
+//   const event = whopsdk.webhooks.unwrap(rawBody, { headers })
+//
+// Whop uses Standard Webhooks (standardwebhooks.com):
+// - Headers: webhook-id, webhook-timestamp, webhook-signature
+// - Signature content: id.timestamp.body (HMAC-SHA256)
+// - The SDK verifies all of this automatically.
+//
+// Idempotency: webhook-id is the deduplication key.
+// Return 2xx quickly after verification + durable enqueueing.
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verifyWebhookSignature } from "@/lib/whop/client";
+import { whopsdk } from "@/lib/whop/client";
 import { inngest } from "@/server/jobs/client";
 import { createHash } from "crypto";
 
 export async function POST(req: NextRequest) {
-  // Read the raw body
+  // Read the raw body (required for signature verification)
   const rawBody = await req.text();
 
-  // Get the signature header
-  const signature = req.headers.get("x-whop-signature") ?? "";
-  const eventId = req.headers.get("x-whop-event-id") ?? "";
-  const eventType = req.headers.get("x-whop-event-type") ?? "";
-
-  if (!signature || !eventId) {
-    return NextResponse.json(
-      { error: "Missing signature or event ID" },
-      { status: 400 },
-    );
-  }
-
-  // Get the webhook secret
-  const secret = process.env.WHOP_WEBHOOK_SECRET;
-  if (!secret) {
-    console.error("WHOP_WEBHOOK_SECRET not configured");
-    return NextResponse.json(
-      { error: "Webhook secret not configured" },
-      { status: 500 },
-    );
-  }
-
-  // Verify the signature
-  const isValid = verifyWebhookSignature({
-    payload: rawBody,
-    signature,
-    secret,
+  // Build a plain headers object for the SDK
+  const headersObject: Record<string, string> = {};
+  req.headers.forEach((value, key) => {
+    headersObject[key.toLowerCase()] = value;
   });
 
-  if (!isValid) {
-    console.warn("Webhook signature verification failed", { eventId });
+  // Verify and unwrap the webhook using the official SDK
+  let event;
+  try {
+    event = whopsdk.webhooks.unwrap(rawBody, { headers: headersObject });
+  } catch (error) {
+    console.warn("[webhook] Signature verification failed", {
+      type: error instanceof Error ? error.constructor.name : "unknown",
+    });
     return NextResponse.json(
-      { error: "Invalid signature" },
+      { error: "Webhook signature verification failed" },
       { status: 401 },
     );
   }
 
-  // Parse the payload
-  let payload: Record<string, unknown>;
-  try {
-    payload = JSON.parse(rawBody);
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON payload" },
-      { status: 400 },
-    );
-  }
+  // The event ID is the stable deduplication key (from webhook-id header)
+  const eventId = event.id;
+  const eventType = event.type;
+  const companyId = event.company_id ?? null;
 
-  // Extract the company ID from the payload
-  const companyId = (payload.company_id as string) ?? "";
   if (!companyId) {
+    // Some events may not have a company_id — acknowledge but don't process
     return NextResponse.json(
-      { error: "Missing company_id in payload" },
-      { status: 400 },
+      { received: true, processed: false, reason: "no_company_id" },
+      { status: 200 },
     );
   }
 
@@ -84,11 +62,12 @@ export async function POST(req: NextRequest) {
   });
 
   if (!installation) {
-    return NextResponse.json({ received: true, processed: false, reason: "not_installed" });
+    // Not installed — acknowledge but don't process
+    return NextResponse.json(
+      { received: true, processed: false, reason: "not_installed" },
+      { status: 200 },
+    );
   }
-
-  // Compute payload hash for deduplication
-  const payloadHash = createHash("sha256").update(rawBody).digest("hex");
 
   // Idempotency: check if we've already received this event
   const existing = await db.webhookReceipt.findUnique({
@@ -96,8 +75,14 @@ export async function POST(req: NextRequest) {
   });
 
   if (existing) {
-    return NextResponse.json({ received: true, processed: false, reason: "duplicate" });
+    return NextResponse.json(
+      { received: true, processed: false, reason: "duplicate" },
+      { status: 200 },
+    );
   }
+
+  // Compute payload hash for audit
+  const payloadHash = createHash("sha256").update(rawBody).digest("hex");
 
   // Store the receipt BEFORE processing
   const receipt = await db.webhookReceipt.create({
@@ -107,13 +92,14 @@ export async function POST(req: NextRequest) {
       eventType,
       payloadHash,
       status: "received",
-      payloadJson: payload as any,
+      // Store the verified event data (already verified by the SDK)
+      payloadJson: event as any,
     },
   });
 
   // Enqueue async processing via Inngest
   await inngest.send({
-    name: "whop.webhook.received",
+    name: "whop/webhook.received",
     data: {
       receiptId: receipt.id,
       eventId,
@@ -122,6 +108,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Return 202 Accepted — processing will happen asynchronously
   return NextResponse.json(
     { received: true, receiptId: receipt.id },
     { status: 202 },
