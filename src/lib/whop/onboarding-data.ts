@@ -4,7 +4,7 @@
 // is unreachable, the functions return an empty list + a flag so the
 // onboarding form can fall back to manual entry.
 
-import { whopsdk } from "@/lib/whop/client";
+import { getWhopClient } from "@/lib/whop/client";
 import { db } from "@/lib/db";
 
 export interface WhopCourseOption {
@@ -58,7 +58,7 @@ export async function fetchOnboardingData(
 
   // ─── Courses from Whop ──────────────────────────────────────
   try {
-    const page = await whopsdk.courses.list({ company_id: companyId });
+    const page = await getWhopClient().courses.list({ company_id: companyId });
     const items = (page as any).data ?? [];
     courses = items.map((c: any): WhopCourseOption => ({
       id: c.id,
@@ -84,7 +84,7 @@ export async function fetchOnboardingData(
   // ─── Experiences from Whop (needed for notification delivery) ──
   if (!whopUnavailable) {
     try {
-      const page = await whopsdk.experiences.list({ company_id: companyId });
+      const page = await getWhopClient().experiences.list({ company_id: companyId });
       const items = (page as any).data ?? [];
       experiences = items.map((e: any): WhopExperienceOption => ({
         id: e.id,

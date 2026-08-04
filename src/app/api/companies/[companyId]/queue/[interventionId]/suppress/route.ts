@@ -4,6 +4,8 @@
 // (treats this as an admin-initiated opt-out). Future eligibility checks will
 // skip this student. Writes an audit log entry.
 
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";

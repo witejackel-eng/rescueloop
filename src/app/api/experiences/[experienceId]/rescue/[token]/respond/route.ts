@@ -16,6 +16,8 @@
 // Always writes an audit log entry. Sets intervention.state = "responded"
 // (or "stopped" for stop_reminders).
 
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
