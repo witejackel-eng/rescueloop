@@ -152,11 +152,15 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             <RescueLoopMark size={22} />
           </Link>
 
-          {/* Workspace + course selector */}
+          {/* Workspace + course selector + demo label */}
           <button
             className="hidden items-center gap-2 text-[13px] font-medium text-[var(--ink-primary)] md:flex"
             aria-label="Workspace and course"
           >
+            <span className="inline-flex items-center gap-1.5 rounded-[4px] border border-[var(--hairline)] bg-[var(--canvas-elevated)] px-1.5 py-0.5 font-mono text-[10px] tracking-wide text-[var(--ink-muted)]">
+              <span className="size-1 rounded-full bg-[var(--warning)]" />
+              DEMO
+            </span>
             <span>{COMPANY.name}</span>
             <span className="text-[var(--ink-muted)]">/</span>
             <span className="text-[var(--ink-secondary)]">{COURSE.name}</span>

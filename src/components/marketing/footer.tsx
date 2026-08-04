@@ -24,10 +24,10 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
   {
     title: "Legal",
     links: [
-      { label: "Privacy", href: "#" },
-      { label: "Terms", href: "#" },
-      { label: "Data processing", href: "#" },
-      { label: "Security", href: "#" },
+      { label: "Privacy", href: "/legal/privacy" },
+      { label: "Terms", href: "/legal/terms" },
+      { label: "Data processing", href: "/legal/data-processing" },
+      { label: "Security", href: "/legal/security" },
     ],
   },
 ];
