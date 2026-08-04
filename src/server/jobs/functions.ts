@@ -1,9 +1,14 @@
 // Inngest job functions for the Activation Rescue workflow.
 // Each function is durable, retryable, and idempotent.
+//
+// NOTE: Function definitions are created lazily via getJobFunctions() to
+// avoid calling getInngestClient() at module import time, which would
+// crash `next build` when Inngest is not configured.
 
-import { inngest, EVENTS } from "./client";
+import "server-only";
+import { getInngestClient, EVENTS, isInngestReady } from "./client";
 import { db } from "@/lib/db";
-import { whopsdk } from "@/lib/whop/client";
+import { getWhopClient } from "@/lib/whop/client";
 import { recordAuditEvent } from "@/lib/audit";
 import {
   createStudentAccessToken,
@@ -13,12 +18,17 @@ import {
   createObservedPaymentValueEvent,
 } from "@/lib/attribution/engine";
 
+// ─── Job function definitions (lazy) ─────────────────────────
+
 /**
- * Webhook processing job.
- * Receives a webhook receipt, processes the typed event, and updates state.
- * Idempotent: checks receipt status before processing.
+ * Create and return the Inngest job functions.
+ * Call this only when Inngest is configured — it calls getInngestClient().
  */
-export const processWebhook = inngest.createFunction(
+export function getJobFunctions(): any[] {
+  if (!isInngestReady()) return [];
+  const client = getInngestClient();
+
+  const processWebhook = client.createFunction(
   {
     id: "process-webhook",
     retries: 5,
@@ -128,7 +138,7 @@ export const processWebhook = inngest.createFunction(
  * accepted the notification. Uses "notification_accepted" as the
  * intervention state.
  */
-export const deliverIntervention = inngest.createFunction(
+  const deliverIntervention = client.createFunction(
   {
     id: "deliver-intervention",
     retries: 3,
@@ -342,7 +352,7 @@ export const deliverIntervention = inngest.createFunction(
         }
 
         // Call the official Whop notification API
-        const result = await whopsdk.notifications.create({
+        const result = await getWhopClient().notifications.create({
           experience_id: course.externalExperienceId,
           title: "Continue your course",
           content: message,
@@ -418,6 +428,9 @@ export const deliverIntervention = inngest.createFunction(
     }
   },
 );
+
+  return [processWebhook, deliverIntervention];
+}
 
 // ─── Quiet hours check ───────────────────────────────────────
 

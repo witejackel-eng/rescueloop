@@ -1,3 +1,4 @@
+"server-only";
 // Audit log helper. Every administrative mutation must create an audit entry.
 
 import { db } from "@/lib/db";
