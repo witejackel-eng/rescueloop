@@ -1,3 +1,4 @@
+"server-only";
 // Conservative attribution engine for Activation Rescue.
 //
 // Policy (2026-08-01):

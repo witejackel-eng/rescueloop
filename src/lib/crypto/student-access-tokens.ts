@@ -1,3 +1,4 @@
+"server-only";
 // Opaque student access tokens.
 //
 // Replaces the previous base64 JSON token system that exposed internal IDs.

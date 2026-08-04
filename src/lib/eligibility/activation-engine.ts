@@ -1,3 +1,4 @@
+"server-only";
 // Activation Rescue eligibility engine.
 // Determines which students are eligible for an Activation Rescue intervention
 // based on: active membership, no course activity, configured delay, cooldown,
