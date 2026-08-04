@@ -1,0 +1,160 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-jetbrains-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-critical: var(--critical);
+  --color-critical-foreground: var(--critical-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* RescueLoop warm light theme */
+  --radius: 0.875rem; /* 14px for main cards */
+
+  --background: #F4F4F1;
+  --foreground: #171A17;
+
+  --card: #FFFFFF;
+  --card-foreground: #171A17;
+
+  --popover: #FFFFFF;
+  --popover-foreground: #171A17;
+
+  --primary: #147D68;
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #F8F8F5;
+  --secondary-foreground: #171A17;
+
+  --muted: #F8F8F5;
+  --muted-foreground: #6A706A;
+
+  --accent: #F0F2EC;
+  --accent-foreground: #171A17;
+
+  --destructive: #C64D45;
+  --destructive-foreground: #FFFFFF;
+
+  /* Status colors */
+  --success: #27966A;
+  --success-foreground: #FFFFFF;
+  --warning: #D89222;
+  --warning-foreground: #FFFFFF;
+  --critical: #C64D45;
+  --critical-foreground: #FFFFFF;
+  --info: #4C7ECF;
+  --info-foreground: #FFFFFF;
+
+  --border: #E3E5DF;
+  --input: #E3E5DF;
+  --ring: #147D68;
+
+  --chart-1: #147D68;
+  --chart-2: #4C7ECF;
+  --chart-3: #D89222;
+  --chart-4: #27966A;
+  --chart-5: #C64D45;
+
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #171A17;
+  --sidebar-primary: #147D68;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F0F2EC;
+  --sidebar-accent-foreground: #171A17;
+  --sidebar-border: #E3E5DF;
+  --sidebar-ring: #147D68;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* JetBrains Mono for analytical values */
+  .tabular-mono {
+    font-family: var(--font-mono), monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  /* Custom scrollbar for lists */
+  .scroll-area-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scroll-area-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-area-thin::-webkit-scrollbar-thumb {
+    background: #D8DAD4;
+    border-radius: 3px;
+  }
+  .scroll-area-thin::-webkit-scrollbar-thumb:hover {
+    background: #B8BAB4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Focus visibility */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
