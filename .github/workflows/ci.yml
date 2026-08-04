@@ -8,12 +8,27 @@ on:
 
 jobs:
   lint-typecheck-test:
-    name: Lint, Typecheck, Test
+    name: Lint, Typecheck, Test, Build
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rescueloop_test
+          POSTGRES_PASSWORD: rescueloop_test
+          POSTGRES_DB: rescueloop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
-      DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy?sslmode=disable"
-      DIRECT_URL: "postgresql://dummy:dummy@localhost:5432/dummy?sslmode=disable"
+      DATABASE_URL: "postgresql://rescueloop_test:rescueloop_test@localhost:5432/rescueloop_test?sslmode=disable"
+      DIRECT_URL: "postgresql://rescueloop_test:rescueloop_test@localhost:5432/rescueloop_test?sslmode=disable"
       WHOP_API_KEY: "test-key"
       NEXT_PUBLIC_WHOP_APP_ID: "test-app-id"
       WHOP_WEBHOOK_SECRET: "test-webhook-secret"
@@ -35,6 +50,9 @@ jobs:
 
       - name: Generate Prisma client
         run: bun run db:generate
+
+      - name: Run database migrations
+        run: bunx prisma migrate deploy
 
       - name: Run lint
         run: bun run lint
