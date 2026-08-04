@@ -14,31 +14,23 @@ export default async function CampaignEditorPage({
 
   if (!campaign) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-        <p className="text-sm text-[#6A706A]">Campaign not found.</p>
-        <Button asChild variant="outline" size="sm">
+      <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
+        <p className="font-serif text-[24px] text-[var(--ink-primary)]">
+          Campaign not found
+        </p>
+        <p className="max-w-sm text-[13px] text-[var(--ink-muted)]">
+          The campaign you&apos;re looking for doesn&apos;t exist or has been
+          archived.
+        </p>
+        <Button asChild variant="outline" size="sm" className="rounded-[2px]">
           <Link href="/campaigns">
             <ArrowLeft className="size-3.5" />
-            Back to campaigns
+            Back to Campaign Studio
           </Link>
         </Button>
       </div>
     );
   }
 
-  return (
-    <div>
-      <Link
-        href="/campaigns"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-[#6A706A] transition-colors hover:text-[#171A17]"
-      >
-        <ArrowLeft className="size-3.5" />
-        Back to campaigns
-      </Link>
-
-      <div className="mt-4">
-        <CampaignEditor campaign={campaign} />
-      </div>
-    </div>
-  );
+  return <CampaignEditor campaign={campaign} />;
 }

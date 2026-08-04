@@ -4,22 +4,38 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   Download,
-  ExternalLink,
   Pause,
   Play,
-  Plus,
   RefreshCw,
-  ShieldAlert,
   Trash2,
+  Unplug,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { PageHeader } from "@/components/shared/layout-primitives";
-import { AutomationStatePill } from "@/components/shared/status-pills";
+import { useDemoStore } from "@/features/demo-engine/demo-store";
 import {
-  SettingsNav,
-  type SettingsSectionId,
-} from "@/components/rescueloop/settings/settings-nav";
+  COMPANY,
+  COURSE,
+  COURSES_FOR_SELECTION,
+  KPIS,
+  LAST_SYNC,
+  NEXT_SYNC,
+  PRODUCT,
+} from "@/lib/mock-data";
+import type { AutomationState } from "@/lib/types";
+import {
+  SegmentedControl,
+} from "@/components/interaction/segmented-control";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,48 +47,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+  SettingsNav,
+  type SettingsSectionId,
+} from "@/components/rescueloop/settings/settings-nav";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  AUTOMATION_STATE,
-  COMPANY,
-  COURSE,
-  COURSES_FOR_SELECTION,
-  KPIS,
-  LAST_SYNC,
-  NEXT_SYNC,
-  PRODUCT,
-} from "@/lib/mock-data";
-import { automationStateMeta } from "@/lib/format";
-import type { AutomationState } from "@/lib/types";
+  GroupedList,
+  Row,
+  ValueLabel,
+} from "@/components/rescueloop/settings/grouped-list";
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -107,7 +90,7 @@ interface NotificationToggle {
 const NOTIFICATION_TOGGLES: NotificationToggle[] = [
   {
     id: "help_requests",
-    label: "New help requests from students",
+    label: "Help requests",
     description: "When a student submits a direct help request.",
     defaultOn: true,
   },
@@ -118,1172 +101,633 @@ const NOTIFICATION_TOGGLES: NotificationToggle[] = [
     defaultOn: true,
   },
   {
-    id: "confirmed_recoveries",
-    label: "Confirmed recoveries",
-    description: "When an intervention leads to a retained member.",
+    id: "recoveries",
+    label: "Recoveries",
+    description: "When a student returns or completes a lesson after intervention.",
     defaultOn: true,
   },
   {
-    id: "course_friction",
-    label: "Course friction findings",
-    description: "When RescueLoop identifies a stall pattern in a lesson.",
+    id: "friction_findings",
+    label: "Friction findings",
+    description: "When a new lesson-level friction finding is detected.",
     defaultOn: true,
   },
   {
     id: "campaign_pauses",
     label: "Campaign pauses",
-    description: "When a campaign is paused by safety rules or manually.",
-    defaultOn: true,
+    description: "When a campaign is paused automatically due to a safety rule.",
+    defaultOn: false,
   },
   {
     id: "sync_problems",
-    label: "Synchronization problems",
-    description: "When the Whop connection fails or data is stale.",
+    label: "Sync problems",
+    description: "When the Whop membership sync encounters errors.",
     defaultOn: true,
   },
   {
-    id: "plan_limit",
-    label: "Plan limit notices",
-    description: "When you approach your monthly intervention quota.",
+    id: "plan_limits",
+    label: "Plan limits",
+    description: "When you approach the monthly intervention limit.",
     defaultOn: true,
   },
   {
     id: "weekly_summary",
-    label: "Weekly summary email",
-    description: "A digest of recoveries and value recovered, sent Mondays.",
-    defaultOn: false,
+    label: "Weekly summary",
+    description: "A Monday-morning digest of the prior week.",
+    defaultOn: true,
   },
   {
     id: "daily_digest",
     label: "Daily digest",
-    description: "A short daily summary of queue activity, sent at 8:00.",
+    description: "A brief daily digest at 9:00 AM local time.",
     defaultOn: false,
   },
 ];
 
-const AUTOMATION_MODES: {
-  value: AutomationState;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "audit_only",
-    label: "Audit only",
-    description: "Detect risk signals. No messages will be sent.",
-  },
-  {
-    value: "manual_approval",
-    label: "Manual approval",
-    description: "You approve every intervention before it is sent.",
-  },
-  {
-    value: "automatic",
-    label: "Automatic",
-    description:
-      "Approved interventions send automatically within safety rules.",
-  },
+const AUTOMATION_MODE_SEGMENTS: { value: AutomationState; label: string }[] = [
+  { value: "audit_only", label: "Audit only" },
+  { value: "manual_approval", label: "Manual approval" },
+  { value: "automatic", label: "Automatic" },
 ];
 
 // ── Page ─────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [active, setActive] = useState<SettingsSectionId>("general");
+  const automationState = useDemoStore((s) => s.automationState);
+  const setAutomationState = useDemoStore((s) => s.setAutomationState);
+  const pauseAutomation = useDemoStore((s) => s.pauseAutomation);
+  const resumeAutomation = useDemoStore((s) => s.resumeAutomation);
 
-  // General
+  const [active, setActive] = useState<SettingsSectionId>("workspace");
+
+  // Workspace
   const [companyName, setCompanyName] = useState(COMPANY.name);
-  const [defaultCourseId, setDefaultCourseId] = useState(COURSE.id);
+  const [defaultCourse, setDefaultCourse] = useState(COURSE.id);
   const [timezone, setTimezone] = useState("America/New_York");
-  const [notificationEmail, setNotificationEmail] = useState(
-    "team@creatorgrowthlab.com",
-  );
+  const [notifEmail, setNotifEmail] = useState("creator@creatorgrowthlab.com");
 
   // Automation
-  const [automationMode, setAutomationMode] =
-    useState<AutomationState>(AUTOMATION_STATE);
-  const [isPaused, setIsPaused] = useState(false);
   const [quietStart, setQuietStart] = useState("20:00");
   const [quietEnd, setQuietEnd] = useState("08:00");
   const [cooldownDays, setCooldownDays] = useState(14);
-  const [maxMessagesPerMonth, setMaxMessagesPerMonth] = useState(3);
+  const [maxMessages, setMaxMessages] = useState(3);
 
   // Notifications
-  const [notificationState, setNotificationState] = useState<
-    Record<string, boolean>
-  >(() =>
-    Object.fromEntries(
-      NOTIFICATION_TOGGLES.map((t) => [t.id, t.defaultOn]),
-    ),
+  const [notifState, setNotifState] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(NOTIFICATION_TOGGLES.map((t) => [t.id, t.defaultOn])),
   );
-
-  // Whop / product mappings
-  const [productMappings, setProductMappings] = useState<
-    { id: string; product: string; courseId: string }[]
-  >([
-    {
-      id: "pm_agency",
-      product: PRODUCT.name,
-      courseId: COURSE.id,
-    },
-  ]);
 
   // Data & privacy
   const [retention, setRetention] = useState("90");
 
-  // Danger zone: delete account confirmation
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
-
-  const displayAutomationState: AutomationState = isPaused
-    ? "paused"
-    : automationMode;
-
+  // Plan
   const interventionsUsed = KPIS.interventionsSent;
   const interventionsPct = Math.min(
     100,
     Math.round((interventionsUsed / PLAN_INTERVENTION_LIMIT) * 100),
   );
 
-  return (
-    <div className="pb-8">
-      <PageHeader
-        title="Settings"
-        description="Workspace, automation, billing, and data preferences"
-      />
+  const isPaused = automationState === "paused";
 
-      <div className="grid gap-6 lg:grid-cols-[12rem_1fr] lg:gap-8">
+  function handleAutomationModeChange(next: AutomationState) {
+    setAutomationState(next);
+    toast.success(`Automation mode: ${next.replace(/_/g, " ")}`);
+  }
+
+  function handlePauseToggle() {
+    if (isPaused) {
+      resumeAutomation();
+      toast.success("Automation resumed");
+    } else {
+      pauseAutomation();
+      toast.info("Automation paused — no interventions will be sent");
+    }
+  }
+
+  function handleSyncNow() {
+    toast.success("Sync started — memberships refreshing from Whop");
+  }
+
+  function handleExport(kind: "students" | "interventions" | "value") {
+    toast.success(`Exported ${kind}.csv`);
+  }
+
+  function toggleNotif(id: string, next: boolean) {
+    setNotifState((prev) => ({ ...prev, [id]: next }));
+  }
+
+  return (
+    <div className="flex flex-col gap-6 pb-8">
+      {/* Header */}
+      <header className="flex items-baseline gap-3">
+        <h1 className="font-serif text-[24px] leading-none text-[var(--ink-primary)]">
+          Settings
+        </h1>
+      </header>
+
+      <div className="grid gap-6 lg:grid-cols-[200px_1fr] lg:gap-8">
         <SettingsNav active={active} onChange={setActive} />
 
-        <div className="min-w-0 space-y-6">
-          {active === "general" && (
-            <GeneralSection
-              companyName={companyName}
-              setCompanyName={setCompanyName}
-              defaultCourseId={defaultCourseId}
-              setDefaultCourseId={setDefaultCourseId}
-              timezone={timezone}
-              setTimezone={setTimezone}
-              notificationEmail={notificationEmail}
-              setNotificationEmail={setNotificationEmail}
-            />
+        <div className="flex flex-col gap-6">
+          {/* Workspace */}
+          {active === "workspace" && (
+            <>
+              <GroupedList
+                title="Workspace"
+                description="Identity, course, and timezone preferences"
+              >
+                <Row label="Company name" description="Displayed across RescueLoop">
+                  <Input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="h-8 w-[200px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]"
+                  />
+                </Row>
+                <Row label="Default course" description="Course used for RescueLoop monitoring">
+                  <Select value={defaultCourse} onValueChange={setDefaultCourse}>
+                    <SelectTrigger className="h-8 w-[200px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-none">
+                      {COURSES_FOR_SELECTION.map((c) => (
+                        <SelectItem key={c.id} value={c.id} className="text-[12px]">
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Row>
+                <Row label="Timezone" description="Used for quiet hours and daily digests">
+                  <Select value={timezone} onValueChange={setTimezone}>
+                    <SelectTrigger className="h-8 w-[200px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-none">
+                      {TIMEZONES.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value} className="text-[12px]">
+                          {tz.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Row>
+                <Row label="Notification email" description="Where alerts are sent" last>
+                  <Input
+                    type="email"
+                    value={notifEmail}
+                    onChange={(e) => setNotifEmail(e.target.value)}
+                    className="h-8 w-[220px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]"
+                  />
+                </Row>
+              </GroupedList>
+            </>
           )}
 
-          {active === "automation" && (
-            <AutomationSection
-              displayState={displayAutomationState}
-              automationMode={automationMode}
-              setAutomationMode={setAutomationMode}
-              isPaused={isPaused}
-              setIsPaused={setIsPaused}
-              quietStart={quietStart}
-              setQuietStart={setQuietStart}
-              quietEnd={quietEnd}
-              setQuietEnd={setQuietEnd}
-              cooldownDays={cooldownDays}
-              setCooldownDays={setCooldownDays}
-              maxMessagesPerMonth={maxMessagesPerMonth}
-              setMaxMessagesPerMonth={setMaxMessagesPerMonth}
-            />
-          )}
-
+          {/* Whop connection */}
           {active === "whop" && (
-            <WhopSection
-              productMappings={productMappings}
-              setProductMappings={setProductMappings}
-            />
-          )}
-
-          {active === "notifications" && (
-            <NotificationsSection
-              state={notificationState}
-              setState={setNotificationState}
-            />
-          )}
-
-          {active === "plan" && (
-            <PlanSection
-              interventionsUsed={interventionsUsed}
-              interventionsPct={interventionsPct}
-            />
-          )}
-
-          {active === "data" && (
-            <DataSection
-              retention={retention}
-              setRetention={setRetention}
-            />
-          )}
-
-          {active === "danger" && (
-            <DangerSection
-              deleteConfirmText={deleteConfirmText}
-              setDeleteConfirmText={setDeleteConfirmText}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Shared section helpers ───────────────────────────────────
-
-function SectionShell({
-  title,
-  description,
-  children,
-  footer,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-  footer?: React.ReactNode;
-}) {
-  return (
-    <Card className="gap-0 py-0">
-      <CardHeader className="border-b border-[#E3E5DF] py-5">
-        <CardTitle className="text-base font-semibold text-[#171A17]">
-          {title}
-        </CardTitle>
-        <CardDescription className="text-sm text-[#6A706A]">
-          {description}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">
-        {children}
-      </CardContent>
-      {footer && (
-        <div className="flex flex-col items-stretch gap-2 border-t border-[#E3E5DF] bg-[#F8F8F5] px-6 py-4 sm:flex-row sm:items-center sm:justify-end">
-          {footer}
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function FieldRow({
-  label,
-  htmlFor,
-  description,
-  children,
-}: {
-  label: string;
-  htmlFor?: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid gap-2 px-6 py-4 sm:grid-cols-[minmax(0,14rem)_1fr] sm:gap-4 sm:py-5">
-      <div className="sm:pt-2">
-        <Label
-          htmlFor={htmlFor}
-          className="text-sm font-medium text-[#171A17]"
-        >
-          {label}
-        </Label>
-        {description && (
-          <p className="mt-1 text-xs leading-snug text-[#6A706A]">
-            {description}
-          </p>
-        )}
-      </div>
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-// ── 1. General ───────────────────────────────────────────────
-
-interface GeneralSectionProps {
-  companyName: string;
-  setCompanyName: (v: string) => void;
-  defaultCourseId: string;
-  setDefaultCourseId: (v: string) => void;
-  timezone: string;
-  setTimezone: (v: string) => void;
-  notificationEmail: string;
-  setNotificationEmail: (v: string) => void;
-}
-
-function GeneralSection({
-  companyName,
-  setCompanyName,
-  defaultCourseId,
-  setDefaultCourseId,
-  timezone,
-  setTimezone,
-  notificationEmail,
-  setNotificationEmail,
-}: GeneralSectionProps) {
-  return (
-    <SectionShell
-      title="General"
-      description="Workspace identity and defaults used across RescueLoop."
-      footer={
-        <Button
-          onClick={() => toast.success("Settings saved")}
-          className="bg-[#147D68] text-white hover:bg-[#147D68]/90"
-        >
-          Save changes
-        </Button>
-      }
-    >
-      <FieldRow label="Company name" htmlFor="company-name">
-        <Input
-          id="company-name"
-          value={companyName}
-          onChange={(e) => setCompanyName(e.target.value)}
-          className="max-w-md"
-        />
-      </FieldRow>
-      <Separator className="bg-[#E3E5DF]" />
-      <FieldRow
-        label="Default course"
-        htmlFor="default-course"
-        description="The course RescueLoop monitors by default across dashboards."
-      >
-        <Select value={defaultCourseId} onValueChange={setDefaultCourseId}>
-          <SelectTrigger id="default-course" className="max-w-md">
-            <SelectValue placeholder="Select course" />
-          </SelectTrigger>
-          <SelectContent>
-            {COURSES_FOR_SELECTION.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </FieldRow>
-      <Separator className="bg-[#E3E5DF]" />
-      <FieldRow
-        label="Timezone"
-        htmlFor="timezone"
-        description="Used for quiet hours, scheduling, and digest emails."
-      >
-        <Select value={timezone} onValueChange={setTimezone}>
-          <SelectTrigger id="timezone" className="max-w-md">
-            <SelectValue placeholder="Select timezone" />
-          </SelectTrigger>
-          <SelectContent>
-            {TIMEZONES.map((tz) => (
-              <SelectItem key={tz.value} value={tz.value}>
-                {tz.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </FieldRow>
-      <Separator className="bg-[#E3E5DF]" />
-      <FieldRow
-        label="Notification email"
-        htmlFor="notification-email"
-        description="Where operational alerts and summaries are delivered."
-      >
-        <Input
-          id="notification-email"
-          type="email"
-          value={notificationEmail}
-          onChange={(e) => setNotificationEmail(e.target.value)}
-          className="max-w-md"
-        />
-      </FieldRow>
-    </SectionShell>
-  );
-}
-
-// ── 2. Automation ────────────────────────────────────────────
-
-interface AutomationSectionProps {
-  displayState: AutomationState;
-  automationMode: AutomationState;
-  setAutomationMode: (v: AutomationState) => void;
-  isPaused: boolean;
-  setIsPaused: (v: boolean) => void;
-  quietStart: string;
-  setQuietStart: (v: string) => void;
-  quietEnd: string;
-  setQuietEnd: (v: string) => void;
-  cooldownDays: number;
-  setCooldownDays: (v: number) => void;
-  maxMessagesPerMonth: number;
-  setMaxMessagesPerMonth: (v: number) => void;
-}
-
-function AutomationSection({
-  displayState,
-  automationMode,
-  setAutomationMode,
-  isPaused,
-  setIsPaused,
-  quietStart,
-  setQuietStart,
-  quietEnd,
-  setQuietEnd,
-  cooldownDays,
-  setCooldownDays,
-  maxMessagesPerMonth,
-  setMaxMessagesPerMonth,
-}: AutomationSectionProps) {
-  return (
-    <div className="space-y-6">
-      <Card className="gap-0 py-0">
-        <CardHeader className="border-b border-[#E3E5DF] py-5">
-          <CardTitle className="text-base font-semibold text-[#171A17]">
-            Current automation state
-          </CardTitle>
-          <CardDescription className="text-sm text-[#6A706A]">
-            Live status of intervention automation across all campaigns.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <AutomationStatePill state={displayState} />
-            <p className="text-sm text-[#6A706A]">
-              {automationStateMeta[displayState].description}
-            </p>
-          </div>
-          {isPaused ? (
-            <Button
-              onClick={() => {
-                setIsPaused(false);
-                toast.success("Automation resumed");
-              }}
-              className="bg-[#147D68] text-white hover:bg-[#147D68]/90"
+            <GroupedList
+              title="Whop connection"
+              description="Sync status and product mapping"
             >
-              <Play className="size-4" />
-              Resume automation
-            </Button>
-          ) : (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
+              <Row label="Connection status" description="Whop API connection">
+                <span className="flex items-center gap-1.5 border border-[var(--recovery-green)]/30 bg-[var(--recovery-light)] px-2 py-0.5 text-[11px] font-medium text-[var(--recovery-green)]">
+                  <span className="size-1.5 rounded-full bg-[var(--recovery-green)]" />
+                  Connected
+                </span>
+              </Row>
+              <Row label="Last sync">
+                <ValueLabel mono>{LAST_SYNC}</ValueLabel>
+              </Row>
+              <Row label="Next sync">
+                <ValueLabel mono>{NEXT_SYNC}</ValueLabel>
+              </Row>
+              <Row label="Sync now" description="Force a manual sync from Whop" last>
                 <Button
-                  variant="outline"
-                  className="border-[#E8C9C5] bg-white text-[#C64D45] hover:bg-[#F4E8E6] hover:text-[#C64D45]"
+                  size="sm"
+                  onClick={handleSyncNow}
+                  className="h-8 rounded-none bg-[var(--ink-primary)] text-[var(--canvas)] hover:bg-[var(--ink-primary)]/90"
                 >
-                  <Pause className="size-4" />
-                  Pause all automation
+                  <RefreshCw className="size-3.5" />
+                  Sync now
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Pause all automation?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    No new interventions will be sent. In-progress campaigns
-                    stop scheduling. You can resume at any time.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    className="border-[#E8C9C5] bg-white text-[#C64D45] hover:bg-[#F4E8E6] hover:text-[#C64D45]"
-                    onClick={() => {
-                      setIsPaused(true);
-                      toast.error("All automation paused");
-                    }}
-                  >
-                    Pause automation
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+              </Row>
+            </GroupedList>
           )}
-        </CardContent>
-      </Card>
 
-      <SectionShell
-        title="Automation mode"
-        description="Choose how approved interventions are delivered."
-      >
-        <RadioGroup
-          value={automationMode}
-          onValueChange={(v) => setAutomationMode(v as AutomationState)}
-          className="gap-0"
-        >
-          {AUTOMATION_MODES.map((mode, idx) => {
-            const isSelected = automationMode === mode.value;
-            return (
-              <div key={mode.value}>
-                {idx > 0 && <Separator className="bg-[#E3E5DF]" />}
-                <Label
-                  htmlFor={`mode-${mode.value}`}
+          {/* Product mapping (Whop sub-section) */}
+          {active === "whop" && (
+            <GroupedList
+              title="Product mapping"
+              description="Whop products mapped to RescueLoop courses"
+            >
+              <div className="flex flex-col">
+                <div className="grid grid-cols-[1fr_1fr_60px] gap-2 border-b border-[var(--hairline)] bg-[var(--canvas-elevated)] px-4 py-2">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                    Whop product
+                  </span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                    Mapped course
+                  </span>
+                  <span className="text-right font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                    Price
+                  </span>
+                </div>
+                <div className="grid grid-cols-[1fr_1fr_60px] gap-2 px-4 py-2.5">
+                  <span className="text-[12px] text-[var(--ink-primary)]">{PRODUCT.name}</span>
+                  <span className="text-[12px] text-[var(--ink-secondary)]">{COURSE.name}</span>
+                  <span className="text-right font-mono text-[12px] tabular-nums text-[var(--ink-primary)]">
+                    ${PRODUCT.price}
+                  </span>
+                </div>
+              </div>
+            </GroupedList>
+          )}
+
+          {/* Automation */}
+          {active === "automation" && (
+            <GroupedList
+              title="Automation"
+              description="Modes, quiet hours, and safety controls"
+            >
+              <Row label="Automation mode" description="Controls how interventions are delivered">
+                <SegmentedControl
+                  ariaLabel="Automation mode"
+                  size="sm"
+                  segments={AUTOMATION_MODE_SEGMENTS}
+                  value={isPaused ? "manual_approval" : automationState}
+                  onChange={(v) => handleAutomationModeChange(v as AutomationState)}
+                />
+              </Row>
+              <Row label="Pause automation" description={isPaused ? "Currently paused" : "Currently running"}>
+                <Button
+                  size="sm"
+                  variant={isPaused ? "default" : "outline"}
+                  onClick={handlePauseToggle}
                   className={cn(
-                    "flex cursor-pointer items-start gap-3 px-6 py-4 transition-colors",
-                    isSelected ? "bg-[#E8F5EF]/40" : "hover:bg-[#F8F8F5]",
+                    "h-8 rounded-none",
+                    isPaused
+                      ? "bg-[var(--recovery-green)] text-white hover:bg-[var(--recovery-green)]/90"
+                      : "border-[var(--critical)]/30 text-[var(--critical)] hover:bg-[var(--critical-light)]",
                   )}
                 >
-                  <RadioGroupItem
-                    id={`mode-${mode.value}`}
-                    value={mode.value}
-                    className="mt-1 border-[#147D68] text-[#147D68]"
+                  {isPaused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+                  {isPaused ? "Resume" : "Pause"}
+                </Button>
+              </Row>
+              <Row label="Quiet hours" description="No messages sent during these hours (local time)">
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="time"
+                    value={quietStart}
+                    onChange={(e) => setQuietStart(e.target.value)}
+                    className="h-8 w-[90px] rounded-none border-[var(--hairline)] bg-[var(--surface)] font-mono text-[12px] tabular-nums"
                   />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium text-[#171A17]">
-                      {mode.label}
-                    </span>
-                    <span className="text-xs leading-snug text-[#6A706A]">
-                      {mode.description}
-                    </span>
-                  </div>
-                </Label>
-              </div>
-            );
-          })}
-        </RadioGroup>
-      </SectionShell>
+                  <span className="text-[12px] text-[var(--ink-muted)]">to</span>
+                  <Input
+                    type="time"
+                    value={quietEnd}
+                    onChange={(e) => setQuietEnd(e.target.value)}
+                    className="h-8 w-[90px] rounded-none border-[var(--hairline)] bg-[var(--surface)] font-mono text-[12px] tabular-nums"
+                  />
+                </div>
+              </Row>
+              <Row label="Cooldown" description="Days between interventions to the same member">
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={cooldownDays}
+                    onChange={(e) => setCooldownDays(Number(e.target.value))}
+                    className="h-8 w-[60px] rounded-none border-[var(--hairline)] bg-[var(--surface)] font-mono text-[12px] tabular-nums"
+                  />
+                  <span className="text-[12px] text-[var(--ink-muted)]">days</span>
+                </div>
+              </Row>
+              <Row label="Max messages per member" description="Per-month safety cap" last>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={maxMessages}
+                    onChange={(e) => setMaxMessages(Number(e.target.value))}
+                    className="h-8 w-[60px] rounded-none border-[var(--hairline)] bg-[var(--surface)] font-mono text-[12px] tabular-nums"
+                  />
+                  <span className="text-[12px] text-[var(--ink-muted)]">/ month</span>
+                </div>
+              </Row>
+            </GroupedList>
+          )}
 
-      <SectionShell
-        title="Safety controls"
-        description="Default guardrails applied to every campaign unless overridden."
-      >
-        <FieldRow
-          label="Quiet hours"
-          htmlFor="quiet-start"
-          description="No interventions are sent during this window."
-        >
-          <div className="flex items-center gap-2">
-            <Input
-              id="quiet-start"
-              type="time"
-              value={quietStart}
-              onChange={(e) => setQuietStart(e.target.value)}
-              className="w-32 tabular-mono"
-            />
-            <span className="text-sm text-[#6A706A]">to</span>
-            <Input
-              id="quiet-end"
-              type="time"
-              value={quietEnd}
-              onChange={(e) => setQuietEnd(e.target.value)}
-              className="w-32 tabular-mono"
-            />
-          </div>
-        </FieldRow>
-        <Separator className="bg-[#E3E5DF]" />
-        <FieldRow
-          label="Default cooldown"
-          htmlFor="cooldown"
-          description="Minimum days between interventions to the same member."
-        >
-          <div className="flex items-center gap-2">
-            <Input
-              id="cooldown"
-              type="number"
-              min={1}
-              max={90}
-              value={cooldownDays}
-              onChange={(e) =>
-                setCooldownDays(Math.max(1, Number(e.target.value) || 1))
-              }
-              className="w-24 tabular-mono"
-            />
-            <span className="text-sm text-[#6A706A]">days</span>
-          </div>
-        </FieldRow>
-        <Separator className="bg-[#E3E5DF]" />
-        <FieldRow
-          label="Max messages per member"
-          htmlFor="max-messages"
-          description="Per calendar month. Members exceeding this are excluded."
-        >
-          <div className="flex items-center gap-2">
-            <Input
-              id="max-messages"
-              type="number"
-              min={1}
-              max={20}
-              value={maxMessagesPerMonth}
-              onChange={(e) =>
-                setMaxMessagesPerMonth(
-                  Math.max(1, Number(e.target.value) || 1),
-                )
-              }
-              className="w-24 tabular-mono"
-            />
-            <span className="text-sm text-[#6A706A]">messages / month</span>
-          </div>
-        </FieldRow>
-      </SectionShell>
-    </div>
-  );
-}
-
-// ── 3. Whop connection ───────────────────────────────────────
-
-interface WhopSectionProps {
-  productMappings: { id: string; product: string; courseId: string }[];
-  setProductMappings: React.Dispatch<
-    React.SetStateAction<{ id: string; product: string; courseId: string }[]>
-  >;
-}
-
-function WhopSection({ productMappings, setProductMappings }: WhopSectionProps) {
-  return (
-    <div className="space-y-6">
-      <Card className="gap-0 py-0">
-        <CardHeader className="border-b border-[#E3E5DF] py-5">
-          <CardTitle className="text-base font-semibold text-[#171A17]">
-            Connection status
-          </CardTitle>
-          <CardDescription className="text-sm text-[#6A706A]">
-            RescueLoop syncs members, progress, and cancellations from Whop.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-6 py-5">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge
-                variant="outline"
-                className="border-[#C7E6D5] bg-[#E8F5EF] text-[#27966A]"
-              >
-                <span className="size-1.5 rounded-full bg-[#27966A]" />
-                Connected
-              </Badge>
-              <div className="flex items-center gap-4 text-sm text-[#6A706A]">
-                <span>
-                  Last sync:{" "}
-                  <span className="tabular-mono text-[#171A17]">
-                    {LAST_SYNC}
-                  </span>
-                </span>
-                <span className="hidden text-[#E3E5DF] sm:inline">|</span>
-                <span>
-                  Next sync:{" "}
-                  <span className="tabular-mono text-[#171A17]">
-                    {NEXT_SYNC}
-                  </span>
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={() => toast.success("Sync started")}
-                className="bg-[#147D68] text-white hover:bg-[#147D68]/90"
-              >
-                <RefreshCw className="size-4" />
-                Sync now
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => toast.info("Redirecting to Whop…")}
-                className="text-[#6A706A] hover:bg-[#F8F8F5] hover:text-[#171A17]"
-              >
-                Reconnect
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <SectionShell
-        title="Product mapping"
-        description="Map each Whop product to the course RescueLoop monitors."
-        footer={
-          <Button
-            variant="outline"
-            onClick={() =>
-              toast.info("Add product mapping coming soon")
-            }
-            className="border-[#E3E5DF] bg-white text-[#171A17] hover:bg-[#F8F8F5]"
-          >
-            <Plus className="size-4" />
-            Add product mapping
-          </Button>
-        }
-      >
-        <Table>
-          <TableHeader>
-            <TableRow className="border-[#E3E5DF] hover:bg-transparent">
-              <TableHead className="pl-6 text-xs font-medium uppercase tracking-wide text-[#6A706A]">
-                Whop product
-              </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wide text-[#6A706A]">
-                RescueLoop course
-              </TableHead>
-              <TableHead className="pr-6 text-right text-xs font-medium uppercase tracking-wide text-[#6A706A]">
-                Actions
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {productMappings.map((m) => (
-              <TableRow
-                key={m.id}
-                className="border-[#E3E5DF] hover:bg-[#F8F8F5]"
-              >
-                  <TableCell className="pl-6 py-3.5 text-sm font-medium text-[#171A17]">
-                    {m.product}
-                  </TableCell>
-                  <TableCell className="py-3.5">
-                    <Select
-                      value={m.courseId}
-                      onValueChange={(v) =>
-                        setProductMappings((prev) =>
-                          prev.map((p) =>
-                            p.id === m.id ? { ...p, courseId: v } : p,
-                          ),
-                        )
-                      }
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        className="h-8 w-full max-w-xs"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COURSES_FOR_SELECTION.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="pr-6 py-3.5 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setProductMappings((prev) =>
-                          prev.filter((p) => p.id !== m.id),
-                        );
-                        toast.success("Product mapping removed");
-                      }}
-                      className="text-[#6A706A] hover:bg-[#F4E8E6] hover:text-[#C64D45]"
-                    >
-                      <Trash2 className="size-3.5" />
-                      Remove
-                    </Button>
-                  </TableCell>
-                </TableRow>
-            ))}
-            {productMappings.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={3}
-                  className="px-6 py-8 text-center text-sm text-[#6A706A]"
+          {/* Notifications */}
+          {active === "notifications" && (
+            <GroupedList
+              title="Notifications"
+              description="What you get alerted about"
+            >
+              {NOTIFICATION_TOGGLES.map((t, i) => (
+                <Row
+                  key={t.id}
+                  label={t.label}
+                  description={t.description}
+                  last={i === NOTIFICATION_TOGGLES.length - 1}
                 >
-                  No product mappings yet. Add one to start monitoring.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </SectionShell>
-    </div>
-  );
-}
-
-// ── 4. Notifications ─────────────────────────────────────────
-
-function NotificationsSection({
-  state,
-  setState,
-}: {
-  state: Record<string, boolean>;
-  setState: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-}) {
-  return (
-    <SectionShell
-      title="Notifications"
-      description="Choose what RescueLoop alerts you about. Email is delivered to your notification address."
-    >
-      <div className="divide-y divide-[#E3E5DF]">
-        {NOTIFICATION_TOGGLES.map((toggle) => {
-          const value = state[toggle.id] ?? toggle.defaultOn;
-          return (
-            <div
-              key={toggle.id}
-              className="flex items-start justify-between gap-4 px-6 py-4"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-[#171A17]">
-                  {toggle.label}
-                </p>
-                <p className="mt-0.5 text-xs leading-snug text-[#6A706A]">
-                  {toggle.description}
-                </p>
-              </div>
-              <Switch
-                checked={value}
-                onCheckedChange={(checked) => {
-                  setState((prev) => ({ ...prev, [toggle.id]: checked }));
-                  toast.success(
-                    `${toggle.label} ${checked ? "enabled" : "disabled"}`,
-                  );
-                }}
-                className="data-[state=checked]:bg-[#147D68] data-[state=unchecked]:bg-[#E3E5DF]"
-              />
-            </div>
-          );
-        })}
-      </div>
-    </SectionShell>
-  );
-}
-
-// ── 5. Plan & billing ────────────────────────────────────────
-
-function PlanSection({
-  interventionsUsed,
-  interventionsPct,
-}: {
-  interventionsUsed: number;
-  interventionsPct: number;
-}) {
-  return (
-    <div className="space-y-6">
-      <Card className="gap-0 py-0">
-        <CardHeader className="border-b border-[#E3E5DF] py-5">
-          <CardTitle className="text-base font-semibold text-[#171A17]">
-            Current plan
-          </CardTitle>
-          <CardDescription className="text-sm text-[#6A706A]">
-            Your subscription and monthly intervention quota.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-6 py-5">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xl font-semibold text-[#171A17]">
-                  RescueLoop Pro
-                </span>
-                <span className="tabular-mono text-sm text-[#6A706A]">
-                  ${KPIS.planCost}/month
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-[#6A706A]">
-                Includes 100 interventions per month, full automation, and
-                value-ledger reporting.
-              </p>
-            </div>
-            <Button
-              onClick={() => toast.info("Upgrade flow coming soon")}
-              className="bg-[#147D68] text-white hover:bg-[#147D68]/90"
-            >
-              Upgrade plan
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="gap-0 py-0">
-        <CardHeader className="border-b border-[#E3E5DF] py-5">
-          <CardTitle className="text-base font-semibold text-[#171A17]">
-            Usage this cycle
-          </CardTitle>
-          <CardDescription className="text-sm text-[#6A706A]">
-            Resets on February 12.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-6 py-5">
-          <div className="flex items-baseline justify-between">
-            <span className="text-sm text-[#6A706A]">
-              Interventions sent
-            </span>
-            <span className="tabular-mono text-sm text-[#171A17]">
-              <span className="font-semibold">{interventionsUsed}</span>
-              <span className="text-[#6A706A]">
-                {" "}
-                / {PLAN_INTERVENTION_LIMIT}
-              </span>
-            </span>
-          </div>
-          <Progress
-            value={interventionsPct}
-            className="mt-3 h-2 bg-[#F0F2EC] [&>div]:bg-[#147D68]"
-          />
-          <p className="mt-2 text-xs text-[#6A706A]">
-            {PLAN_INTERVENTION_LIMIT - interventionsUsed} interventions
-            remaining this cycle.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card className="gap-0 py-0">
-        <CardHeader className="border-b border-[#E3E5DF] py-5">
-          <CardTitle className="text-base font-semibold text-[#171A17]">
-            Billing
-          </CardTitle>
-          <CardDescription className="text-sm text-[#6A706A]">
-            Manage how you pay and review past invoices.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="divide-y divide-[#E3E5DF] px-0">
-          <button
-            onClick={() => toast.info("Opening billing history…")}
-            className="flex w-full items-center justify-between px-6 py-3.5 text-left transition-colors hover:bg-[#F8F8F5]"
-          >
-            <span className="text-sm font-medium text-[#171A17]">
-              View billing history
-            </span>
-            <ExternalLink className="size-4 text-[#6A706A]" />
-          </button>
-          <button
-            onClick={() => toast.info("Opening payment method…")}
-            className="flex w-full items-center justify-between px-6 py-3.5 text-left transition-colors hover:bg-[#F8F8F5]"
-          >
-            <span className="text-sm font-medium text-[#171A17]">
-              Manage payment method
-            </span>
-            <ExternalLink className="size-4 text-[#6A706A]" />
-          </button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ── 6. Data & privacy ────────────────────────────────────────
-
-function DataSection({
-  retention,
-  setRetention,
-}: {
-  retention: string;
-  setRetention: (v: string) => void;
-}) {
-  return (
-    <div className="space-y-6">
-      <SectionShell
-        title="Exports"
-        description="Download a copy of your data. Exports are CSV and ready in under a minute."
-      >
-        <div className="flex flex-col gap-3 px-6 py-5">
-          <Button
-            variant="outline"
-            onClick={() => toast.success("Exporting student data (CSV)…")}
-            className="justify-start border-[#E3E5DF] bg-white text-[#171A17] hover:bg-[#F8F8F5]"
-          >
-            <Download className="size-4" />
-            Export student data
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => toast.success("Exporting value ledger (CSV)…")}
-            className="justify-start border-[#E3E5DF] bg-white text-[#171A17] hover:bg-[#F8F8F5]"
-          >
-            <Download className="size-4" />
-            Export value ledger
-          </Button>
-        </div>
-      </SectionShell>
-
-      <SectionShell
-        title="Retention"
-        description="How long RescueLoop keeps intervention history and student activity."
-      >
-        <FieldRow
-          label="Data retention period"
-          htmlFor="retention"
-          description="Older records are permanently deleted after this window."
-        >
-          <Select value={retention} onValueChange={setRetention}>
-            <SelectTrigger id="retention" className="max-w-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RETENTION_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
+                  <Switch
+                    checked={notifState[t.id] ?? false}
+                    onCheckedChange={(next) => toggleNotif(t.id, next)}
+                    aria-label={t.label}
+                  />
+                </Row>
               ))}
-            </SelectContent>
-          </Select>
-        </FieldRow>
-      </SectionShell>
+            </GroupedList>
+          )}
 
-      <Card className="gap-0 border-[#E8C9C5] py-0">
-        <CardHeader className="border-b border-[#E8C9C5] py-5">
-          <CardTitle className="flex items-center gap-2 text-base font-semibold text-[#C64D45]">
-            <ShieldAlert className="size-4" />
-            Delete intervention history
-          </CardTitle>
-          <CardDescription className="text-sm text-[#6A706A]">
-            Permanently remove every intervention record, message, and response.
-            Student data and course progress are preserved.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-6 py-5">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="border-[#E8C9C5] bg-white text-[#C64D45] hover:bg-[#F4E8E6] hover:text-[#C64D45]"
+          {/* Team */}
+          {active === "team" && (
+            <GroupedList
+              title="Team"
+              description="Invite teammates to your workspace"
+            >
+              <Row
+                label="Coming soon"
+                description="Team invites, roles, and shared approval workflows are on the roadmap."
+                last
               >
-                <Trash2 className="size-4" />
-                Delete all intervention history
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  Delete all intervention history?
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  This permanently removes {KPIS.interventionsSent}{" "}
-                  intervention records, their messages, and any responses. This
-                  action cannot be undone and will affect your value ledger.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-[#C64D45] text-white hover:bg-[#C64D45]/90 focus-visible:ring-[#C64D45]/20"
-                  onClick={() =>
-                    toast.success("Intervention history deleted")
-                  }
-                >
-                  Delete history
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </CardContent>
-      </Card>
+                <span className="border border-[var(--hairline)] bg-[var(--canvas-elevated)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                  Roadmap
+                </span>
+              </Row>
+            </GroupedList>
+          )}
 
-      <div className="flex items-center justify-between px-1">
-        <Button
-          variant="link"
-          onClick={() => toast.info("Opening privacy policy…")}
-          className="h-auto p-0 text-[#147D68] underline-offset-4 hover:underline"
-        >
-          Privacy policy
-          <ExternalLink className="size-3.5" />
-        </Button>
+          {/* Plan and usage */}
+          {active === "plan" && (
+            <>
+              <GroupedList
+                title="Plan and usage"
+                description="Subscription, usage, and upgrades"
+              >
+                <Row label="Plan" description="RescueLoop Pro">
+                  <ValueLabel mono>$29/mo</ValueLabel>
+                </Row>
+                <Row
+                  label="Intervention usage"
+                  description={`${interventionsUsed} of ${PLAN_INTERVENTION_LIMIT} monthly interventions used`}
+                >
+                  <div className="w-[140px]">
+                    <div className="h-2 w-full overflow-hidden bg-[var(--hairline)]">
+                      <div
+                        className="h-full bg-[var(--recovery-green)] transition-all"
+                        style={{ width: `${interventionsPct}%` }}
+                      />
+                    </div>
+                    <div className="mt-1 flex items-center justify-between font-mono text-[10px] tabular-nums text-[var(--ink-muted)]">
+                      <span>{interventionsPct}%</span>
+                      <span>resets Feb 12</span>
+                    </div>
+                  </div>
+                </Row>
+                <Row label="Upgrade" description="Move to RescueLoop Scale for unlimited interventions" last>
+                  <Button
+                    size="sm"
+                    onClick={() => toast.success("Upgrade flow started — Stripe checkout opening")}
+                    className="h-8 rounded-none bg-[var(--recovery-green)] text-white hover:bg-[var(--recovery-green)]/90"
+                  >
+                    Upgrade plan
+                  </Button>
+                </Row>
+              </GroupedList>
+            </>
+          )}
+
+          {/* Data and privacy */}
+          {active === "data" && (
+            <>
+              <GroupedList
+                title="Data and privacy"
+                description="Exports, retention, and deletion"
+              >
+                <Row label="Export students" description="Download all students as a CSV">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleExport("students")}
+                    className="h-8 rounded-none border-[var(--hairline)] text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]"
+                  >
+                    <Download className="size-3.5" />
+                    Export
+                  </Button>
+                </Row>
+                <Row label="Export interventions" description="All interventions sent">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleExport("interventions")}
+                    className="h-8 rounded-none border-[var(--hairline)] text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]"
+                  >
+                    <Download className="size-3.5" />
+                    Export
+                  </Button>
+                </Row>
+                <Row label="Export value ledger" description="All value events">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleExport("value")}
+                    className="h-8 rounded-none border-[var(--hairline)] text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]"
+                  >
+                    <Download className="size-3.5" />
+                    Export
+                  </Button>
+                </Row>
+                <Row label="Retention period" description="How long RescueLoop stores raw events" last>
+                  <Select value={retention} onValueChange={setRetention}>
+                    <SelectTrigger className="h-8 w-[140px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-none">
+                      {RETENTION_OPTIONS.map((r) => (
+                        <SelectItem key={r.value} value={r.value} className="text-[12px]">
+                          {r.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Row>
+              </GroupedList>
+
+              {/* Destructive action — separated */}
+              <GroupedList variant="destructive" title="History deletion">
+                <Row
+                  label="Delete intervention history"
+                  description="Permanently delete all sent interventions and responses. Cannot be undone."
+                  destructive
+                  last
+                >
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 rounded-none border-[var(--critical)]/30 text-[var(--critical)] hover:bg-[var(--critical-light)]"
+                      >
+                        <Trash2 className="size-3.5" />
+                        Delete
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="rounded-none sm:max-w-md">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete intervention history?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This permanently removes all sent interventions, responses, and
+                          attribution evidence. Students will not be affected, but you will lose
+                          the value ledger history.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="rounded-none">Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="rounded-none bg-[var(--critical)] text-white hover:bg-[var(--critical)]/90"
+                          onClick={() => toast.success("Intervention history deleted")}
+                        >
+                          Delete history
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </Row>
+              </GroupedList>
+            </>
+          )}
+
+          {/* Danger zone */}
+          {active === "danger" && (
+            <GroupedList
+              variant="destructive"
+              title="Danger zone"
+              description="Irreversible account actions — separated from the rest of settings"
+            >
+              <Row
+                label="Disconnect Whop"
+                description="Stops all syncs and automation. Reconnect to resume."
+                destructive
+              >
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-none border-[var(--critical)]/30 text-[var(--critical)] hover:bg-[var(--critical-light)]"
+                    >
+                      <Unplug className="size-3.5" />
+                      Disconnect
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="rounded-none sm:max-w-md">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Disconnect Whop?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        All automation will pause and memberships will stop syncing. Existing
+                        student data remains, but no new signals will be detected until you
+                        reconnect.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel className="rounded-none">Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="rounded-none bg-[var(--critical)] text-white hover:bg-[var(--critical)]/90"
+                        onClick={() => toast.success("Whop disconnected — automation paused")}
+                      >
+                        Disconnect Whop
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </Row>
+              <Row
+                label="Delete account"
+                description="Permanently delete your workspace, students, interventions, and value history."
+                destructive
+                last
+              >
+                <DeleteAccountDialog />
+              </Row>
+            </GroupedList>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ── 7. Danger zone ───────────────────────────────────────────
+function DeleteAccountDialog() {
+  const [step, setStep] = useState<"idle" | "confirm">("idle");
+  const [confirmText, setConfirmText] = useState("");
 
-function DangerSection({
-  deleteConfirmText,
-  setDeleteConfirmText,
-}: {
-  deleteConfirmText: string;
-  setDeleteConfirmText: (v: string) => void;
-}) {
   return (
-    <Card className="gap-0 border-[#E8C9C5] py-0">
-      <CardHeader className="border-b border-[#E8C9C5] py-5">
-        <CardTitle className="flex items-center gap-2 text-base font-semibold text-[#C64D45]">
-          <ShieldAlert className="size-4" />
-          Danger zone
-        </CardTitle>
-        <CardDescription className="text-sm text-[#6A706A]">
-          Irreversible actions. Please read each prompt carefully.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="divide-y divide-[#E3E5DF] px-0">
-        {/* Disconnect Whop */}
-        <div className="flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-[#171A17]">
-              Disconnect Whop
-            </p>
-            <p className="mt-0.5 text-xs leading-snug text-[#6A706A]">
-              Stops syncing, pauses automation, and revokes API access. Your
-              data is retained.
-            </p>
-          </div>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="shrink-0 border-[#E8C9C5] bg-white text-[#C64D45] hover:bg-[#F4E8E6] hover:text-[#C64D45]"
-              >
-                Disconnect Whop
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Disconnect Whop?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Sync will stop, automation will pause, and all dashboards will
-                  show stale data. You can reconnect at any time.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="border-[#E8C9C5] bg-white text-[#C64D45] hover:bg-[#F4E8E6] hover:text-[#C64D45]"
-                  onClick={() =>
-                    toast.error("Whop disconnected")
-                  }
-                >
-                  Disconnect
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+    <AlertDialog
+      open={step === "confirm"}
+      onOpenChange={(o) => {
+        if (!o) {
+          setStep("idle");
+          setConfirmText("");
+        }
+      }}
+    >
+      <AlertDialogTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setStep("confirm")}
+          className="h-8 rounded-none border-[var(--critical)]/30 bg-[var(--critical)] text-white hover:bg-[var(--critical)]/90"
+        >
+          <Trash2 className="size-3.5" />
+          Delete account
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent className="rounded-none sm:max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete your RescueLoop account?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This permanently deletes your workspace, students, interventions, value ledger, and
+            all settings. <span className="font-semibold text-[var(--critical)]">This cannot be undone.</span>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="flex flex-col gap-2 py-2">
+          <label className="text-[12px] text-[var(--ink-secondary)]">
+            Type <span className="font-mono font-semibold">DELETE</span> to confirm:
+          </label>
+          <Input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder="DELETE"
+            className="h-9 rounded-none border-[var(--critical)]/30 font-mono text-[13px]"
+          />
         </div>
-
-        {/* Delete account */}
-        <div className="flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-[#171A17]">
-              Delete account
-            </p>
-            <p className="mt-0.5 text-xs leading-snug text-[#6A706A]">
-              Permanently deletes your RescueLoop workspace, all student data,
-              interventions, and the value ledger. Cannot be undone.
-            </p>
-          </div>
-          <AlertDialog
-            onOpenChange={(open) => {
-              if (!open) setDeleteConfirmText("");
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            className="rounded-none"
+            onClick={() => {
+              setStep("idle");
+              setConfirmText("");
             }}
           >
-            <AlertDialogTrigger asChild>
-              <Button className="shrink-0 bg-[#C64D45] text-white hover:bg-[#C64D45]/90 focus-visible:ring-[#C64D45]/20">
-                Delete account
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  Delete account permanently?
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete the {COMPANY.name} workspace,
-                  all {KPIS.totalStudents} students, {KPIS.interventionsSent}{" "}
-                  interventions, and your full value ledger. This action cannot
-                  be undone. Type{" "}
-                  <span className="font-mono font-semibold text-[#C64D45]">
-                    DELETE
-                  </span>{" "}
-                  to confirm.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <Input
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
-                placeholder="Type DELETE to confirm"
-                className="font-mono"
-                autoComplete="off"
-              />
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  disabled={deleteConfirmText !== "DELETE"}
-                  className="bg-[#C64D45] text-white hover:bg-[#C64D45]/90 focus-visible:ring-[#C64D45]/20 disabled:opacity-50"
-                  onClick={() => {
-                    toast.success(
-                      "Account scheduled for deletion",
-                    );
-                    setDeleteConfirmText("");
-                  }}
-                >
-                  <Trash2 className="size-4" />
-                  Delete account
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </CardContent>
-    </Card>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={confirmText !== "DELETE"}
+            className="rounded-none bg-[var(--critical)] text-white hover:bg-[var(--critical)]/90 disabled:opacity-40"
+            onClick={() => {
+              toast.success("Account scheduled for deletion");
+              setStep("idle");
+              setConfirmText("");
+            }}
+          >
+            Delete account permanently
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

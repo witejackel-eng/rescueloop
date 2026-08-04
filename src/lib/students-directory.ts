@@ -1,3 +1,6 @@
+// Students directory helpers — saved-view matching, filtering, and intervention
+// lookup. Inlined into the lib (replacing the old students-directory.ts).
+
 import type {
   InterventionState,
   MembershipStatus,
@@ -76,6 +79,10 @@ export function getInterventionState(
   studentId: string,
 ): InterventionState | null {
   return INTERVENTIONS.find((i) => i.studentId === studentId)?.state ?? null;
+}
+
+export function getInterventionForStudent(studentId: string) {
+  return INTERVENTIONS.find((i) => i.studentId === studentId) ?? null;
 }
 
 // ── Date helpers ──────────────────────────────────────────────

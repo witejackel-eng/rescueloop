@@ -1,31 +1,38 @@
 import type { Metadata } from "next";
-import { Geist, JetBrains_Mono } from "next/font/google";
+import { Instrument_Sans, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const instrumentSans = Instrument_Sans({
+  variable: "--font-instrument-sans",
   subsets: ["latin"],
+  display: "swap",
+});
+
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  display: "swap",
 });
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "RescueLoop — Recover more value from the members you already have",
+  title: "RescueLoop — A student-success and revenue-recovery operating system",
   description:
-    "RescueLoop helps Whop course creators detect members who never started, stopped progressing, or may cancel — and send respectful, high-signal recovery interventions.",
-  keywords: [
-    "RescueLoop",
-    "Whop",
-    "course creators",
-    "student success",
-    "retention",
-    "revenue recovery",
-  ],
-  authors: [{ name: "RescueLoop" }],
+    "RescueLoop detects where students lose momentum, coordinates the right intervention, and proves which actions restored progress or revenue for Whop course creators.",
+  metadataBase: new URL("https://rescueloop.vercel.app"),
+  openGraph: {
+    title: "RescueLoop",
+    description:
+      "Recover the members who quietly slip away. Detection, intervention, and attribution for course creators.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -36,10 +43,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${jetbrainsMono.variable} antialiased bg-background text-foreground`}
+        className={`${instrumentSans.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} antialiased`}
       >
         {children}
-        <Toaster />
       </body>
     </html>
   );
