@@ -1,4 +1,5 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceShell } from "@/components/shell/workspace-shell";
+import { CommandPalette } from "@/components/interaction/command-palette";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 
 export default function DashboardLayout({
@@ -7,9 +8,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <AppShell>
+    <WorkspaceShell>
       {children}
-      <Sonner position="bottom-right" richColors closeButton />
-    </AppShell>
+      <CommandPalette />
+      <Sonner position="bottom-right" />
+    </WorkspaceShell>
   );
 }

@@ -1,94 +1,113 @@
-import {
-  Clock,
-  RotateCcw,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+"use client";
 
-import {
-  OutcomeCard,
-  PageHeader,
-  SectionHeader,
-} from "@/components/shared/layout-primitives";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { useDemoStore } from "@/features/demo-engine/demo-store";
 import { KPIS } from "@/lib/mock-data";
-
-import { ValueSummaryCards } from "@/components/rescueloop/value/value-summary-cards";
-import { RoiCard } from "@/components/rescueloop/value/roi-card";
+import { AttributionWaterfall } from "@/components/rescueloop/value/attribution-waterfall";
+import { EvidenceTimeline } from "@/components/rescueloop/value/evidence-timeline";
 import { LedgerTable } from "@/components/rescueloop/value/ledger-table";
-import { AttributionMethodology } from "@/components/rescueloop/value/attribution-methodology";
+import { RoiPanel } from "@/components/rescueloop/value/roi-panel";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+function useIsMobile() {
+  return useSyncExternalStore(
+    (cb) => {
+      if (typeof window === "undefined") return () => {};
+      const mq = window.matchMedia("(max-width: 1023px)");
+      mq.addEventListener("change", cb);
+      return () => mq.removeEventListener("change", cb);
+    },
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 1023px)").matches,
+    () => false,
+  );
+}
 
 export default function ValueLedgerPage() {
+  const isMobile = useIsMobile();
+  const valueEvents = useDemoStore((s) => s.valueEvents);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    valueEvents[0]?.id ?? null,
+  );
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const selectedEvent = useMemo(
+    () => valueEvents.find((e) => e.id === selectedId) ?? null,
+    [valueEvents, selectedId],
+  );
+
+  function handleSelect(id: string) {
+    setSelectedId(id);
+    if (isMobile) setSheetOpen(true);
+  }
+
   return (
-    <>
-      {/* 1. Page header */}
-      <PageHeader
-        title="Value Ledger"
-        description="Recovered revenue, clearly attributed"
-      />
+    <div className="flex flex-col gap-6 pb-6">
+      {/* Header */}
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">
+        <div className="flex items-baseline gap-3">
+          <h1 className="font-serif text-[24px] leading-none text-[var(--ink-primary)]">
+            Value Ledger
+          </h1>
+          <span className="font-mono text-[12px] text-[var(--ink-muted)]">
+            Recovered revenue, clearly attributed
+          </span>
+        </div>
+        <div className="flex items-center gap-3 font-mono text-[11px] tabular-nums text-[var(--ink-muted)]">
+          <span>Plan: ${KPIS.planCost}/mo</span>
+        </div>
+      </header>
 
-      {/* 2. Three-tier value summary (the most important section) */}
-      <ValueSummaryCards />
+      {/* Hero — attribution waterfall */}
+      <AttributionWaterfall events={valueEvents} />
 
-      {/* 3. ROI card (confirmed value only) */}
-      <div className="mt-6">
-        <SectionHeader
-          title="Return on plan cost"
-          description="Based on confirmed recovered value only"
-        />
-        <RoiCard />
-      </div>
+      {/* ROI panel */}
+      <RoiPanel />
 
-      {/* 4. Additional metrics row */}
-      <div className="mt-6">
-        <SectionHeader
-          title="Outcome metrics"
-          description="Headline outcomes behind the recovered revenue"
-        />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <OutcomeCard
-            label="Students re-engaged"
-            value={KPIS.studentsReengaged}
-            icon={ShieldCheck}
-            accent="success"
-            sublabel="Returned after an intervention"
-          />
-          <OutcomeCard
-            label="First-time activations"
-            value={KPIS.firstTimeActivations}
-            icon={Sparkles}
-            accent="info"
-            sublabel="First lesson completed"
-          />
-          <OutcomeCard
-            label="Cancellations reversed"
-            value={KPIS.cancellationsReversed}
-            icon={RotateCcw}
-            accent="teal"
-            sublabel="After a cancellation-rescue message"
-          />
-          <OutcomeCard
-            label="Creator actions avoided"
-            value={KPIS.creatorActionsAvoided}
-            icon={Clock}
-            accent="warning"
-            sublabel="Manual checks automated away"
+      {/* Two-column: ledger table + evidence timeline */}
+      <div className="grid min-h-[600px] grid-cols-1 overflow-hidden border border-[var(--hairline)] lg:grid-cols-[1fr_400px] lg:border-0">
+        <div className="min-h-0 border border-[var(--hairline)] bg-[var(--surface)] lg:border">
+          <LedgerTable
+            events={valueEvents}
+            selectedId={selectedId}
+            onSelect={handleSelect}
           />
         </div>
+        <section className="hidden min-h-0 lg:block lg:h-full lg:border lg:border-[var(--hairline)] lg:bg-[var(--canvas-elevated)]">
+          <EvidenceTimeline event={selectedEvent} />
+        </section>
       </div>
 
-      {/* 5. Value ledger table */}
-      <div className="mt-8">
-        <SectionHeader
-          title="Value ledger"
-          description="Every value event with its attribution level and evidence"
-        />
-        <LedgerTable />
-      </div>
-
-      {/* 6. Attribution methodology */}
-      <div className="mt-6">
-        <AttributionMethodology />
-      </div>
-    </>
+      {/* Mobile evidence timeline bottom sheet */}
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent
+          side="bottom"
+          className={cn(
+            "rounded-none border-t border-[var(--hairline)] bg-[var(--canvas-elevated)] p-0 gap-0 h-[88dvh]",
+            "[&>button:last-child]:hidden",
+          )}
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-[var(--hairline)] px-4 py-2">
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+              Evidence timeline
+            </span>
+            <button
+              type="button"
+              onClick={() => setSheetOpen(false)}
+              className="text-[var(--ink-muted)] hover:text-[var(--ink-primary)]"
+              aria-label="Close timeline"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <EvidenceTimeline event={selectedEvent} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
   );
 }

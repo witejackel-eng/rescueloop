@@ -1,103 +1,98 @@
-import { AlertCircle, DollarSign, ShieldCheck, Zap } from "lucide-react";
-import {
-  PageHeader,
-  OutcomeCard,
-  SectionHeader,
-} from "@/components/shared/layout-primitives";
-import { AutomationStatePill } from "@/components/shared/status-pills";
-import { KPIS, AUTOMATION_STATE, COURSE } from "@/lib/mock-data";
-import { formatCurrency } from "@/lib/format";
+"use client";
 
-import { RecoveryFunnel } from "@/components/rescueloop/overview/recovery-funnel";
-import { RiskSegments } from "@/components/rescueloop/overview/risk-segments";
-import { FrictionFindingCard } from "@/components/rescueloop/overview/friction-finding-card";
-import { AttentionPanel } from "@/components/rescueloop/overview/attention-panel";
-import { ActivityFeed } from "@/components/rescueloop/overview/activity-feed";
-import { WeeklyTrendChart } from "@/components/rescueloop/overview/weekly-trend-chart";
+import { useState } from "react";
+import { COURSE } from "@/lib/mock-data";
+import { OutcomeRegion } from "@/components/rescueloop/overview/outcome-region";
+import { RecoveryPulse } from "@/components/rescueloop/overview/recovery-pulse";
+import { PriorityList } from "@/components/rescueloop/overview/priority-list";
+import { RecoveryTimeline } from "@/components/rescueloop/overview/recovery-timeline";
+import { FrictionMiniMap } from "@/components/rescueloop/overview/friction-mini-map";
+import { SystemStatus } from "@/components/rescueloop/overview/system-status";
+import { QuickActions } from "@/components/rescueloop/overview/quick-actions";
+
+const PERIODS = [
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+  { value: "90d", label: "90 days" },
+] as const;
+
+type Period = (typeof PERIODS)[number]["value"];
 
 export default function OverviewPage() {
+  const [period, setPeriod] = useState<Period>("30d");
+
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6 lg:py-8">
+    <div className="flex flex-col gap-8 pb-12">
       {/* 1. Page header */}
-      <PageHeader
-        title="Overview"
-        description={`Recovery performance for ${COURSE.name}`}
-        actions={
-          <AutomationStatePill state={AUTOMATION_STATE} />
-        }
-      />
-
-      {/* 2. Four primary outcome cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <OutcomeCard
-          label="Confirmed value recovered"
-          value={formatCurrency(KPIS.confirmedRecoveredRevenue)}
-          icon={DollarSign}
-          accent="teal"
-          trend="↑ $79 this week"
-          trendDirection="up"
-          sublabel="Confirmed recoveries only"
-        />
-        <OutcomeCard
-          label="Students rescued"
-          value={KPIS.studentsReengaged}
-          icon={ShieldCheck}
-          accent="success"
-          trend="↑ 4 this week"
-          trendDirection="up"
-          sublabel="Returned after intervention"
-        />
-        <OutcomeCard
-          label="Activated members"
-          value={KPIS.firstTimeActivations}
-          icon={Zap}
-          accent="info"
-          trend="↑ 2 this week"
-          trendDirection="up"
-          sublabel="First-time lesson completions"
-        />
-        <OutcomeCard
-          label="Creator attention required"
-          value={KPIS.creatorActionRequests}
-          icon={AlertCircle}
-          accent="warning"
-          sublabel="Awaiting your review"
-        />
-      </div>
-
-      {/* 3. Two-column layout (lg:grid-cols-3, main spans 2) */}
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Left column (lg:col-span-2) */}
-        <div className="flex flex-col gap-6 lg:col-span-2">
-          {/* 3a. Recovery funnel */}
-          <RecoveryFunnel />
-
-          {/* 3b. Risk segment cards */}
-          <div>
-            <SectionHeader
-              title="Where students are struggling"
-              description="Active risk segments and their rescue performance"
-            />
-            <RiskSegments />
-          </div>
-
-          {/* 3c. Friction finding card */}
-          <FrictionFindingCard />
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-serif text-[28px] leading-none text-[var(--ink-primary)]">
+            Recovery Pulse
+          </h1>
+          <p className="mt-2 text-[13px] text-[var(--ink-muted)]">
+            {COURSE.name} · last sync 2 minutes ago
+          </p>
         </div>
 
-        {/* Right column (lg:col-span-1) */}
-        <div className="flex flex-col gap-6 lg:col-span-1">
-          {/* 3d. Needs your attention */}
-          <AttentionPanel />
-
-          {/* 3e. Live recovery activity feed */}
-          <ActivityFeed />
+        {/* Period selector — segmented control (static, 30 days selected) */}
+        <div
+          role="tablist"
+          aria-label="Reporting period"
+          className="inline-flex items-center gap-0.5 self-start rounded-[8px] border border-[var(--hairline)] bg-[var(--canvas-elevated)] p-0.5 sm:self-auto"
+        >
+          {PERIODS.map((p) => {
+            const active = p.value === period;
+            return (
+              <button
+                key={p.value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setPeriod(p.value)}
+                className={`relative rounded-[6px] px-3 py-1 text-[12px] font-medium transition-colors ${
+                  active
+                    ? "text-[var(--ink-primary)]"
+                    : "text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
+                }`}
+              >
+                {active && (
+                  <span className="absolute inset-0 rounded-[6px] bg-[var(--surface)] shadow-[0_1px_2px_rgba(17,17,15,0.06),0_0_0_1px_var(--hairline)]" />
+                )}
+                <span className="relative">{p.label}</span>
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </header>
 
-      {/* 4. Weekly recovery trend chart (full width) */}
-      <div className="mt-6">
-        <WeeklyTrendChart />
+      {/* 2. Editorial outcome region */}
+      <OutcomeRegion />
+
+      {/* 3. Recovery Pulse — interactive flow visual */}
+      <RecoveryPulse />
+
+      {/* 4. Two-column workspace */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
+        {/* Left column — main */}
+        <div className="flex flex-col gap-8">
+          {/* 4a. Today's priorities */}
+          <PriorityList />
+
+          {/* 4b. Live recovery timeline */}
+          <RecoveryTimeline />
+
+          {/* 4c. Course friction signal */}
+          <FrictionMiniMap />
+        </div>
+
+        {/* Right column — sidebar */}
+        <aside className="flex flex-col gap-6">
+          {/* 4d. System status */}
+          <SystemStatus />
+
+          {/* 4e. Quick actions */}
+          <QuickActions />
+        </aside>
       </div>
     </div>
   );

@@ -7,17 +7,20 @@ import {
   Plug,
   Settings,
   ShieldAlert,
+  Users,
   Zap,
   type LucideIcon,
 } from "lucide-react";
-
 import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+import { springLayout } from "@/design-system/motion";
 
 export type SettingsSectionId =
-  | "general"
-  | "automation"
+  | "workspace"
   | "whop"
+  | "automation"
   | "notifications"
+  | "team"
   | "plan"
   | "data"
   | "danger";
@@ -31,22 +34,22 @@ export interface SettingsSection {
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   {
-    id: "general",
-    label: "General",
-    description: "Workspace identity and defaults",
+    id: "workspace",
+    label: "Workspace",
+    description: "Identity, course, timezone",
     icon: Settings,
-  },
-  {
-    id: "automation",
-    label: "Automation",
-    description: "Modes, safety controls, quiet hours",
-    icon: Zap,
   },
   {
     id: "whop",
     label: "Whop connection",
-    description: "Sync status and product mapping",
+    description: "Sync status & product mapping",
     icon: Plug,
+  },
+  {
+    id: "automation",
+    label: "Automation",
+    description: "Modes, quiet hours, safety",
+    icon: Zap,
   },
   {
     id: "notifications",
@@ -55,14 +58,20 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     icon: Bell,
   },
   {
+    id: "team",
+    label: "Team",
+    description: "Invite teammates",
+    icon: Users,
+  },
+  {
     id: "plan",
-    label: "Plan & billing",
-    description: "Subscription, usage, payment",
+    label: "Plan and usage",
+    description: "Subscription, usage, upgrades",
     icon: CreditCard,
   },
   {
     id: "data",
-    label: "Data & privacy",
+    label: "Data and privacy",
     description: "Exports, retention, deletion",
     icon: Database,
   },
@@ -82,14 +91,15 @@ interface SettingsNavProps {
 export function SettingsNav({ active, onChange }: SettingsNavProps) {
   return (
     <nav aria-label="Settings sections" className="lg:sticky lg:top-6 lg:self-start">
-      {/* Mobile: horizontal scrollable tab bar */}
+      {/* Mobile: horizontal scrollable section pills */}
       <div
-        className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-2 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-2 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
       >
         {SETTINGS_SECTIONS.map((section) => {
           const Icon = section.icon;
           const isActive = active === section.id;
+          const isDanger = section.id === "danger";
           return (
             <button
               key={section.id}
@@ -97,45 +107,60 @@ export function SettingsNav({ active, onChange }: SettingsNavProps) {
               aria-selected={isActive}
               onClick={() => onChange(section.id)}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                "relative flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium transition-colors",
                 isActive
-                  ? "border-[#147D68] bg-[#E8F5EF] text-[#147D68]"
-                  : "border-[#E3E5DF] bg-white text-[#6A706A] hover:bg-[#F8F8F5]",
+                  ? isDanger
+                    ? "text-[var(--critical)]"
+                    : "text-[var(--ink-primary)]"
+                  : "text-[var(--ink-muted)] hover:text-[var(--ink-primary)]",
               )}
             >
               <Icon className="size-3.5" />
               {section.label}
+              {isActive && (
+                <motion.span
+                  layoutId="settings-nav-underline-mobile"
+                  transition={springLayout}
+                  className={cn(
+                    "absolute inset-x-1 bottom-0 h-[2px]",
+                    isDanger ? "bg-[var(--critical)]" : "bg-[var(--recovery-green)]",
+                  )}
+                />
+              )}
             </button>
           );
         })}
       </div>
 
       {/* Desktop: vertical sidebar */}
-      <ul className="hidden w-48 flex-col gap-0.5 lg:flex">
+      <ul className="hidden w-[200px] flex-col gap-0.5 lg:flex">
         {SETTINGS_SECTIONS.map((section) => {
           const Icon = section.icon;
           const isActive = active === section.id;
+          const isDanger = section.id === "danger";
           return (
             <li key={section.id}>
               <button
                 onClick={() => onChange(section.id)}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "flex w-full items-start gap-2.5 border-l-2 px-3 py-2 text-left transition-colors",
+                  "relative flex w-full items-start gap-2.5 border-l-2 px-3 py-2 text-left transition-colors",
                   isActive
-                    ? "border-[#147D68] bg-[#E8F5EF] text-[#147D68]"
-                    : "border-transparent text-[#6A706A] hover:bg-[#F8F8F5] hover:text-[#171A17]",
+                    ? isDanger
+                      ? "border-[var(--critical)] bg-[var(--critical-light)]/40 text-[var(--critical)]"
+                      : "border-[var(--recovery-green)] bg-[var(--recovery-light)]/40 text-[var(--recovery-green)]"
+                    : "border-transparent text-[var(--ink-muted)] hover:bg-[var(--canvas-elevated)] hover:text-[var(--ink-primary)]",
                 )}
               >
                 <Icon className="mt-0.5 size-4 shrink-0" />
                 <span className="flex flex-col">
-                  <span className="text-sm font-medium leading-tight">
+                  <span className="text-[13px] font-medium leading-tight">
                     {section.label}
                   </span>
                   <span
                     className={cn(
-                      "mt-0.5 text-xs leading-snug",
-                      isActive ? "text-[#147D68]/80" : "text-[#6A706A]/80",
+                      "mt-0.5 text-[11px] leading-snug",
+                      isActive ? "opacity-80" : "text-[var(--ink-muted)]/80",
                     )}
                   >
                     {section.description}
