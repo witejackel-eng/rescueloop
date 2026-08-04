@@ -185,7 +185,7 @@ function PlanCard({ plan }: { plan: Plan }) {
               : "border border-[var(--hairline)] bg-[var(--surface)] text-[var(--ink-primary)] hover:border-[var(--ink-primary)]",
           )}
         >
-          Start with {plan.name}
+          Apply for the private pilot
           <ArrowRight className="size-4" />
         </Link>
       </div>

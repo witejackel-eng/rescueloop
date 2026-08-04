@@ -73,7 +73,7 @@ export function RescueHero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15, duration: 0.8, ease: easeOut }}
           >
-            The system that
+            Help more
           </motion.span>
           <motion.span
             className="block"
@@ -81,7 +81,7 @@ export function RescueHero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.8, ease: easeOut }}
           >
-            helps students{" "}
+            students{" "}
             <KineticRecoveryWord />
           </motion.span>
         </h1>
@@ -94,7 +94,7 @@ export function RescueHero() {
             transition={{ delay: 0.6, duration: 0.7, ease: easeOut }}
             className="max-w-[520px] text-[17px] leading-relaxed text-[var(--ink-secondary)] lg:text-[18px]"
           >
-            RescueLoop detects where paying students lose momentum, helps
+            RescueLoop identifies where paying students lose momentum, helps
             creators review respectful interventions, and shows which actions
             restored progress or revenue.
           </motion.p>
@@ -109,7 +109,7 @@ export function RescueHero() {
               href="/overview"
               className="press group inline-flex items-center justify-center gap-2 rounded-[10px] bg-[var(--ink-primary)] px-6 py-3.5 text-[14px] font-medium text-white"
             >
-              Explore the live demo
+              Explore the interactive demo
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
             <Link
@@ -122,7 +122,7 @@ export function RescueHero() {
           </motion.div>
         </div>
 
-        {/* Demo honesty label */}
+        {/* Trust line */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -130,7 +130,7 @@ export function RescueHero() {
           className="mt-10"
         >
           <span className="font-mono text-[11px] tracking-wide text-[var(--ink-muted)]">
-            Interactive demo · simulated workspace
+            Interactive demonstration. No messages are sent and no customer data is connected.
           </span>
         </motion.div>
       </div>

@@ -483,7 +483,7 @@ function ValueLedgerShowcase() {
 
 export function WorkflowShowcase() {
   return (
-    <section id="product" className="bg-[var(--canvas)]">
+    <section id="student-experience" className="bg-[var(--canvas)]">
       <div className="mx-auto max-w-[1400px] px-4 lg:px-8">
         {/* Section label */}
         <div className="flex items-center gap-2 pt-20 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--ink-muted)] lg:pt-32">

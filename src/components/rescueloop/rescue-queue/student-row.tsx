@@ -10,7 +10,7 @@ import { springLayout } from "@/design-system/motion";
 import type { InterventionState, Momentum, Priority, RescueQueueRow } from "@/lib/types";
 
 // Reference date used across the demo for relative-day math.
-const TODAY = new Date("2026-02-01T00:00:00");
+const TODAY = new Date();
 
 /**
  * Merged row: static mock-data row + live state from the demo store.
