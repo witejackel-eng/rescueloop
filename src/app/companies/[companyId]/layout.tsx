@@ -12,9 +12,8 @@
 //   - getProviderMode() === "fixture"
 //       → RESCUELOOP_FIXTURE_MODE=true.
 //       → Render ConnectedShell with the FIXTURE company ID and amber badge.
-//         Skip requireCompanyAdmin (it would throw ConfigurationError);
-//         child pages handle their own auth and are designed to be lenient
-//         in fixture mode.
+//         child pages handle their own auth via resolveStrictCompanyAuth,
+//         which verifies the fixture company ID in fixture mode.
 //   - getProviderMode() === "whop"
 //       → Try requireCompanyAdmin to gather optional org context (name,
 //         pause state, last sync). If it throws ConfigurationError (env
@@ -65,9 +64,8 @@ export default async function CompanyLayout({
   // ─── Fixture mode → use fixture company ID, skip auth ───────
   if (mode === "fixture") {
     shellCompanyId = FIXTURE_COMPANY_ID;
-    // Child pages will call requireCompanyAdmin themselves; in fixture mode
-    // that throws ConfigurationError, which the new stub pages catch and
-    // render their "Coming in Phase 2" content. The shell still renders.
+    // Child pages call resolveStrictCompanyAuth themselves; in fixture mode
+    // they verify the companyId matches FIXTURE_COMPANY_ID. The shell still renders.
   } else {
     // ─── Whop mode → best-effort gather org context ───────────
     try {
