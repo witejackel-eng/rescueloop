@@ -37,12 +37,15 @@ export function getCurrentPeriod(now: Date = new Date()): string {
  *
  * `metadata` is optional free-form JSON attached to the event row only — it
  * is NOT stored on the counter.
+ *
+ * `idempotencyKey` is an optional stable key that prevents duplicate events.
  */
 export async function recordUsageEvent(
   organizationId: string,
   metric: MetricKey,
   increment: number = 1,
   metadata?: UsageEventMetadata,
+  idempotencyKey?: string,
 ): Promise<void> {
   const period = getCurrentPeriod();
 
@@ -52,6 +55,7 @@ export async function recordUsageEvent(
         organizationId,
         metric,
         increment,
+        idempotencyKey,
         metadataJson:
           metadata === undefined
             ? undefined
@@ -110,12 +114,14 @@ export async function getUsageForPeriod(
   });
 
   const counts: Record<MetricKey, number> = {
+    courses: 0,
     monitored_members: 0,
+    active_campaigns: 0,
+    team_members: 0,
     candidates_evaluated: 0,
     interventions_created: 0,
     notifications_accepted: 0,
     stored_events: 0,
-    team_members: 0,
     exports: 0,
   };
 
