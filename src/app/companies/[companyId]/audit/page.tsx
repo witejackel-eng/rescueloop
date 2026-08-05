@@ -154,7 +154,7 @@ export default async function AuditPage({
       ) : (
         <div className="mt-4 flex flex-col gap-2">
           {pageEvents.map((event) => (
-            <AuditRow key={event.idFid} event={event}7/>
+            <AuditRow key={event.idFid} event={event} />
           ))}
         </div>
       )}
@@ -222,7 +222,7 @@ function AuditRow({
           <ActorIcon className="size-3" />
           actor: <span className="text-[var(--ink-secondary)]">{event.actorId ?? "system"}</span>
           <Badge variant="outline" className="ml-1 font-mono text-[9px] uppercase text-[var(--ink-muted)]">
-            {actorType
+            {actorType}
           </Badge>
         </span>
         {event.previousState && (
