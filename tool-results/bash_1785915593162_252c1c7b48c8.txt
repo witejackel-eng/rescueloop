@@ -1,0 +1,1618 @@
+Act as the principal product engineer, backend reliability engineer,
+security engineer and QA lead for RescueLoop.
+
+Work directly in the existing private repository.
+
+Repository:
+
+`https://github.com/witejackel-eng/rescueloop`
+
+Branch:
+
+`feat/private-pilot-activation-rescue`
+
+Draft pull request:
+
+`https://github.com/witejackel-eng/rescueloop/pull/1`
+
+Do not create another branch.
+
+Do not merge the pull request.
+
+# Mission
+
+Correct the current implementation defects, finish the incomplete
+connected frontend, and make the Whop-independent backend foundation
+genuinely deployable, durable, testable and appropriate for the first
+100 paying creator organisations.
+
+This is not a planning task.
+
+Do not return recommendations or another architecture proposal. Inspect
+the existing implementation, make the changes, test them, push them to
+the existing branch, update PR #1 and provide independently verifiable
+evidence.
+
+The current repository has useful architecture, but several completion
+claims are inaccurate:
+
+-   The latest Vercel preview fails.
+-   Eight connected pages are still explicit stubs.
+-   Fixture mode is incorrectly blocked on Vercel Preview.
+-   The outbox can falsely mark undelivered work as dispatched.
+-   Outbox workers can claim the same job concurrently.
+-   Synchronization cursors are not durably persisted.
+-   Synchronization contains N+1 query patterns.
+-   Usage enforcement is partial and non-atomic.
+-   Automated verification is much smaller than claimed.
+-   `.env` may still be tracked.
+-   Several required routes and operational systems are absent.
+
+Correct these issues before adding new product scope.
+
+# Definition of success
+
+At completion:
+
+1.  The latest Vercel Preview deployment is `READY`.
+2.  No `.env` file is tracked.
+3.  The connected frontend contains no stub pages.
+4.  Fixture mode works on Preview but is impossible in Production.
+5.  Connected routes require real tenant authorization or explicit
+    fixture authorization.
+6.  The outbox never marks an event dispatched unless the downstream
+    system confirms acceptance.
+7.  Outbox claiming is atomic and concurrency-safe.
+8.  Synchronization resumes from persisted checkpoints.
+9.  Synchronization uses bounded, batched database operations.
+10. Tenant isolation has PostgreSQL integration tests.
+11. Plan enforcement is server-side and concurrency-safe.
+12. Playwright verifies the complete fixture workflow.
+13. The private-pilot application and internal operations routes exist.
+14. Data export and deletion workflows exist.
+15. GitHub Actions verifies more than lint and unit tests.
+16. PR #1 remains unmerged.
+17. No real Whop notification is sent.
+
+# Phase 0 --- Preserve evidence before editing
+
+Before changing anything:
+
+1.  Fetch the current branch head.
+
+2.  Fetch PR #1.
+
+3.  Compare `main...feat/private-pilot-activation-rescue`.
+
+4.  Record the current Vercel deployment failure.
+
+5.  Record the current GitHub Actions status.
+
+6.  List every tracked environment file.
+
+7.  List all connected company routes.
+
+8.  Identify every route containing:
+
+    -   `stub`
+    -   `placeholder`
+    -   `coming in Phase 2`
+    -   `what this page will show`
+
+9.  Search for:
+
+    -   `as any`
+    -   `as never`
+    -   `ignoreBuildErrors`
+    -   silent catches
+    -   mock-data fallback
+    -   unbounded `findMany`
+    -   `Date.now()` in idempotency keys
+
+10. Record the current test counts.
+
+Do not modify the completion report to hide the baseline.
+
+# 1. Remove tracked secrets and audit repository history
+
+Run:
+
+    git ls-files ".env" ".env.*"
+
+If `.env` or any secret-bearing environment file is tracked:
+
+    git rm --cached .env
+
+Preserve:
+
+    .env.example
+
+Do not print or include the contents of a real `.env` in logs, commits,
+reports or screenshots.
+
+Inspect Git history for:
+
+-   Whop API keys
+-   Whop webhook secrets
+-   Database URLs
+-   Inngest keys
+-   Signing secrets
+-   Resend keys
+-   Sentry credentials
+-   PostHog keys where private
+-   Session secrets
+
+Use automated secret scanning.
+
+Add GitHub Actions secret scanning using an appropriate tool such as:
+
+-   Gitleaks
+-   TruffleHog in verified-only mode
+
+Do not commit downloaded scanner binaries.
+
+If any genuine credential appears in history, report that it must be
+rotated. Do not attempt to display it.
+
+Add tests or CI checks ensuring `.env` cannot be reintroduced.
+
+# 2. Fix Prisma generation on Vercel
+
+The latest Vercel build currently fails because the generated Prisma
+client does not contain the updated schema models.
+
+Add a deterministic Prisma generation step.
+
+Use one deliberate strategy:
+
+    {
+      "scripts": {
+        "postinstall": "prisma generate",
+        "build": "next build"
+      }
+    }
+
+or:
+
+    {
+      "scripts": {
+        "build": "prisma generate && next build"
+      }
+    }
+
+Prefer `postinstall` if compatible with the actual Vercel and Bun
+installation flow.
+
+Verify:
+
+-   `bun install --frozen-lockfile`
+-   Prisma generation
+-   TypeScript
+-   Next.js build
+-   Vercel build
+
+Do not depend on a stale generated client.
+
+Do not commit generated Prisma client files from `node_modules`.
+
+The newest branch deployment must reach:
+
+`READY`
+
+# 3. Correct fixture environment detection
+
+Current fixture mode incorrectly treats all optimized builds as
+production because it relies on:
+
+    process.env.NODE_ENV === "production"
+
+Vercel Preview also runs an optimized production build.
+
+Replace this with explicit deployment-environment detection.
+
+Use:
+
+    VERCEL_ENV=development
+    VERCEL_ENV=preview
+    VERCEL_ENV=production
+
+or a typed equivalent.
+
+Rules:
+
+## Local development
+
+Fixture mode may be enabled explicitly.
+
+## Vercel Preview
+
+Fixture mode may be enabled explicitly using a server-side environment
+variable.
+
+## Vercel Production
+
+Fixture mode must always be rejected.
+
+Use a function such as:
+
+    export function canUseFixtureMode(): boolean
+
+Requirements:
+
+-   Server-only
+-   No URL-query activation
+-   No cookie activation
+-   No browser-controlled activation
+-   No production override
+-   Explicit typed configuration errors
+-   Clear environment badge
+
+Fix the error-message typo:
+
+    RESGUELOOP_FIXTURE_MODE
+
+to:
+
+    RESCUELOOP_FIXTURE_MODE
+
+Add tests for:
+
+-   Local fixture allowed
+-   Preview fixture allowed
+-   Production fixture blocked
+-   Unconfigured mode
+-   Whop mode
+-   Fixture flag cannot be controlled by request input
+
+# 4. Complete every connected company route
+
+Remove all connected-route stubs.
+
+The following routes must become real fixture-backed, database-backed
+product pages:
+
+    /companies/[companyId]/overview
+    /companies/[companyId]/sync
+    /companies/[companyId]/students
+    /companies/[companyId]/campaigns
+    /companies/[companyId]/insights
+    /companies/[companyId]/value
+    /companies/[companyId]/audit
+    /companies/[companyId]/usage
+
+Do not leave:
+
+-   "Coming in Phase 2"
+-   "What this page will show"
+-   Placeholder cards
+-   Lenient unauthenticated previews
+-   Empty shells disguised as finished pages
+
+Every route must work in fixture mode using real PostgreSQL fixture
+records and the same application services intended for future Whop data.
+
+## Connected overview
+
+Show:
+
+-   Installation status
+-   Provider mode
+-   Last successful sync
+-   Last failed sync
+-   Current candidate count
+-   Draft intervention count
+-   Approved intervention count
+-   Pending creator-response count
+-   Course-activity outcomes
+-   Confirmed, associated and estimated values separately
+-   Plan usage
+-   Emergency pause
+-   Prioritized creator actions
+-   Source freshness
+
+Every number must link to the underlying records or filtered route.
+
+Do not display "recovered revenue" for fixture data.
+
+Use:
+
+`Illustrative fixture outcome`
+
+where appropriate.
+
+## Connected sync centre
+
+Show:
+
+-   Sync executions
+-   Resource
+-   Provider
+-   Cursor/checkpoint
+-   Started time
+-   Completed time
+-   State
+-   Pages processed
+-   Records read
+-   Records created
+-   Records updated
+-   Records skipped
+-   Structured failures
+-   Retry count
+-   Next retry
+-   Job execution ID
+-   Reconciliation summary
+
+Actions:
+
+-   Full initial sync
+-   Courses sync
+-   Products sync
+-   Memberships sync
+-   Course-progress sync
+-   Reconciliation
+-   Candidate detection
+-   Retry failed stage
+-   Cancel pending fixture sync where safe
+
+Do not label fixture synchronization as Whop synchronization.
+
+## Connected students
+
+Build:
+
+-   Search
+-   Cursor pagination
+-   Membership-status filters
+-   Course filters
+-   Progress filters
+-   Intervention-state filters
+-   Suppression filters
+-   Student inspector
+-   Membership history
+-   Course progress
+-   Interventions
+-   Responses
+-   Suppressions
+-   Audit events
+-   Source freshness
+
+Do not load all students in one query.
+
+## Connected campaigns
+
+Build real database-backed UI for:
+
+-   Campaign list
+-   Campaign configuration
+-   Activation Rescue rules
+-   Version history
+-   Manual-approval state
+-   Quiet hours
+-   Cooldown
+-   Message limits
+-   Mapped course/product
+-   Candidate count
+-   Draft interventions
+-   Campaign pause
+-   Planned campaign labels
+
+Only Activation Rescue should be operational.
+
+Mark other rescue types as planned.
+
+## Connected insights
+
+Build fixture-backed insights using stored data:
+
+-   Course funnel
+-   Lesson-friction map
+-   Blocker distribution
+-   Sample size
+-   Course-average comparison
+-   Recommendation workflow states
+-   Evidence timestamps
+-   Data-quality warnings
+
+Do not fabricate statistical certainty from small samples.
+
+## Connected Value Ledger
+
+Build:
+
+-   Unattributed
+-   Strongly associated
+-   Confirmed
+-   Estimated
+-   Observed payment
+-   Evidence chain
+-   Policy version
+-   Source event
+-   Filters
+-   Pagination
+-   Export request
+
+Do not combine categories into one total.
+
+Fixture values must be visibly labelled.
+
+## Connected audit
+
+Build an immutable, cursor-paginated audit log:
+
+-   Timestamp
+-   Actor
+-   Actor type
+-   Action
+-   Object type
+-   Object ID
+-   Previous state
+-   New state
+-   Reason
+-   Request ID
+-   Job execution ID
+-   Sync execution ID
+-   Policy version
+
+Add filters.
+
+Normal product routes must not update or delete audit rows.
+
+## Connected usage
+
+Show:
+
+-   Current plan
+-   Billing period
+-   Monitored members
+-   Courses
+-   Active campaigns
+-   Team seats
+-   Candidates evaluated
+-   Interventions created
+-   Notifications accepted
+-   Stored source events
+-   Exports
+-   Soft warnings
+-   Hard limits
+-   Plan overrides
+
+No checkout is needed yet.
+
+# 5. Remove lenient authorization from real connected pages
+
+`resolveStubAuth()` currently permits pages to render after
+authentication failure.
+
+Delete it when no stubs remain.
+
+Every connected page must use a strict authorization flow.
+
+In Whop mode:
+
+    verify user token
+    → verify company access
+    → resolve organisation
+    → verify organisation membership
+    → execute tenant-scoped query
+
+In fixture mode:
+
+    verify fixture mode is allowed in this environment
+    → resolve configured fixture company
+    → create a typed fixture identity
+    → execute the same tenant-scoped service
+
+Never let an arbitrary `companyId` select a fixture organisation.
+
+Fixture company IDs must be server-configured or seeded.
+
+A request changing the URL to another company must be rejected.
+
+# 6. Correct the outbox dispatch contract
+
+The current outbox may mark an event dispatched even when Inngest is
+unconfigured because `sendInngestEvent()` can return silently.
+
+Replace the job-client contract.
+
+Use a typed result:
+
+    type JobDispatchResult =
+      | {
+          state: "accepted";
+          externalEventId: string;
+        }
+      | {
+          state: "unconfigured";
+          retryable: false;
+        }
+      | {
+          state: "failed";
+          retryable: boolean;
+          errorCode: string;
+        };
+
+`sendInngestEvent()` must never return `void`.
+
+Only:
+
+    state = accepted
+
+may transition an outbox event to:
+
+    dispatched
+
+For `unconfigured`:
+
+-   Keep event pending
+-   Record typed configuration failure
+-   Show it in internal operations
+-   Do not increment retries forever
+-   Do not mark dispatched
+
+For retryable failure:
+
+-   Return to pending
+-   Set `nextAttemptAt`
+-   Increment attempt count
+-   Use bounded exponential backoff
+
+For permanent failure:
+
+-   Move to dead letter
+-   Preserve evidence
+-   Notify internal operations
+
+Add tests proving:
+
+-   Unconfigured Inngest never produces `dispatched`
+-   Provider failure never produces `dispatched`
+-   Accepted event stores the external event ID
+-   Retried work is not duplicated
+
+# 7. Make outbox claiming atomic
+
+Current workers can read the same pending event concurrently.
+
+Implement atomic claiming using PostgreSQL.
+
+Use one sound approach:
+
+## Option A --- Row locking
+
+    SELECT ...
+    FOR UPDATE SKIP LOCKED
+
+inside a transaction.
+
+## Option B --- Atomic conditional update
+
+Claim rows only when:
+
+    state = pending
+    AND lease expired or absent
+
+Persist:
+
+-   `claimedBy`
+-   `claimedAt`
+-   `leaseExpiresAt`
+
+Requirements:
+
+-   One worker owns one event
+-   Crashed-worker leases expire
+-   Retried workers may reclaim expired leases
+-   A second worker cannot dispatch the same event
+-   Accepted downstream calls remain idempotent
+-   Batches are bounded
+
+Add concurrency integration tests using two simultaneous workers.
+
+# 8. Add durable synchronization records
+
+Create or complete models such as:
+
+    SyncExecution
+    SyncStage
+    SyncCheckpoint
+    ReconciliationRun
+
+Persist:
+
+## SyncExecution
+
+-   Organisation
+-   Provider
+-   Environment
+-   Trigger
+-   Requested by
+-   State
+-   Started time
+-   Completed time
+-   Error summary
+-   Job ID
+
+## SyncStage
+
+-   Resource type
+-   State
+-   Started time
+-   Completed time
+-   Pages processed
+-   Records read
+-   Records created
+-   Records updated
+-   Records skipped
+-   Retry count
+
+## SyncCheckpoint
+
+-   Resource
+-   Cursor
+-   Source watermark
+-   Last completed page
+-   Updated time
+-   Execution
+-   Organisation
+
+Persist a checkpoint after every successfully committed page.
+
+A failure on page 90 must resume from page 91 or the last safe provider
+cursor.
+
+Do not claim resumption merely because a function accepts a cursor
+argument.
+
+# 9. Batch and bound synchronization
+
+Refactor the synchronization engine.
+
+Current per-record query loops are not appropriate for scale.
+
+For each page:
+
+1.  Normalize provider data.
+2.  Validate the full page.
+3.  Load existing external IDs in one bounded query.
+4.  Split records into creates and updates.
+5.  Use `createMany({ skipDuplicates: true })` where supported.
+6.  Batch updates in a controlled transaction or bounded concurrency.
+7.  Commit the page.
+8.  Persist the checkpoint.
+9.  Emit usage and audit data.
+
+Avoid:
+
+-   `findFirst` for every course
+-   `findFirst` for every product
+-   one student upsert plus one product query plus one membership upsert
+    per item
+-   N+1 reconciliation
+-   N+1 candidate detection
+-   swallowing all database errors as duplicate events
+
+## Status normalization
+
+Remove:
+
+    membership.status as any
+
+Create explicit normalization:
+
+    normalizeMembershipStatus(externalStatus)
+
+Unknown statuses must:
+
+-   Map to a safe explicit state
+-   Produce a structured warning
+-   Never silently become active
+
+## Correct result accounting
+
+An upsert update must increment:
+
+`recordsUpdated`
+
+not:
+
+`recordsCreated`
+
+Add tests for result counters.
+
+# 10. Make progress ingestion correctly idempotent
+
+Do not treat every `create()` error as a duplicate.
+
+Use:
+
+-   `createMany({ skipDuplicates: true })`
+-   Explicit unique-constraint detection
+-   Structured failure classification
+
+Persist:
+
+-   External interaction ID
+-   Source timestamp
+-   Received timestamp
+-   Lesson ID when available
+-   Lesson title
+-   Action
+-   Payload hash
+-   Source version
+
+Recalculate course state using bounded aggregation.
+
+Handle:
+
+-   Duplicate interactions
+-   Out-of-order interactions
+-   Older events arriving after newer events
+-   Course lesson count changes
+-   Removed lessons
+-   Students with activity but no qualifying membership
+-   Membership arriving after course activity
+
+# 11. Optimize reconciliation
+
+Replace per-student membership queries with set-based queries.
+
+Use:
+
+-   Mapped product IDs
+-   Student IDs with qualifying memberships
+-   Student IDs with course activity
+-   Set difference in the application after bounded queries, or
+    equivalent SQL aggregation
+
+Persist reconciliation outcomes with:
+
+-   Classification
+-   Student
+-   Membership
+-   Course
+-   Mapping
+-   Execution
+-   Evidence
+-   Resolution state
+
+Add pagination and summary counts.
+
+# 12. Correct candidate detection
+
+Candidate detection must operate only on the campaign's confirmed
+mapping.
+
+Add explicit campaign-to-mapping relationship if missing.
+
+Required checks:
+
+-   Organisation active
+-   Organisation not paused
+-   Installation active
+-   Campaign active
+-   Campaign is Activation Rescue
+-   Manual approval enabled
+-   Campaign version exists
+-   Confirmed mapping belongs to campaign
+-   Membership belongs to mapped product
+-   Membership active or trialing
+-   Membership not ending
+-   Activation delay elapsed
+-   Course activity absent
+-   No course-, campaign- or organisation-level suppression
+-   No existing equivalent active intervention
+-   Campaign cooldown clear
+-   Organisation-wide message limit clear
+-   Campaign message limit clear
+-   Plan allows monitored member
+-   Source data sufficiently fresh
+
+Persist one immutable snapshot per:
+
+    student
+    + campaign version
+    + eligibility window
+
+Add a unique idempotency key.
+
+Re-running candidate detection must not create duplicate snapshots.
+
+Candidate detection should run in batches and avoid N+1 queries.
+
+# 13. Complete plan enforcement
+
+Current enforcement is limited to monitored members and team seats.
+
+Implement server-side limits for:
+
+-   Courses
+-   Monitored members
+-   Active campaigns
+-   Team seats
+-   Candidates evaluated per period
+-   Interventions created per period
+-   Notifications accepted per period
+-   Stored high-volume events
+-   Exports
+
+Use a reservation pattern for strict concurrency.
+
+Example:
+
+    check entitlement
+    → atomically reserve usage
+    → perform mutation
+    → commit usage event
+
+If the mutation fails:
+
+-   Release or reverse reservation safely
+
+Usage events must have stable idempotency keys.
+
+Prevent concurrent requests from exceeding a hard limit.
+
+Add plan-override support with:
+
+-   Reason
+-   Creator
+-   Internal operator
+-   Start
+-   Expiration
+-   Audit event
+
+# 14. Build the private-pilot application
+
+Create:
+
+`/private-pilot`
+
+Fields:
+
+-   Full name
+-   Business name
+-   Whop business URL
+-   Email
+-   Approximate paying members
+-   Courses
+-   Typical membership price
+-   Monthly new members
+-   Current student-follow-up process
+-   Primary retention concern
+-   Preferred pilot timing
+-   Consent to contact
+
+Implement:
+
+-   Zod validation
+-   Honeypot
+-   Rate limiting
+-   PostgreSQL persistence
+-   Safe no-database state
+-   Duplicate submission protection
+-   Success state
+-   Internal review status
+-   Privacy disclosure
+
+Create model:
+
+    PilotApplication
+
+States:
+
+-   New
+-   Reviewing
+-   Qualified
+-   Contacted
+-   Accepted
+-   Rejected
+-   Withdrawn
+
+Do not expose applications through creator routes.
+
+# 15. Build the internal operations workspace
+
+Create:
+
+`/internal`
+
+Require a dedicated internal role.
+
+Do not rely on obscurity or route naming.
+
+Build:
+
+    /internal
+    /internal/organisations
+    /internal/sync
+    /internal/jobs
+    /internal/dead-letters
+    /internal/webhooks
+    /internal/pilots
+    /internal/usage
+    /internal/data-requests
+
+Show:
+
+-   Organisations
+-   Installation states
+-   Provider modes
+-   Paused organisations
+-   Sync failures
+-   Outbox backlog
+-   Dead letters
+-   Failed webhooks
+-   Usage limits
+-   Plan overrides
+-   Pilot applications
+-   Data export requests
+-   Data deletion requests
+-   System configuration state
+
+Actions:
+
+-   Retry safe sync
+-   Retry outbox event
+-   Requeue dead letter after explicit review
+-   Pause organisation
+-   Resume organisation
+-   Disable delivery
+-   Revoke tokens
+-   Apply plan override
+-   Start data export
+-   Start deletion workflow
+
+Every internal action needs:
+
+-   Internal actor
+-   Reason
+-   Audit record
+-   Tenant
+-   Previous state
+-   New state
+
+# 16. Complete data export and deletion
+
+Create user-facing routes or settings actions for:
+
+-   Request data export
+-   Request data deletion
+
+Create models:
+
+    DataExportRequest
+    DataDeletionRequest
+
+## Export
+
+Include:
+
+-   Organisation profile
+-   Members
+-   Courses
+-   Products
+-   Mappings
+-   Campaigns
+-   Interventions
+-   Responses
+-   Suppressions
+-   Value events
+-   Audit events where appropriate
+-   Usage data
+
+Use a durable job.
+
+Generate a time-limited download token.
+
+Do not expose storage paths directly.
+
+## Deletion
+
+Use stages:
+
+-   Requested
+-   Verified
+-   Scheduled
+-   Processing
+-   Completed
+-   Failed
+-   Cancelled
+
+On deletion:
+
+-   Pause organisation
+-   Stop pending interventions
+-   Revoke student tokens
+-   Remove or anonymize personal data according to documented policy
+-   Preserve only legally or operationally justified audit metadata
+-   Record completion evidence
+
+Do not claim deletion is implemented until automated tests verify it.
+
+# 17. Add observability
+
+Initialize Sentry only when configured.
+
+Capture:
+
+-   Unexpected API errors
+-   Sync failures
+-   Outbox failures
+-   Dead letters
+-   Webhook failures
+-   Tenant-access violations
+-   Database errors
+-   Provider failures
+
+Redact:
+
+-   Whop API keys
+-   Webhook secrets
+-   Database URLs
+-   User tokens
+-   Student tokens
+-   Full emails
+-   Raw provider payloads
+-   Full student message content
+
+Create a structured logger.
+
+Required fields:
+
+-   Request ID
+-   Organisation ID
+-   Actor ID
+-   Route
+-   Action
+-   Sync execution ID
+-   Job execution ID
+-   Outbox event ID
+-   Result
+-   Error code
+
+Add PostHog only for non-sensitive creator-product events.
+
+Do not send student free-text responses to analytics.
+
+# 18. Add Redis-backed rate limiting abstraction
+
+Create:
+
+    RateLimiter
+
+Adapters:
+
+-   Upstash Redis
+-   In-memory test adapter
+
+Protect:
+
+-   Pilot applications
+-   Manual sync
+-   Authentication-sensitive routes
+-   Student token access
+-   Student responses
+-   Exports
+-   Internal retry actions
+-   Plan mutations
+
+Rate-limit keys should include appropriate combinations of:
+
+-   IP
+-   Organisation
+-   User
+-   Student token hash
+-   Route/action
+
+Do not use raw student tokens in Redis keys.
+
+# 19. Upgrade GitHub Actions
+
+Replace the single all-in-one job with separate jobs.
+
+Required jobs:
+
+## Lint and typecheck
+
+    lint
+    typecheck
+
+## Unit tests
+
+Run Vitest unit tests.
+
+## PostgreSQL integration tests
+
+-   PostgreSQL 16 service
+-   Prisma generation
+-   Migration deploy
+-   Seed
+-   Integration suite
+-   Tenant isolation
+-   Concurrency tests
+-   Outbox tests
+-   Usage tests
+
+## Provider contract tests
+
+Run the same contract suite against:
+
+-   Fixture providers
+-   Whop adapters using mocked network responses
+
+## Production build
+
+Run:
+
+    bun install --frozen-lockfile
+    prisma generate
+    next build
+
+without real production credentials.
+
+## Playwright
+
+-   Start application
+-   Use fixture mode
+-   Run browser tests
+-   Upload screenshots, traces and videos only on failure
+
+## Security
+
+Run:
+
+-   Secret scan
+-   Dependency audit
+-   Dangerous-pattern checks
+-   Tracked environment-file check
+
+Do not require real Whop credentials in CI.
+
+# 20. Add PostgreSQL integration tests
+
+Create a real integration-test directory.
+
+Test:
+
+-   Initial migration
+-   Every tenant-owned model
+-   Cross-tenant reads
+-   Cross-tenant mutations
+-   Direct-ID attacks
+-   Mapping isolation
+-   Candidate isolation
+-   Intervention isolation
+-   Response isolation
+-   Audit isolation
+-   Usage isolation
+-   Outbox isolation
+-   Data export isolation
+-   Data deletion isolation
+-   Concurrent outbox claiming
+-   Concurrent plan-limit enforcement
+-   Duplicate sync pages
+-   Cursor resumption
+-   Duplicate candidate runs
+-   Webhook replay
+-   Out-of-order progress
+
+Do not use mocked Prisma for these tests.
+
+# 21. Add provider contract tests
+
+Create a normalized contract suite for:
+
+-   Identity
+-   Courses
+-   Products
+-   Memberships
+-   Progress
+-   Notifications
+
+Test:
+
+-   Pagination
+-   Cursor continuation
+-   Empty page
+-   Missing permission
+-   Authentication failure
+-   Rate limit
+-   Upstream unavailable
+-   Unknown status
+-   Partial source data
+-   Duplicate source record
+-   Out-of-order source timestamp
+
+Run the contract against fixture providers.
+
+Run it against mocked Whop SDK/HTTP responses.
+
+# 22. Add Playwright tests
+
+Add a real Playwright configuration and browser tests.
+
+Use the fixture provider and isolated PostgreSQL database.
+
+Cover:
+
+## Marketing
+
+-   Header at 1440, 1280, 1024, 768 and 390
+-   Mobile menu
+-   Hero CTA
+-   Pricing
+-   FAQ
+-   Legal links
+-   Private-pilot form
+
+## Demo
+
+-   Demo badge
+-   Queue selection
+-   Approve
+-   Schedule
+-   Dismiss
+-   Undo
+-   Reset demo
+-   Student experience
+-   No inconsistent values across routes
+
+## Connected fixture workspace
+
+-   Installation bootstrap
+-   Onboarding
+-   Course selection
+-   Product selection
+-   Mapping
+-   Initial sync
+-   Sync centre
+-   Candidate queue
+-   Candidate evidence
+-   Draft creation
+-   Approval-disabled provider state
+-   Students
+-   Campaigns
+-   Responses
+-   Insights
+-   Value
+-   Audit
+-   Usage
+-   Emergency pause
+-   Cross-tenant route rejection
+
+## Student
+
+-   Valid fixture token
+-   Expired token
+-   Revoked token
+-   Continue
+-   Blocker response
+-   Reminder request
+-   Human help
+-   Opt-out
+
+## Internal
+
+-   Unauthorized denial
+-   Pilot review
+-   Job retry
+-   Dead-letter review
+-   Organisation pause
+-   Plan override
+-   Export request
+-   Deletion request
+
+# 23. Add visual regression
+
+Capture stable screenshots for:
+
+    1440 × 1000
+    1280 × 900
+    1024 × 768
+    768 × 1024
+    390 × 844
+    360 × 800
+
+Pages:
+
+-   Marketing home
+-   Pricing
+-   Demo overview
+-   Demo queue
+-   Connected overview
+-   Connected onboarding
+-   Connected sync
+-   Connected queue
+-   Connected students
+-   Student rescue
+-   Internal operations
+
+Use deterministic fixture data.
+
+Avoid unstable timestamps and animations during screenshots.
+
+# 24. Add performance and scale verification
+
+Target the first practical commercial milestone:
+
+    100 organisations
+    250,000 monitored members
+    millions of source and audit events
+
+Do not claim this is proven without tests.
+
+Add repeatable fixture generation for:
+
+-   100 organisations
+-   2,500 memberships each
+-   Multiple courses per organisation
+-   Progress events
+-   Candidate snapshots
+-   Audit events
+-   Outbox backlog
+
+Measure:
+
+-   Course sync page
+-   Membership sync page
+-   Candidate batch
+-   Students list
+-   Queue list
+-   Audit list
+-   Usage calculation
+-   Outbox claim
+-   Reconciliation
+
+Record:
+
+-   Query count
+-   Duration
+-   Rows processed
+-   Peak memory where available
+
+Set reasonable budgets.
+
+Examples:
+
+    No unbounded query
+    No request returns more than 100 list records
+    No sync page exceeds configured batch size
+    No N+1 query growth proportional to membership count
+
+Do not optimize through unsafe caching.
+
+# 25. Correct documentation and PR claims
+
+Update PR #1 to reflect the actual branch.
+
+Include:
+
+-   Current commit count
+-   Current test counts
+-   Current routes
+-   Which routes are real
+-   Which provider is fixture
+-   Which features remain unverified
+-   Vercel preview status
+-   CI status
+-   Database migration status
+-   Real Whop status
+-   No notification sent
+
+Update:
+
+    README.md
+    SETUP_PRIVATE_PILOT.md
+
+Create:
+
+    docs/FRONTEND_COMPLETION.md
+    docs/PROVIDER_ARCHITECTURE.md
+    docs/SYNC_ARCHITECTURE.md
+    docs/OUTBOX_AND_JOBS.md
+    docs/SCALE_ARCHITECTURE.md
+    docs/OPERATIONS_RUNBOOK.md
+    docs/INCIDENT_RESPONSE.md
+    docs/DATA_LIFECYCLE.md
+    docs/TESTING.md
+    docs/SECURITY_MODEL.md
+
+Correct outdated Whop permission names.
+
+Do not write that something is "production-ready" without evidence.
+
+# 26. Remove misleading or unsafe implementation remnants
+
+Remove:
+
+-   Stub-page helpers
+-   "Coming in Phase 2"
+-   "What this page will show"
+-   Lenient auth wrappers
+-   Silent job dispatch
+-   Manual local-product fallback in connected mode
+-   Broad `as any`
+-   Catch-all duplicate handling
+-   Unbounded queries
+-   Dead buttons
+-   Empty user-menu actions presented as functional
+-   Incorrect `delivered` terminology
+-   Tracked environment files
+-   Stale PR claims
+
+Every visible button must:
+
+-   Work
+-   Be disabled with a reason
+-   Or be explicitly marked planned
+
+# 27. Git workflow
+
+Continue on:
+
+`feat/private-pilot-activation-rescue`
+
+All commits must resolve to:
+
+`witejackel-eng`
+
+Use focused commits:
+
+    security: remove tracked environment files
+    fix: generate Prisma client during Vercel builds
+    fix: support fixture mode only outside production
+    feat: replace connected route stubs with database views
+    fix: make outbox dispatch truthful and atomic
+    feat: persist resumable synchronization checkpoints
+    perf: batch synchronization and reconciliation
+    feat: enforce plans with atomic usage reservations
+    feat: add pilot application and internal operations
+    feat: add data export deletion and observability
+    test: add PostgreSQL and provider contract coverage
+    test: add Playwright and visual regression coverage
+    ci: split verification into production-grade jobs
+    docs: document completed frontend and scale foundation
+
+Do not force-push unless genuinely necessary.
+
+Do not merge PR #1.
+
+# 28. Required verification
+
+Run:
+
+    bun install --frozen-lockfile
+    bunx prisma generate
+    bunx prisma migrate deploy
+    bun run lint
+    bun run typecheck
+    bun run test
+    bun run test:integration
+    bun run test:contracts
+    bun run test:e2e
+    bun run build
+
+Add any missing scripts.
+
+Verify a clean environment without Whop credentials.
+
+Verify fixture mode in Preview.
+
+Verify fixture mode is blocked in Production.
+
+Verify the latest Vercel Preview is `READY`.
+
+# Final evidence report
+
+Return only verifiable results.
+
+## Repository
+
+-   PR URL
+-   Final full commit SHA
+-   Compare result against `main`
+-   Number of commits ahead
+-   Changed-file count
+-   Confirmation repo remains private
+-   Confirmation `.env` is not tracked
+-   Secret-scan result
+
+## Deployment
+
+-   Vercel preview URL
+-   Vercel state
+-   Deployment commit SHA
+-   Build-command output
+-   Prisma-generation output
+
+## Frontend
+
+-   Completed routes
+-   Confirmation no connected stubs remain
+-   Responsive widths tested
+-   Accessibility checks
+-   Playwright route coverage
+-   Visual-regression artifacts
+
+## Backend
+
+-   Outbox dispatch contract
+-   Atomic claim method
+-   Sync checkpoint model
+-   Batching strategy
+-   Candidate idempotency
+-   Plan-reservation method
+-   Rate limiter
+-   Internal operations routes
+-   Export/deletion workflows
+-   Observability adapters
+
+## Testing
+
+-   Lint
+-   Typecheck
+-   Unit-test count
+-   PostgreSQL integration-test count
+-   Provider contract-test count
+-   Playwright-test count
+-   Security checks
+-   GitHub Actions URL and job statuses
+
+## Scale
+
+-   Fixture organisations tested
+-   Memberships tested
+-   Events tested
+-   Query-count results
+-   Batch-size results
+-   Outbox concurrency result
+-   Plan-concurrency result
+-   Known limits
+
+## Genuine remaining limitations
+
+These should primarily be:
+
+-   No real Whop credentials
+-   No real Whop company installation
+-   No live Whop permission approval
+-   No real provider synchronization
+-   No real notification
+-   No real student contacted
+-   No real pilot outcomes
+-   No billing checkout
+
+Do not claim real Whop integration.
+
+# Final definition of done
+
+This phase is complete only when:
+
+1.  `.env` is not tracked.
+2.  Secret scanning passes.
+3.  Vercel Preview is `READY`.
+4.  Prisma generates during Vercel builds.
+5.  Fixture mode works in Preview.
+6.  Fixture mode is impossible in Production.
+7.  No connected page is a stub.
+8.  Connected pages require strict authorization.
+9.  Outbox dispatch cannot falsely succeed.
+10. Outbox claiming is concurrency-safe.
+11. Sync checkpoints are persisted.
+12. Sync can resume after interruption.
+13. Synchronization uses bounded batches.
+14. Candidate detection is idempotent.
+15. Plan enforcement is atomic.
+16. Private-pilot application works.
+17. Internal operations workspace works.
+18. Data export works in fixture/integration tests.
+19. Data deletion works in fixture/integration tests.
+20. PostgreSQL tenant-isolation tests pass.
+21. Provider contract tests pass.
+22. Playwright tests pass.
+23. Security CI passes.
+24. GitHub Actions is green.
+25. PR #1 remains unmerged.
+26. No real Whop message is sent.
+27. No completion claim exceeds the evidence.

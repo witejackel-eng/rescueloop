@@ -1,0 +1,1225 @@
+     1→// RescueLoop — Private pilot database schema
+     2→// PostgreSQL via Neon. Multi-tenant by organisation.
+     3→// All tables are tenant-scoped via organizationId.
+     4→
+     5→generator client {
+     6→  provider = "prisma-client-js"
+     7→}
+     8→
+     9→datasource db {
+    10→  provider  = "postgresql"
+    11→  url       = env("DATABASE_URL")
+    12→  directUrl = env("DIRECT_URL")
+    13→}
+    14→
+    15→// ─── Enums ────────────────────────────────────────────────────
+    16→
+    17→enum OrganizationStatus {
+    18→  active
+    19→  paused
+    20→  suspended
+    21→}
+    22→
+    23→enum MemberRole {
+    24→  owner
+    25→  admin
+    26→  member
+    27→}
+    28→
+    29→enum InstallationStatus {
+    30→  pending
+    31→  active
+    32→  uninstalled
+    33→  revoked
+    34→}
+    35→
+    36→enum MembershipStatus {
+    37→  active
+    38→  trialing
+    39→  past_due
+    40→  cancelling
+    41→  cancelled
+    42→  paused_membership
+    43→}
+    44→
+    45→enum EnrollmentStatus {
+    46→  not_started
+    47→  in_progress
+    48→  completed
+    49→  stalled
+    50→}
+    51→
+    52→enum CampaignType {
+    53→  activation_rescue
+    54→  early_progress_rescue
+    55→  mid_course_rescue
+    56→  near_finish_rescue
+    57→  cancellation_rescue
+    58→}
+    59→
+    60→enum CampaignStatus {
+    61→  active
+    62→  paused
+    63→  archived
+    64→  draft
+    65→}
+    66→
+    67→enum ApprovalMode {
+    68→  manual
+    69→  automatic
+    70→}
+    71→
+    72→enum EligibilityState {
+    73→  pending_evaluation
+    74→  eligible
+    75→  ineligible
+    76→  suppressed
+    77→  expired
+    78→}
+    79→
+    80→enum InterventionState {
+    81→  drafted
+    82→  awaiting_approval
+    83→  approved
+    84→  scheduled
+    85→  queued
+    86→  delivery_attempted
+    87→  notification_accepted
+    88→  delivered
+    89→  failed
+    90→  stopped
+    91→  dismissed
+    92→}
+    93→
+    94→enum DeliveryState {
+    95→  queued
+    96→  attempted
+    97→  api_accepted
+    98→  failed
+    99→  stopped_before_send
+   100→  delivery_unknown
+   101→  dead_lettered
+   102→}
+   103→
+   104→enum OutcomeState {
+   105→  no_response
+   106→  opened
+   107→  responded
+   108→  reminded_later
+   109→  requested_help
+   110→  opted_out
+   111→  course_started
+   112→  progress_resumed
+   113→  already_completed
+   114→}
+   115→
+   116→enum AttributionState {
+   117→  unattributed
+   118→  strongly_associated
+   119→  confirmed
+   120→  estimated
+   121→  rejected
+   122→}
+   123→
+   124→enum ResponseType {
+   125→  continue_course
+   126→  stuck
+   127→  remind_later
+   128→  already_completed
+   129→  human_help
+   130→  stop_reminders
+   131→}
+   132→
+   133→enum BlockerType {
+   134→  lack_of_time
+   135→  material_difficult
+   136→  unsure_next_step
+   137→  expected_something_different
+   138→  technical_problem
+   139→  needs_creator_help
+   140→}
+   141→
+   142→enum WebhookStatus {
+   143→  received
+   144→  processing
+   145→  processed
+   146→  failed
+   147→  duplicate
+   148→}
+   149→
+   150→enum AuditAction {
+   151→  created
+   152→  updated
+   153→  deleted
+   154→  approved
+   155→  dismissed
+   156→  scheduled
+   157→  suppressed
+   158→  unsuppressed
+   159→  paused
+   160→  resumed
+   161→  sent
+   162→  delivered
+   163→  responded
+   164→  opted_out
+   165→  synced
+   166→  configuration_changed
+   167→}
+   168→
+   169→enum DataDeletionStatus {
+   170→  requested
+   171→  processing
+   172→  completed
+   173→  cancelled
+   174→}
+   175→
+   176→enum PaymentStatus {
+   177→  pending
+   178→  succeeded
+   179→  failed
+   180→  refunded
+   181→}
+   182→
+   183→// ─── Accounts and installation ───────────────────────────────
+   184→
+   185→model User {
+   186→  id         String               @id @default(cuid())
+   187→  whopUserId String?              @unique
+   188→  email      String?              @unique
+   189→  name       String?
+   190→  createdAt  DateTime             @default(now()) @db.Timestamptz
+   191→  updatedAt  DateTime             @updatedAt @db.Timestamptz
+   192→  members    OrganizationMember[]
+   193→
+   194→  @@map("users")
+   195→}
+   196→
+   197→model Organization {
+   198→  id              String             @id @default(cuid())
+   199→  name            String
+   200→  slug            String             @unique
+   201→  status          OrganizationStatus @default(active)
+   202→  planTier        String             @default("rescue")
+   203→  isPaused        Boolean            @default(false)
+   204→  quietHoursStart String? // "20:00"
+   205→  quietHoursEnd   String? // "08:00"
+   206→  timezone        String             @default("America/New_York")
+   207→  createdAt       DateTime           @default(now()) @db.Timestamptz
+   208→  updatedAt       DateTime           @updatedAt @db.Timestamptz
+   209→
+   210→  members            OrganizationMember[]
+   211→  installations      WhopInstallation[]
+   212→  products           Product[]
+   213→  courses            Course[]
+   214→  mappings           ProductCourseMapping[]
+   215→  students           Student[]
+   216→  campaigns          Campaign[]
+   217→  interventions      Intervention[]
+   218→  webhooks           WebhookReceipt[]
+   219→  auditLogs          AuditLog[]
+   220→  valueEvents        ValueEvent[]
+   221→  suppressions       Suppression[]
+   222→  deletionRequests   DataDeletionRequest[]
+   223→  syncExecutions     SyncExecution[]
+   224→  syncCheckpoints    SyncCheckpoint[]
+   225→  reconciliationRuns ReconciliationRun[]
+   226→
+   227→  @@map("organizations")
+   228→}
+   229→
+   230→model OrganizationMember {
+   231→  id             String     @id @default(cuid())
+   232→  organizationId String
+   233→  userId         String
+   234→  role           MemberRole @default(member)
+   235→  createdAt      DateTime   @default(now()) @db.Timestamptz
+   236→
+   237→  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   238→  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+   239→
+   240→  @@unique([organizationId, userId])
+   241→  @@index([userId])
+   242→  @@map("organization_members")
+   243→}
+   244→
+   245→model WhopInstallation {
+   246→  id              String             @id @default(cuid())
+   247→  organizationId  String
+   248→  whopCompanyId   String             @unique
+   249→  status          InstallationStatus @default(pending)
+   250→  requestedScopes String[] // requested permissions
+   251→  grantedScopes   String[] // granted permissions
+   252→  installedById   String?
+   253→  installedAt     DateTime           @default(now()) @db.Timestamptz
+   254→  uninstalledAt   DateTime?          @db.Timestamptz
+   255→  createdAt       DateTime           @default(now()) @db.Timestamptz
+   256→  updatedAt       DateTime           @updatedAt @db.Timestamptz
+   257→
+   258→  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   259→  credentials  IntegrationCredential[]
+   260→
+   261→  @@index([organizationId])
+   262→  @@map("whop_installations")
+   263→}
+   264→
+   265→model IntegrationCredential {
+   266→  id             String    @id @default(cuid())
+   267→  installationId String
+   268→  keyType        String // "api_key", "webhook_secret", etc.
+   269→  encryptedValue String // encrypted at rest
+   270→  expiresAt      DateTime? @db.Timestamptz
+   271→  createdAt      DateTime  @default(now()) @db.Timestamptz
+   272→
+   273→  installation WhopInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+   274→
+   275→  @@index([installationId])
+   276→  @@map("integration_credentials")
+   277→}
+   278→
+   279→model Product {
+   280→  id             String   @id @default(cuid())
+   281→  organizationId String
+   282→  whopProductId  String   @unique
+   283→  name           String
+   284→  priceCents     Int      @default(0)
+   285→  currency       String   @default("USD")
+   286→  billingCycle   String   @default("monthly") // monthly, annual, one_time
+   287→  createdAt      DateTime @default(now()) @db.Timestamptz
+   288→  updatedAt      DateTime @updatedAt @db.Timestamptz
+   289→
+   290→  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   291→  mappings     ProductCourseMapping[]
+   292→  memberships  Membership[]
+   293→
+   294→  @@index([organizationId])
+   295→  @@map("products")
+   296→}
+   297→
+   298→model Course {
+   299→  id                   String   @id @default(cuid())
+   300→  organizationId       String
+   301→  externalCourseId     String // Whop course ID
+   302→  externalExperienceId String? // Whop experience ID (required for notification delivery)
+   303→  name                 String
+   304→  lessonCount          Int      @default(0)
+   305→  createdAt            DateTime @default(now()) @db.Timestamptz
+   306→  updatedAt            DateTime @updatedAt @db.Timestamptz
+   307→
+   308→  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   309→  mappings       ProductCourseMapping[]
+   310→  enrollments    Enrollment[]
+   311→  studentStates  StudentCourseState[]
+   312→  progressEvents ProgressEvent[]
+   313→
+   314→  @@index([organizationId])
+   315→  @@map("courses")
+   316→}
+   317→
+   318→model ProductCourseMapping {
+   319→  id                  String   @id @default(cuid())
+   320→  organizationId      String
+   321→  productId           String
+   322→  courseId            String
+   323→  activationDelayDays Int      @default(7)
+   324→  isConfirmed         Boolean  @default(false)
+   325→  createdAt           DateTime @default(now()) @db.Timestamptz
+   326→  updatedAt           DateTime @updatedAt @db.Timestamptz
+   327→
+   328→  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   329→  product       Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+   330→  course        Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+   331→  campaignLinks Campaign[] // Campaigns that use this mapping as their confirmed mapping
+   332→
+   333→  @@unique([productId, courseId])
+   334→  @@index([organizationId])
+   335→  @@map("product_course_mappings")
+   336→}
+   337→
+   338→// ─── Students and learning state ─────────────────────────────
+   339→
+   340→model Student {
+   341→  id             String   @id @default(cuid())
+   342→  organizationId String
+   343→  whopUserId     String // Whop user ID
+   344→  email          String?
+   345→  name           String?
+   346→  createdAt      DateTime @default(now()) @db.Timestamptz
+   347→  updatedAt      DateTime @updatedAt @db.Timestamptz
+   348→
+   349→  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   350→  memberships      Membership[]
+   351→  enrollments      Enrollment[]
+   352→  studentStates    StudentCourseState[]
+   353→  progressEvents   ProgressEvent[]
+   354→  interventions    Intervention[]
+   355→  responses        StudentResponse[]
+   356→  blockerResponses BlockerResponse[]
+   357→  suppressions     Suppression[]
+   358→
+   359→  @@unique([organizationId, whopUserId])
+   360→  @@index([organizationId])
+   361→  @@map("students")
+   362→}
+   363→
+   364→model Membership {
+   365→  id               String           @id @default(cuid())
+   366→  organizationId   String
+   367→  studentId        String
+   368→  productId        String
+   369→  whopMembershipId String           @unique
+   370→  status           MembershipStatus @default(active)
+   371→  joinedAt         DateTime         @db.Timestamptz
+   372→  renewalDate      DateTime?        @db.Timestamptz
+   373→  cancelledAt      DateTime?        @db.Timestamptz
+   374→  priceCents       Int              @default(0)
+   375→  currency         String           @default("USD")
+   376→  lastSyncedAt     DateTime         @default(now()) @db.Timestamptz
+   377→  createdAt        DateTime         @default(now()) @db.Timestamptz
+   378→  updatedAt        DateTime         @updatedAt @db.Timestamptz
+   379→
+   380→  student  Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+   381→  product  Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+   382→  events   MembershipEvent[]
+   383→  payments PaymentEvent[]
+   384→
+   385→  @@index([organizationId])
+   386→  @@index([studentId])
+   387→  @@map("memberships")
+   388→}
+   389→
+   390→model Enrollment {
+   391→  id             String           @id @default(cuid())
+   392→  organizationId String
+   393→  studentId      String
+   394→  courseId       String
+   395→  status         EnrollmentStatus @default(not_started)
+   396→  enrolledAt     DateTime         @default(now()) @db.Timestamptz
+   397→  createdAt      DateTime         @default(now()) @db.Timestamptz
+   398→  updatedAt      DateTime         @updatedAt @db.Timestamptz
+   399→
+   400→  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+   401→  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+   402→
+   403→  @@unique([studentId, courseId])
+   404→  @@index([organizationId])
+   405→  @@map("enrollments")
+   406→}
+   407→
+   408→model StudentCourseState {
+   409→  id               String    @id @default(cuid())
+   410→  organizationId   String
+   411→  studentId        String
+   412→  courseId         String
+   413→  progressPercent  Int       @default(0)
+   414→  lessonsCompleted Int       @default(0)
+   415→  totalLessons     Int       @default(0)
+   416→  firstActivityAt  DateTime? @db.Timestamptz
+   417→  lastActivityAt   DateTime? @db.Timestamptz
+   418→  lastSyncedAt     DateTime  @default(now()) @db.Timestamptz
+   419→  createdAt        DateTime  @default(now()) @db.Timestamptz
+   420→  updatedAt        DateTime  @updatedAt @db.Timestamptz
+   421→
+   422→  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+   423→  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+   424→
+   425→  @@unique([studentId, courseId])
+   426→  @@index([organizationId])
+   427→  @@map("student_course_states")
+   428→}
+   429→
+   430→model ProgressEvent {
+   431→  id                    String    @id @default(cuid())
+   432→  organizationId        String
+   433→  studentId             String
+   434→  courseId              String
+   435→  externalInteractionId String? // Whop's course_lesson_interaction ID — unique per student+lesson
+   436→  lessonId              String? // External lesson ID for precise dedup
+   437→  lessonIndex           Int
+   438→  lessonTitle           String?
+   439→  action                String // "completed", "started", "stalled"
+   440→  payloadHash           String? // SHA-256 of interaction payload for dedup
+   441→  sourceTimestamp       DateTime? @db.Timestamptz // When the event occurred at the source
+   442→  receivedAt            DateTime  @default(now()) @db.Timestamptz // When we received it
+   443→  sourceVersion         String? // Provider version / etag for staleness checks
+   444→  occurredAt            DateTime  @db.Timestamptz
+   445→  webhookReceiptId      String?
+   446→  createdAt             DateTime  @default(now()) @db.Timestamptz
+   447→
+   448→  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+   449→  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+   450→
+   451→  // Prevent the same Whop lesson interaction from being counted twice
+   452→  @@unique([organizationId, studentId, externalInteractionId])
+   453→  // Payload hash dedup: prevents identical content re-ingestion
+   454→  @@unique([organizationId, payloadHash])
+   455→  @@index([organizationId, studentId, courseId])
+   456→  @@index([occurredAt])
+   457→  @@index([sourceTimestamp])
+   458→  @@map("progress_events")
+   459→}
+   460→
+   461→model MembershipEvent {
+   462→  id               String   @id @default(cuid())
+   463→  organizationId   String
+   464→  membershipId     String
+   465→  eventType        String // "created", "activated", "cancelled", "renewed"
+   466→  occurredAt       DateTime @db.Timestamptz
+   467→  webhookReceiptId String?
+   468→  createdAt        DateTime @default(now()) @db.Timestamptz
+   469→
+   470→  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+   471→
+   472→  @@index([organizationId, membershipId])
+   473→  @@map("membership_events")
+   474→}
+   475→
+   476→model PaymentEvent {
+   477→  id               String        @id @default(cuid())
+   478→  organizationId   String
+   479→  membershipId     String
+   480→  whopPaymentId    String        @unique
+   481→  status           PaymentStatus @default(pending)
+   482→  amountCents      Int
+   483→  currency         String        @default("USD")
+   484→  occurredAt       DateTime      @db.Timestamptz
+   485→  webhookReceiptId String?
+   486→  createdAt        DateTime      @default(now()) @db.Timestamptz
+   487→
+   488→  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+   489→
+   490→  @@index([organizationId, membershipId])
+   491→  @@map("payment_events")
+   492→}
+   493→
+   494→// ─── Campaign execution ──────────────────────────────────────
+   495→
+   496→model Campaign {
+   497→  id                     String         @id @default(cuid())
+   498→  organizationId         String
+   499→  type                   CampaignType   @default(activation_rescue)
+   500→  name                   String
+   501→  status                 CampaignStatus @default(active)
+   502→  approvalMode           ApprovalMode   @default(manual)
+   503→  maxMessagesPerStudent  Int            @default(2)
+   504→  maxMessagesPerOrg      Int            @default(100) // Org-wide message limit per period
+   505→  cooldownDays           Int            @default(14)
+   506→  quietHoursStart        String         @default("20:00")
+   507→  quietHoursEnd          String         @default("08:00")
+   508→  stopAfterResponse      Boolean        @default(true)
+   509→  stopAfterProgress      Boolean        @default(true)
+   510→  stopAfterMembershipEnd Boolean        @default(true)
+   511→  messageTemplate        String
+   512→  confirmedMappingId     String? // Explicit campaign-to-mapping relationship
+   513→  createdAt              DateTime       @default(now()) @db.Timestamptz
+   514→  updatedAt              DateTime       @updatedAt @db.Timestamptz
+   515→
+   516→  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   517→  confirmedMapping ProductCourseMapping? @relation(fields: [confirmedMappingId], references: [id])
+   518→  versions         CampaignVersion[]
+   519→  interventions    Intervention[]
+   520→
+   521→  @@index([organizationId])
+   522→  @@map("campaigns")
+   523→}
+   524→
+   525→model CampaignVersion {
+   526→  id              String   @id @default(cuid())
+   527→  campaignId      String
+   528→  versionNumber   Int
+   529→  rulesJson       Json // versioned rule snapshot
+   530→  messageTemplate String
+   531→  createdAt       DateTime @default(now()) @db.Timestamptz
+   532→
+   533→  campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+   534→  interventions Intervention[]
+   535→
+   536→  @@unique([campaignId, versionNumber])
+   537→  @@map("campaign_versions")
+   538→}
+   539→
+   540→model CampaignRule {
+   541→  id         String   @id @default(cuid())
+   542→  campaignId String
+   543→  ruleType   String // "progress_min", "inactivity_days", etc.
+   544→  ruleValue  String
+   545→  createdAt  DateTime @default(now()) @db.Timestamptz
+   546→
+   547→  // Note: rules are versioned via CampaignVersion.rulesJson for historical evidence
+   548→  @@map("campaign_rules")
+   549→}
+   550→
+   551→model EligibilitySnapshot {
+   552→  id                     String           @id @default(cuid())
+   553→  organizationId         String
+   554→  studentId              String
+   555→  campaignId             String
+   556→  campaignVersionId      String
+   557→  idempotencyKey         String           @unique // Prevents duplicate snapshots on re-run
+   558→  state                  EligibilityState @default(pending_evaluation)
+   559→  evidenceJson           Json // versioned evidence at detection time
+   560→  detectedAt             DateTime         @default(now()) @db.Timestamptz
+   561→  eligibilityWindowStart DateTime?        @db.Timestamptz // Start of the eligibility evaluation window
+   562→  expiresAt              DateTime?        @db.Timestamptz
+   563→  createdAt              DateTime         @default(now()) @db.Timestamptz
+   564→
+   565→  interventions Intervention[]
+   566→
+   567→  // One immutable snapshot per (student + campaign version + eligibility window)
+   568→  @@unique([studentId, campaignVersionId, eligibilityWindowStart])
+   569→  @@index([organizationId, studentId])
+   570→  @@index([campaignId, state])
+   571→  @@map("eligibility_snapshots")
+   572→}
+   573→
+   574→model Intervention {
+   575→  id                    String            @id @default(cuid())
+   576→  organizationId        String
+   577→  studentId             String
+   578→  campaignId            String
+   579→  campaignVersionId     String?
+   580→  eligibilitySnapshotId String?
+   581→  state                 InterventionState @default(awaiting_approval)
+   582→  outcomeState          OutcomeState      @default(no_response)
+   583→  attributionState      AttributionState  @default(unattributed)
+   584→  priority              String            @default("medium")
+   585→  trigger               String
+   586→  evidenceJson          Json // stored evidence at creation time
+   587→  messagePreview        String
+   588→  messageEdited         String?
+   589→  idempotencyKey        String            @unique
+   590→  approvedById          String?
+   591→  approvedAt            DateTime?         @db.Timestamptz
+   592→  scheduledFor          DateTime?         @db.Timestamptz
+   593→  sentAt                DateTime?         @db.Timestamptz
+   594→  respondedAt           DateTime?         @db.Timestamptz
+   595→  recoveredAt           DateTime?         @db.Timestamptz
+   596→  cooldownUntil         DateTime?         @db.Timestamptz
+   597→  createdAt             DateTime          @default(now()) @db.Timestamptz
+   598→  updatedAt             DateTime          @updatedAt @db.Timestamptz
+   599→
+   600→  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   601→  student             Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+   602→  campaign            Campaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+   603→  campaignVersion     CampaignVersion?     @relation(fields: [campaignVersionId], references: [id])
+   604→  eligibilitySnapshot EligibilitySnapshot? @relation(fields: [eligibilitySnapshotId], references: [id])
+   605→  deliveryAttempts    DeliveryAttempt[]
+   606→  responses           StudentResponse[]
+   607→  valueEvents         ValueEvent[]
+   608→  auditLogs           AuditLog[]
+   609→
+   610→  @@index([organizationId, state])
+   611→  @@index([studentId])
+   612→  @@map("interventions")
+   613→}
+   614→
+   615→model DeliveryAttempt {
+   616→  id                String        @id @default(cuid())
+   617→  interventionId    String
+   618→  state             DeliveryState @default(queued)
+   619→  attemptNumber     Int           @default(1)
+   620→  idempotencyKey    String        @unique
+   621→  providerMessageId String? // Whop message ID
+   622→  apiAcceptedAt     DateTime?     @db.Timestamptz
+   623→  deliveredAt       DateTime?     @db.Timestamptz
+   624→  failedAt          DateTime?     @db.Timestamptz
+   625→  errorMessage      String?
+   626→  retryCount        Int           @default(0)
+   627→  nextAttemptAt     DateTime?     @db.Timestamptz
+   628→  createdAt         DateTime      @default(now()) @db.Timestamptz
+   629→
+   630→  intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+   631→
+   632→  @@index([interventionId])
+   633→  @@index([state])
+   634→  @@map("delivery_attempts")
+   635→}
+   636→
+   637→model StudentResponse {
+   638→  id             String       @id @default(cuid())
+   639→  interventionId String
+   640→  studentId      String
+   641→  responseType   ResponseType
+   642→  blockerType    BlockerType?
+   643→  note           String?
+   644→  accessTokenId  String? // Reference to the StudentAccessToken used (not the raw token)
+   645→  ipAddress      String?
+   646→  userAgent      String?
+   647→  createdAt      DateTime     @default(now()) @db.Timestamptz
+   648→
+   649→  intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+   650→  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+   651→
+   652→  @@index([interventionId])
+   653→  @@index([studentId])
+   654→  @@map("student_responses")
+   655→}
+   656→
+   657→// Opaque student access tokens.
+   658→// The raw token is never stored — only its SHA-256 hash.
+   659→// Tokens are scoped to a specific intervention + student + organisation.
+   660→model StudentAccessToken {
+   661→  id             String    @id @default(cuid())
+   662→  organizationId String
+   663→  interventionId String
+   664→  studentId      String
+   665→  tokenHash      String    @unique // SHA-256 hash of the raw token
+   666→  expiresAt      DateTime  @db.Timestamptz
+   667→  revokedAt      DateTime? @db.Timestamptz
+   668→  lastUsedAt     DateTime? @db.Timestamptz
+   669→  consumedAt     DateTime? @db.Timestamptz // Set for one-time actions
+   670→  createdAt      DateTime  @default(now()) @db.Timestamptz
+   671→
+   672→  @@index([organizationId, studentId])
+   673→  @@index([interventionId])
+   674→  @@map("student_access_tokens")
+   675→}
+   676→
+   677→model BlockerResponse {
+   678→  id             String      @id @default(cuid())
+   679→  organizationId String
+   680→  studentId      String
+   681→  blocker        BlockerType
+   682→  note           String?
+   683→  interventionId String?
+   684→  createdAt      DateTime    @default(now()) @db.Timestamptz
+   685→
+   686→  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+   687→
+   688→  @@index([organizationId, studentId])
+   689→  @@map("blocker_responses")
+   690→}
+   691→
+   692→model ReminderRequest {
+   693→  id             String   @id @default(cuid())
+   694→  interventionId String
+   695→  studentId      String
+   696→  reminderTime   DateTime @db.Timestamptz
+   697→  timezone       String   @default("America/New_York")
+   698→  createdAt      DateTime @default(now()) @db.Timestamptz
+   699→
+   700→  @@index([interventionId])
+   701→  @@map("reminder_requests")
+   702→}
+   703→
+   704→model Suppression {
+   705→  id             String   @id @default(cuid())
+   706→  organizationId String
+   707→  studentId      String
+   708→  scope          String   @default("organization") // organization, course
+   709→  reason         String   @default("student_opt_out")
+   710→  interventionId String?
+   711→  createdAt      DateTime @default(now()) @db.Timestamptz
+   712→
+   713→  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   714→  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+   715→
+   716→  @@unique([organizationId, studentId, scope])
+   717→  @@index([organizationId])
+   718→  @@map("suppressions")
+   719→}
+   720→
+   721→// ─── Trust and attribution ───────────────────────────────────
+   722→
+   723→model WebhookReceipt {
+   724→  id             String        @id @default(cuid())
+   725→  organizationId String
+   726→  whopEventId    String        @unique
+   727→  eventType      String
+   728→  payloadHash    String
+   729→  status         WebhookStatus @default(received)
+   730→  attemptCount   Int           @default(0)
+   731→  lastError      String?
+   732→  receivedAt     DateTime      @default(now()) @db.Timestamptz
+   733→  processedAt    DateTime?     @db.Timestamptz
+   734→  payloadJson    Json // stored for replay/audit
+   735→
+   736→  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   737→
+   738→  @@index([organizationId, status])
+   739→  @@map("webhook_receipts")
+   740→}
+   741→
+   742→model AuditLog {
+   743→  id             String      @id @default(cuid())
+   744→  organizationId String
+   745→  actorId        String? // user ID or "system"
+   746→  action         AuditAction
+   747→  objectType     String // "intervention", "campaign", "organization"
+   748→  objectId       String
+   749→  interventionId String?
+   750→  previousState  String?
+   751→  newState       String?
+   752→  reason         String?
+   753→  metadataJson   Json?
+   754→  createdAt      DateTime    @default(now()) @db.Timestamptz
+   755→
+   756→  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   757→  intervention Intervention? @relation(fields: [interventionId], references: [id])
+   758→
+   759→  @@index([organizationId, objectType, objectId])
+   760→  @@index([interventionId])
+   761→  @@map("audit_logs")
+   762→}
+   763→
+   764→model ValueEvent {
+   765→  id               String           @id @default(cuid())
+   766→  organizationId   String
+   767→  interventionId   String?
+   768→  studentId        String?
+   769→  event            String
+   770→  attributionLevel AttributionState @default(unattributed)
+   771→  amountCents      Int              @default(0)
+   772→  currency         String           @default("USD")
+   773→  formula          String? // explanation of how the amount was derived
+   774→  policyVersion    String           @default("2026-08-01")
+   775→  // Reference to the source payment event that created this value event.
+   776→  // Unique constraint prevents one payment from creating duplicate value events.
+   777→  paymentEventId   String?          @unique
+   778→  createdAt        DateTime         @default(now()) @db.Timestamptz
+   779→
+   780→  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   781→  intervention Intervention?         @relation(fields: [interventionId], references: [id])
+   782→  evidence     AttributionEvidence[]
+   783→
+   784→  @@index([organizationId, attributionLevel])
+   785→  @@index([interventionId])
+   786→  @@map("value_events")
+   787→}
+   788→
+   789→model AttributionEvidence {
+   790→  id           String   @id @default(cuid())
+   791→  valueEventId String
+   792→  evidenceType String // "intervention_sent", "course_started", "payment_succeeded"
+   793→  evidenceRef  String // reference to source record
+   794→  timestamp    DateTime @db.Timestamptz
+   795→  metadataJson Json?
+   796→  createdAt    DateTime @default(now()) @db.Timestamptz
+   797→
+   798→  valueEvent ValueEvent @relation(fields: [valueEventId], references: [id], onDelete: Cascade)
+   799→
+   800→  @@index([valueEventId])
+   801→  @@map("attribution_evidence")
+   802→}
+   803→
+   804→model DataDeletionRequest {
+   805→  id             String             @id @default(cuid())
+   806→  organizationId String
+   807→  requestedById  String?
+   808→  status         DataDeletionStatus @default(requested)
+   809→  reason         String?
+   810→  requestedAt    DateTime           @default(now()) @db.Timestamptz
+   811→  completedAt    DateTime?          @db.Timestamptz
+   812→
+   813→  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   814→
+   815→  @@index([organizationId])
+   816→  @@map("data_deletion_requests")
+   817→}
+   818→
+   819→// ─── Transactional outbox ────────────────────────────────────
+   820→// Ensures job dispatch is durable. When application state requires a job:
+   821→// 1. Write the domain mutation + OutboxEvent in the same DB transaction
+   822→// 2. Commit
+   823→// 3. Dispatcher reads pending events and dispatches to Inngest
+   824→// 4. Marks dispatched (or failed → dead-letter after retries)
+   825→
+   826→enum OutboxState {
+   827→  pending
+   828→  dispatching
+   829→  dispatched
+   830→  failed
+   831→  dead_letter
+   832→}
+   833→
+   834→model OutboxEvent {
+   835→  id              String      @id @default(cuid())
+   836→  organizationId  String
+   837→  eventType       String // e.g. "whop/webhook.received", "deliver/intervention"
+   838→  payloadJson     Json
+   839→  state           OutboxState @default(pending)
+   840→  idempotencyKey  String      @unique
+   841→  attemptCount    Int         @default(0)
+   842→  maxAttempts     Int         @default(5)
+   843→  lastError       String?
+   844→  dispatchedAt    DateTime?   @db.Timestamptz
+   845→  nextAttemptAt   DateTime?   @db.Timestamptz
+   846→  externalEventId String? // Inngest event ID after successful dispatch
+   847→  claimedBy       String? // Worker identifier that holds the lease
+   848→  claimedAt       DateTime?   @db.Timestamptz // When the lease was acquired
+   849→  leaseExpiresAt  DateTime?   @db.Timestamptz // When the lease expires
+   850→  createdAt       DateTime    @default(now()) @db.Timestamptz
+   851→  updatedAt       DateTime    @updatedAt @db.Timestamptz
+   852→
+   853→  @@index([organizationId, state])
+   854→  @@index([state, nextAttemptAt])
+   855→  @@index([state, claimedBy, leaseExpiresAt])
+   856→  @@map("outbox_events")
+   857→}
+   858→
+   859→model JobExecution {
+   860→  id             String    @id @default(cuid())
+   861→  organizationId String
+   862→  outboxEventId  String?
+   863→  jobType        String // e.g. "process-webhook", "deliver-intervention"
+   864→  runId          String? // Inngest run ID
+   865→  status         String    @default("pending") // pending, running, completed, failed
+   866→  startedAt      DateTime? @db.Timestamptz
+   867→  completedAt    DateTime? @db.Timestamptz
+   868→  errorMessage   String?
+   869→  metadataJson   Json?
+   870→  createdAt      DateTime  @default(now()) @db.Timestamptz
+   871→
+   872→  @@index([organizationId, status])
+   873→  @@index([jobType, status])
+   874→  @@map("job_executions")
+   875→}
+   876→
+   877→model DeadLetterEvent {
+   878→  id             String   @id @default(cuid())
+   879→  organizationId String
+   880→  outboxEventId  String?
+   881→  eventType      String
+   882→  payloadJson    Json
+   883→  errorMessage   String
+   884→  attemptCount   Int
+   885→  deadLetteredAt DateTime @default(now()) @db.Timestamptz
+   886→  createdAt      DateTime @default(now()) @db.Timestamptz
+   887→
+   888→  @@index([organizationId])
+   889→  @@map("dead_letter_events")
+   890→}
+   891→
+   892→// ─── Usage metering ──────────────────────────────────────────
+   893→
+   894→enum PlanTier {
+   895→  rescue
+   896→  growth
+   897→  scale
+   898→  internal
+   899→  pilot
+   900→}
+   901→
+   902→model Plan {
+   903→  id                       String   @id @default(cuid())
+   904→  tier                     PlanTier @unique
+   905→  name                     String
+   906→  maxMonitoredMembers      Int
+   907→  maxCourses               Int
+   908→  maxCampaigns             Int
+   909→  maxSeats                 Int
+   910→  maxCandidatesEvaluated   Int
+   911→  maxInterventionsCreated  Int
+   912→  maxNotificationsAccepted Int
+   913→  maxStoredEvents          Int
+   914→  maxExports               Int
+   915→  priceCents               Int
+   916→  currency                 String   @default("USD")
+   917→  createdAt                DateTime @default(now()) @db.Timestamptz
+   918→  updatedAt                DateTime @updatedAt @db.Timestamptz
+   919→
+   920→  @@map("plans")
+   921→}
+   922→
+   923→model SubscriptionEntitlement {
+   924→  id                 String   @id @default(cuid())
+   925→  organizationId     String
+   926→  planTier           PlanTier @default(pilot)
+   927→  billingPeriodStart DateTime @db.Timestamptz
+   928→  billingPeriodEnd   DateTime @db.Timestamptz
+   929→  createdAt          DateTime @default(now()) @db.Timestamptz
+   930→  updatedAt          DateTime @updatedAt @db.Timestamptz
+   931→
+   932→  @@index([organizationId])
+   933→  @@map("subscription_entitlements")
+   934→}
+   935→
+   936→model UsageCounter {
+   937→  id             String   @id @default(cuid())
+   938→  organizationId String
+   939→  metric         String // "monitored_members", "candidates_evaluated", etc.
+   940→  period         String // "2026-08" (YYYY-MM)
+   941→  count          Int      @default(0)
+   942→  updatedAt      DateTime @updatedAt @db.Timestamptz
+   943→
+   944→  @@unique([organizationId, metric, period])
+   945→  @@index([organizationId, period])
+   946→  @@map("usage_counters")
+   947→}
+   948→
+   949→model UsageEvent {
+   950→  id             String   @id @default(cuid())
+   951→  organizationId String
+   952→  metric         String
+   953→  increment      Int      @default(1)
+   954→  idempotencyKey String?  @unique
+   955→  metadataJson   Json?
+   956→  occurredAt     DateTime @default(now()) @db.Timestamptz
+   957→  createdAt      DateTime @default(now()) @db.Timestamptz
+   958→
+   959→  @@index([organizationId, metric, occurredAt])
+   960→  @@map("usage_events")
+   961→}
+   962→
+   963→enum ReservationStatus {
+   964→  reserved
+   965→  committed
+   966→  released
+   967→}
+   968→
+   969→model UsageReservation {
+   970→  id             String            @id @default(cuid())
+   971→  organizationId String
+   972→  metric         String
+   973→  period         String
+   974→  idempotencyKey String            @unique
+   975→  status         ReservationStatus @default(reserved)
+   976→  createdAt      DateTime          @default(now()) @db.Timestamptz
+   977→  updatedAt      DateTime          @updatedAt @db.Timestamptz
+   978→
+   979→  @@index([organizationId, metric, period])
+   980→  @@index([status])
+   981→  @@map("usage_reservations")
+   982→}
+   983→
+   984→model PlanOverride {
+   985→  id             String   @id @default(cuid())
+   986→  organizationId String
+   987→  metric         String
+   988→  overrideLimit  Int
+   989→  reason         String
+   990→  appliedBy      String
+   991→  approvedBy     String
+   992→  startsAt       DateTime @db.Timestamptz
+   993→  expiresAt      DateTime @db.Timestamptz
+   994→  createdAt      DateTime @default(now()) @db.Timestamptz
+   995→
+   996→  @@index([organizationId, metric])
+   997→  @@index([expiresAt])
+   998→  @@map("plan_overrides")
+   999→}
+  1000→
+  1001→// ─── Private pilot applications ──────────────────────────────
+  1002→
+  1003→enum PilotReviewStatus {
+  1004→  New
+  1005→  Reviewing
+  1006→  Qualified
+  1007→  Contacted
+  1008→  Accepted
+  1009→  Rejected
+  1010→  Withdrawn
+  1011→}
+  1012→
+  1013→model PilotApplication {
+  1014→  id                       String            @id @default(cuid())
+  1015→  fullName                 String
+  1016→  businessName             String
+  1017→  whopBusinessUrl          String?
+  1018→  email                    String
+  1019→  approximatePayingMembers Int?
+  1020→  courses                  String?
+  1021→  typicalMembershipPrice   Float?
+  1022→  monthlyNewMembers        Int?
+  1023→  currentFollowUpProcess   String?
+  1024→  primaryRetentionConcern  String?
+  1025→  preferredPilotTiming     String
+  1026→  consentToContact         Boolean
+  1027→  reviewStatus             PilotReviewStatus @default(New)
+  1028→  honeypot                 String?           @map("hp")
+  1029→  reviewNotes              String?
+  1030→  reviewedAt               DateTime?         @db.Timestamptz
+  1031→  reviewedBy               String?
+  1032→  createdAt                DateTime          @default(now()) @db.Timestamptz
+  1033→  updatedAt                DateTime          @updatedAt @db.Timestamptz
+  1034→
+  1035→  @@index([reviewStatus])
+  1036→  @@index([email])
+  1037→  @@map("pilot_applications")
+  1038→}
+  1039→
+  1040→// ─── Internal audit trail ────────────────────────────────────
+  1041→// Records every action taken by internal operators for accountability.
+  1042→
+  1043→model InternalAuditLog {
+  1044→  id            String   @id @default(cuid())
+  1045→  actorId       String // internal operator identifier
+  1046→  action        String // e.g. "pilot.review", "sync.retry", "dead-letter.requeue"
+  1047→  objectType    String // "pilot_application", "outbox_event", "dead_letter", etc.
+  1048→  objectId      String
+  1049→  tenantScope   String? // organization ID if tenant-scoped, null if global
+  1050→  previousState String?
+  1051→  newState      String?
+  1052→  reason        String
+  1053→  metadataJson  Json?
+  1054→  createdAt     DateTime @default(now()) @db.Timestamptz
+  1055→
+  1056→  @@index([actorId])
+  1057→  @@index([objectType, objectId])
+  1058→  @@index([tenantScope])
+  1059→  @@map("internal_audit_logs")
+  1060→}
+  1061→
+  1062→// ─── Synchronization records ─────────────────────────────────
+  1063→
+  1064→enum SyncExecutionState {
+  1065→  pending
+  1066→  running
+  1067→  completed
+  1068→  failed
+  1069→  cancelled
+  1070→}
+  1071→
+  1072→enum SyncStageState {
+  1073→  pending
+  1074→  running
+  1075→  completed
+  1076→  failed
+  1077→  skipped
+  1078→}
+  1079→
+  1080→enum SyncTrigger {
+  1081→  manual
+  1082→  scheduled
+  1083→  webhook
+  1084→  resumption
+  1085→}
+  1086→
+  1087→enum ReconciliationState {
+  1088→  pending
+  1089→  running
+  1090→  completed
+  1091→  failed
+  1092→}
+  1093→
+  1094→model SyncExecution {
+  1095→  id             String             @id @default(cuid())
+  1096→  organizationId String
+  1097→  provider       String             @default("whop")
+  1098→  environment    String             @default("production")
+  1099→  trigger        SyncTrigger        @default(manual)
+  1100→  requestedBy    String? // user ID or "system"
+  1101→  state          SyncExecutionState @default(pending)
+  1102→  startedAt      DateTime           @default(now()) @db.Timestamptz
+  1103→  completedAt    DateTime?          @db.Timestamptz
+  1104→  errorSummary   String?
+  1105→  jobId          String? // Inngest / external job ID
+  1106→  createdAt      DateTime           @default(now()) @db.Timestamptz
+  1107→  updatedAt      DateTime           @updatedAt @db.Timestamptz
+  1108→
+  1109→  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  1110→  stages          SyncStage[]
+  1111→  checkpoints     SyncCheckpoint[]
+  1112→  reconciliations ReconciliationRun[]
+  1113→
+  1114→  @@index([organizationId, state])
+  1115→  @@index([provider, state])
+  1116→  @@map("sync_executions")
+  1117→}
+  1118→
+  1119→model SyncStage {
+  1120→  id              String         @id @default(cuid())
+  1121→  syncExecutionId String
+  1122→  resourceType    String // "courses", "products", "memberships", "progress"
+  1123→  state           SyncStageState @default(pending)
+  1124→  startedAt       DateTime       @default(now()) @db.Timestamptz
+  1125→  completedAt     DateTime?      @db.Timestamptz
+  1126→  pagesProcessed  Int            @default(0)
+  1127→  recordsRead     Int            @default(0)
+  1128→  recordsCreated  Int            @default(0)
+  1129→  recordsUpdated  Int            @default(0)
+  1130→  recordsSkipped  Int            @default(0)
+  1131→  retryCount      Int            @default(0)
+  1132→  createdAt       DateTime       @default(now()) @db.Timestamptz
+  1133→  updatedAt       DateTime       @updatedAt @db.Timestamptz
+  1134→
+  1135→  syncExecution SyncExecution @relation(fields: [syncExecutionId], references: [id], onDelete: Cascade)
+  1136→
+  1137→  @@index([syncExecutionId])
+  1138→  @@index([resourceType, state])
+  1139→  @@map("sync_stages")
+  1140→}
+  1141→
+  1142→model SyncCheckpoint {
+  1143→  id                String   @id @default(cuid())
+  1144→  organizationId    String
+  1145→  syncExecutionId   String
+  1146→  resource          String // "courses", "products", "memberships", "progress"
+  1147→  cursor            String? // Provider cursor for resumption
+  1148→  sourceWatermark   String? // Provider timestamp / etag for staleness checks
+  1149→  lastCompletedPage Int      @default(0)
+  1150→  updatedAt         DateTime @updatedAt @db.Timestamptz
+  1151→  createdAt         DateTime @default(now()) @db.Timestamptz
+  1152→
+  1153→  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  1154→  syncExecution SyncExecution @relation(fields: [syncExecutionId], references: [id], onDelete: Cascade)
+  1155→
+  1156→  @@unique([organizationId, resource])
+  1157→  @@index([organizationId, resource])
+  1158→  @@map("sync_checkpoints")
+  1159→}
+  1160→
+  1161→enum ReconciliationOutcomeClassification {
+  1162→  matched
+  1163→  membership_without_course_activity
+  1164→  course_activity_without_membership
+  1165→  unmapped_product
+  1166→  missing_source_fields
+  1167→  stale_source_record
+  1168→}
+  1169→
+  1170→enum ReconciliationResolutionState {
+  1171→  pending
+  1172→  resolved
+  1173→  ignored
+  1174→  escalated
+  1175→}
+  1176→
+  1177→model ReconciliationOutcome {
+  1178→  id                  String                              @id @default(cuid())
+  1179→  reconciliationRunId String
+  1180→  organizationId      String
+  1181→  studentId           String
+  1182→  membershipId        String?
+  1183→  courseId            String
+  1184→  mappingId           String?
+  1185→  classification      ReconciliationOutcomeClassification
+  1186→  resolutionState     ReconciliationResolutionState       @default(pending)
+  1187→  evidenceJson        Json?
+  1188→  resolvedAt          DateTime?                           @db.Timestamptz
+  1189→  createdAt           DateTime                            @default(now()) @db.Timestamptz
+  1190→
+  1191→  reconciliationRun ReconciliationRun @relation(fields: [reconciliationRunId], references: [id], onDelete: Cascade)
+  1192→
+  1193→  @@index([reconciliationRunId])
+  1194→  @@index([organizationId, classification])
+  1195→  @@index([studentId])
+  1196→  @@map("reconciliation_outcomes")
+  1197→}
+  1198→
+  1199→model ReconciliationRun {
+  1200→  id                              String              @id @default(cuid())
+  1201→  organizationId                  String
+  1202→  courseId                        String
+  1203→  syncExecutionId                 String?
+  1204→  matched                         Int                 @default(0)
+  1205→  membershipWithoutCourseActivity Int                 @default(0)
+  1206→  courseActivityWithoutMembership Int                 @default(0)
+  1207→  unmappedProduct                 Int                 @default(0)
+  1208→  missingSourceFields             Int                 @default(0)
+  1209→  staleSourceRecord               Int                 @default(0)
+  1210→  totalEvaluated                  Int                 @default(0)
+  1211→  state                           ReconciliationState @default(pending)
+  1212→  startedAt                       DateTime            @default(now()) @db.Timestamptz
+  1213→  completedAt                     DateTime?           @db.Timestamptz
+  1214→  createdAt                       DateTime            @default(now()) @db.Timestamptz
+  1215→  updatedAt                       DateTime            @updatedAt @db.Timestamptz
+  1216→
+  1217→  organization  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  1218→  syncExecution SyncExecution?          @relation(fields: [syncExecutionId], references: [id], onDelete: SetNull)
+  1219→  outcomes      ReconciliationOutcome[]
+  1220→
+  1221→  @@index([organizationId, courseId])
+  1222→  @@index([state])
+  1223→  @@map("reconciliation_runs")
+  1224→}
+  1225→

@@ -1,0 +1,1618 @@
+     1→Act as the principal product engineer, backend reliability engineer,
+     2→security engineer and QA lead for RescueLoop.
+     3→
+     4→Work directly in the existing private repository.
+     5→
+     6→Repository:
+     7→
+     8→`https://github.com/witejackel-eng/rescueloop`
+     9→
+    10→Branch:
+    11→
+    12→`feat/private-pilot-activation-rescue`
+    13→
+    14→Draft pull request:
+    15→
+    16→`https://github.com/witejackel-eng/rescueloop/pull/1`
+    17→
+    18→Do not create another branch.
+    19→
+    20→Do not merge the pull request.
+    21→
+    22→# Mission
+    23→
+    24→Correct the current implementation defects, finish the incomplete
+    25→connected frontend, and make the Whop-independent backend foundation
+    26→genuinely deployable, durable, testable and appropriate for the first
+    27→100 paying creator organisations.
+    28→
+    29→This is not a planning task.
+    30→
+    31→Do not return recommendations or another architecture proposal. Inspect
+    32→the existing implementation, make the changes, test them, push them to
+    33→the existing branch, update PR #1 and provide independently verifiable
+    34→evidence.
+    35→
+    36→The current repository has useful architecture, but several completion
+    37→claims are inaccurate:
+    38→
+    39→-   The latest Vercel preview fails.
+    40→-   Eight connected pages are still explicit stubs.
+    41→-   Fixture mode is incorrectly blocked on Vercel Preview.
+    42→-   The outbox can falsely mark undelivered work as dispatched.
+    43→-   Outbox workers can claim the same job concurrently.
+    44→-   Synchronization cursors are not durably persisted.
+    45→-   Synchronization contains N+1 query patterns.
+    46→-   Usage enforcement is partial and non-atomic.
+    47→-   Automated verification is much smaller than claimed.
+    48→-   `.env` may still be tracked.
+    49→-   Several required routes and operational systems are absent.
+    50→
+    51→Correct these issues before adding new product scope.
+    52→
+    53→# Definition of success
+    54→
+    55→At completion:
+    56→
+    57→1.  The latest Vercel Preview deployment is `READY`.
+    58→2.  No `.env` file is tracked.
+    59→3.  The connected frontend contains no stub pages.
+    60→4.  Fixture mode works on Preview but is impossible in Production.
+    61→5.  Connected routes require real tenant authorization or explicit
+    62→    fixture authorization.
+    63→6.  The outbox never marks an event dispatched unless the downstream
+    64→    system confirms acceptance.
+    65→7.  Outbox claiming is atomic and concurrency-safe.
+    66→8.  Synchronization resumes from persisted checkpoints.
+    67→9.  Synchronization uses bounded, batched database operations.
+    68→10. Tenant isolation has PostgreSQL integration tests.
+    69→11. Plan enforcement is server-side and concurrency-safe.
+    70→12. Playwright verifies the complete fixture workflow.
+    71→13. The private-pilot application and internal operations routes exist.
+    72→14. Data export and deletion workflows exist.
+    73→15. GitHub Actions verifies more than lint and unit tests.
+    74→16. PR #1 remains unmerged.
+    75→17. No real Whop notification is sent.
+    76→
+    77→# Phase 0 --- Preserve evidence before editing
+    78→
+    79→Before changing anything:
+    80→
+    81→1.  Fetch the current branch head.
+    82→
+    83→2.  Fetch PR #1.
+    84→
+    85→3.  Compare `main...feat/private-pilot-activation-rescue`.
+    86→
+    87→4.  Record the current Vercel deployment failure.
+    88→
+    89→5.  Record the current GitHub Actions status.
+    90→
+    91→6.  List every tracked environment file.
+    92→
+    93→7.  List all connected company routes.
+    94→
+    95→8.  Identify every route containing:
+    96→
+    97→    -   `stub`
+    98→    -   `placeholder`
+    99→    -   `coming in Phase 2`
+   100→    -   `what this page will show`
+   101→
+   102→9.  Search for:
+   103→
+   104→    -   `as any`
+   105→    -   `as never`
+   106→    -   `ignoreBuildErrors`
+   107→    -   silent catches
+   108→    -   mock-data fallback
+   109→    -   unbounded `findMany`
+   110→    -   `Date.now()` in idempotency keys
+   111→
+   112→10. Record the current test counts.
+   113→
+   114→Do not modify the completion report to hide the baseline.
+   115→
+   116→# 1. Remove tracked secrets and audit repository history
+   117→
+   118→Run:
+   119→
+   120→    git ls-files ".env" ".env.*"
+   121→
+   122→If `.env` or any secret-bearing environment file is tracked:
+   123→
+   124→    git rm --cached .env
+   125→
+   126→Preserve:
+   127→
+   128→    .env.example
+   129→
+   130→Do not print or include the contents of a real `.env` in logs, commits,
+   131→reports or screenshots.
+   132→
+   133→Inspect Git history for:
+   134→
+   135→-   Whop API keys
+   136→-   Whop webhook secrets
+   137→-   Database URLs
+   138→-   Inngest keys
+   139→-   Signing secrets
+   140→-   Resend keys
+   141→-   Sentry credentials
+   142→-   PostHog keys where private
+   143→-   Session secrets
+   144→
+   145→Use automated secret scanning.
+   146→
+   147→Add GitHub Actions secret scanning using an appropriate tool such as:
+   148→
+   149→-   Gitleaks
+   150→-   TruffleHog in verified-only mode
+   151→
+   152→Do not commit downloaded scanner binaries.
+   153→
+   154→If any genuine credential appears in history, report that it must be
+   155→rotated. Do not attempt to display it.
+   156→
+   157→Add tests or CI checks ensuring `.env` cannot be reintroduced.
+   158→
+   159→# 2. Fix Prisma generation on Vercel
+   160→
+   161→The latest Vercel build currently fails because the generated Prisma
+   162→client does not contain the updated schema models.
+   163→
+   164→Add a deterministic Prisma generation step.
+   165→
+   166→Use one deliberate strategy:
+   167→
+   168→    {
+   169→      "scripts": {
+   170→        "postinstall": "prisma generate",
+   171→        "build": "next build"
+   172→      }
+   173→    }
+   174→
+   175→or:
+   176→
+   177→    {
+   178→      "scripts": {
+   179→        "build": "prisma generate && next build"
+   180→      }
+   181→    }
+   182→
+   183→Prefer `postinstall` if compatible with the actual Vercel and Bun
+   184→installation flow.
+   185→
+   186→Verify:
+   187→
+   188→-   `bun install --frozen-lockfile`
+   189→-   Prisma generation
+   190→-   TypeScript
+   191→-   Next.js build
+   192→-   Vercel build
+   193→
+   194→Do not depend on a stale generated client.
+   195→
+   196→Do not commit generated Prisma client files from `node_modules`.
+   197→
+   198→The newest branch deployment must reach:
+   199→
+   200→`READY`
+   201→
+   202→# 3. Correct fixture environment detection
+   203→
+   204→Current fixture mode incorrectly treats all optimized builds as
+   205→production because it relies on:
+   206→
+   207→    process.env.NODE_ENV === "production"
+   208→
+   209→Vercel Preview also runs an optimized production build.
+   210→
+   211→Replace this with explicit deployment-environment detection.
+   212→
+   213→Use:
+   214→
+   215→    VERCEL_ENV=development
+   216→    VERCEL_ENV=preview
+   217→    VERCEL_ENV=production
+   218→
+   219→or a typed equivalent.
+   220→
+   221→Rules:
+   222→
+   223→## Local development
+   224→
+   225→Fixture mode may be enabled explicitly.
+   226→
+   227→## Vercel Preview
+   228→
+   229→Fixture mode may be enabled explicitly using a server-side environment
+   230→variable.
+   231→
+   232→## Vercel Production
+   233→
+   234→Fixture mode must always be rejected.
+   235→
+   236→Use a function such as:
+   237→
+   238→    export function canUseFixtureMode(): boolean
+   239→
+   240→Requirements:
+   241→
+   242→-   Server-only
+   243→-   No URL-query activation
+   244→-   No cookie activation
+   245→-   No browser-controlled activation
+   246→-   No production override
+   247→-   Explicit typed configuration errors
+   248→-   Clear environment badge
+   249→
+   250→Fix the error-message typo:
+   251→
+   252→    RESGUELOOP_FIXTURE_MODE
+   253→
+   254→to:
+   255→
+   256→    RESCUELOOP_FIXTURE_MODE
+   257→
+   258→Add tests for:
+   259→
+   260→-   Local fixture allowed
+   261→-   Preview fixture allowed
+   262→-   Production fixture blocked
+   263→-   Unconfigured mode
+   264→-   Whop mode
+   265→-   Fixture flag cannot be controlled by request input
+   266→
+   267→# 4. Complete every connected company route
+   268→
+   269→Remove all connected-route stubs.
+   270→
+   271→The following routes must become real fixture-backed, database-backed
+   272→product pages:
+   273→
+   274→    /companies/[companyId]/overview
+   275→    /companies/[companyId]/sync
+   276→    /companies/[companyId]/students
+   277→    /companies/[companyId]/campaigns
+   278→    /companies/[companyId]/insights
+   279→    /companies/[companyId]/value
+   280→    /companies/[companyId]/audit
+   281→    /companies/[companyId]/usage
+   282→
+   283→Do not leave:
+   284→
+   285→-   "Coming in Phase 2"
+   286→-   "What this page will show"
+   287→-   Placeholder cards
+   288→-   Lenient unauthenticated previews
+   289→-   Empty shells disguised as finished pages
+   290→
+   291→Every route must work in fixture mode using real PostgreSQL fixture
+   292→records and the same application services intended for future Whop data.
+   293→
+   294→## Connected overview
+   295→
+   296→Show:
+   297→
+   298→-   Installation status
+   299→-   Provider mode
+   300→-   Last successful sync
+   301→-   Last failed sync
+   302→-   Current candidate count
+   303→-   Draft intervention count
+   304→-   Approved intervention count
+   305→-   Pending creator-response count
+   306→-   Course-activity outcomes
+   307→-   Confirmed, associated and estimated values separately
+   308→-   Plan usage
+   309→-   Emergency pause
+   310→-   Prioritized creator actions
+   311→-   Source freshness
+   312→
+   313→Every number must link to the underlying records or filtered route.
+   314→
+   315→Do not display "recovered revenue" for fixture data.
+   316→
+   317→Use:
+   318→
+   319→`Illustrative fixture outcome`
+   320→
+   321→where appropriate.
+   322→
+   323→## Connected sync centre
+   324→
+   325→Show:
+   326→
+   327→-   Sync executions
+   328→-   Resource
+   329→-   Provider
+   330→-   Cursor/checkpoint
+   331→-   Started time
+   332→-   Completed time
+   333→-   State
+   334→-   Pages processed
+   335→-   Records read
+   336→-   Records created
+   337→-   Records updated
+   338→-   Records skipped
+   339→-   Structured failures
+   340→-   Retry count
+   341→-   Next retry
+   342→-   Job execution ID
+   343→-   Reconciliation summary
+   344→
+   345→Actions:
+   346→
+   347→-   Full initial sync
+   348→-   Courses sync
+   349→-   Products sync
+   350→-   Memberships sync
+   351→-   Course-progress sync
+   352→-   Reconciliation
+   353→-   Candidate detection
+   354→-   Retry failed stage
+   355→-   Cancel pending fixture sync where safe
+   356→
+   357→Do not label fixture synchronization as Whop synchronization.
+   358→
+   359→## Connected students
+   360→
+   361→Build:
+   362→
+   363→-   Search
+   364→-   Cursor pagination
+   365→-   Membership-status filters
+   366→-   Course filters
+   367→-   Progress filters
+   368→-   Intervention-state filters
+   369→-   Suppression filters
+   370→-   Student inspector
+   371→-   Membership history
+   372→-   Course progress
+   373→-   Interventions
+   374→-   Responses
+   375→-   Suppressions
+   376→-   Audit events
+   377→-   Source freshness
+   378→
+   379→Do not load all students in one query.
+   380→
+   381→## Connected campaigns
+   382→
+   383→Build real database-backed UI for:
+   384→
+   385→-   Campaign list
+   386→-   Campaign configuration
+   387→-   Activation Rescue rules
+   388→-   Version history
+   389→-   Manual-approval state
+   390→-   Quiet hours
+   391→-   Cooldown
+   392→-   Message limits
+   393→-   Mapped course/product
+   394→-   Candidate count
+   395→-   Draft interventions
+   396→-   Campaign pause
+   397→-   Planned campaign labels
+   398→
+   399→Only Activation Rescue should be operational.
+   400→
+   401→Mark other rescue types as planned.
+   402→
+   403→## Connected insights
+   404→
+   405→Build fixture-backed insights using stored data:
+   406→
+   407→-   Course funnel
+   408→-   Lesson-friction map
+   409→-   Blocker distribution
+   410→-   Sample size
+   411→-   Course-average comparison
+   412→-   Recommendation workflow states
+   413→-   Evidence timestamps
+   414→-   Data-quality warnings
+   415→
+   416→Do not fabricate statistical certainty from small samples.
+   417→
+   418→## Connected Value Ledger
+   419→
+   420→Build:
+   421→
+   422→-   Unattributed
+   423→-   Strongly associated
+   424→-   Confirmed
+   425→-   Estimated
+   426→-   Observed payment
+   427→-   Evidence chain
+   428→-   Policy version
+   429→-   Source event
+   430→-   Filters
+   431→-   Pagination
+   432→-   Export request
+   433→
+   434→Do not combine categories into one total.
+   435→
+   436→Fixture values must be visibly labelled.
+   437→
+   438→## Connected audit
+   439→
+   440→Build an immutable, cursor-paginated audit log:
+   441→
+   442→-   Timestamp
+   443→-   Actor
+   444→-   Actor type
+   445→-   Action
+   446→-   Object type
+   447→-   Object ID
+   448→-   Previous state
+   449→-   New state
+   450→-   Reason
+   451→-   Request ID
+   452→-   Job execution ID
+   453→-   Sync execution ID
+   454→-   Policy version
+   455→
+   456→Add filters.
+   457→
+   458→Normal product routes must not update or delete audit rows.
+   459→
+   460→## Connected usage
+   461→
+   462→Show:
+   463→
+   464→-   Current plan
+   465→-   Billing period
+   466→-   Monitored members
+   467→-   Courses
+   468→-   Active campaigns
+   469→-   Team seats
+   470→-   Candidates evaluated
+   471→-   Interventions created
+   472→-   Notifications accepted
+   473→-   Stored source events
+   474→-   Exports
+   475→-   Soft warnings
+   476→-   Hard limits
+   477→-   Plan overrides
+   478→
+   479→No checkout is needed yet.
+   480→
+   481→# 5. Remove lenient authorization from real connected pages
+   482→
+   483→`resolveStubAuth()` currently permits pages to render after
+   484→authentication failure.
+   485→
+   486→Delete it when no stubs remain.
+   487→
+   488→Every connected page must use a strict authorization flow.
+   489→
+   490→In Whop mode:
+   491→
+   492→    verify user token
+   493→    → verify company access
+   494→    → resolve organisation
+   495→    → verify organisation membership
+   496→    → execute tenant-scoped query
+   497→
+   498→In fixture mode:
+   499→
+   500→    verify fixture mode is allowed in this environment
+   501→    → resolve configured fixture company
+   502→    → create a typed fixture identity
+   503→    → execute the same tenant-scoped service
+   504→
+   505→Never let an arbitrary `companyId` select a fixture organisation.
+   506→
+   507→Fixture company IDs must be server-configured or seeded.
+   508→
+   509→A request changing the URL to another company must be rejected.
+   510→
+   511→# 6. Correct the outbox dispatch contract
+   512→
+   513→The current outbox may mark an event dispatched even when Inngest is
+   514→unconfigured because `sendInngestEvent()` can return silently.
+   515→
+   516→Replace the job-client contract.
+   517→
+   518→Use a typed result:
+   519→
+   520→    type JobDispatchResult =
+   521→      | {
+   522→          state: "accepted";
+   523→          externalEventId: string;
+   524→        }
+   525→      | {
+   526→          state: "unconfigured";
+   527→          retryable: false;
+   528→        }
+   529→      | {
+   530→          state: "failed";
+   531→          retryable: boolean;
+   532→          errorCode: string;
+   533→        };
+   534→
+   535→`sendInngestEvent()` must never return `void`.
+   536→
+   537→Only:
+   538→
+   539→    state = accepted
+   540→
+   541→may transition an outbox event to:
+   542→
+   543→    dispatched
+   544→
+   545→For `unconfigured`:
+   546→
+   547→-   Keep event pending
+   548→-   Record typed configuration failure
+   549→-   Show it in internal operations
+   550→-   Do not increment retries forever
+   551→-   Do not mark dispatched
+   552→
+   553→For retryable failure:
+   554→
+   555→-   Return to pending
+   556→-   Set `nextAttemptAt`
+   557→-   Increment attempt count
+   558→-   Use bounded exponential backoff
+   559→
+   560→For permanent failure:
+   561→
+   562→-   Move to dead letter
+   563→-   Preserve evidence
+   564→-   Notify internal operations
+   565→
+   566→Add tests proving:
+   567→
+   568→-   Unconfigured Inngest never produces `dispatched`
+   569→-   Provider failure never produces `dispatched`
+   570→-   Accepted event stores the external event ID
+   571→-   Retried work is not duplicated
+   572→
+   573→# 7. Make outbox claiming atomic
+   574→
+   575→Current workers can read the same pending event concurrently.
+   576→
+   577→Implement atomic claiming using PostgreSQL.
+   578→
+   579→Use one sound approach:
+   580→
+   581→## Option A --- Row locking
+   582→
+   583→    SELECT ...
+   584→    FOR UPDATE SKIP LOCKED
+   585→
+   586→inside a transaction.
+   587→
+   588→## Option B --- Atomic conditional update
+   589→
+   590→Claim rows only when:
+   591→
+   592→    state = pending
+   593→    AND lease expired or absent
+   594→
+   595→Persist:
+   596→
+   597→-   `claimedBy`
+   598→-   `claimedAt`
+   599→-   `leaseExpiresAt`
+   600→
+   601→Requirements:
+   602→
+   603→-   One worker owns one event
+   604→-   Crashed-worker leases expire
+   605→-   Retried workers may reclaim expired leases
+   606→-   A second worker cannot dispatch the same event
+   607→-   Accepted downstream calls remain idempotent
+   608→-   Batches are bounded
+   609→
+   610→Add concurrency integration tests using two simultaneous workers.
+   611→
+   612→# 8. Add durable synchronization records
+   613→
+   614→Create or complete models such as:
+   615→
+   616→    SyncExecution
+   617→    SyncStage
+   618→    SyncCheckpoint
+   619→    ReconciliationRun
+   620→
+   621→Persist:
+   622→
+   623→## SyncExecution
+   624→
+   625→-   Organisation
+   626→-   Provider
+   627→-   Environment
+   628→-   Trigger
+   629→-   Requested by
+   630→-   State
+   631→-   Started time
+   632→-   Completed time
+   633→-   Error summary
+   634→-   Job ID
+   635→
+   636→## SyncStage
+   637→
+   638→-   Resource type
+   639→-   State
+   640→-   Started time
+   641→-   Completed time
+   642→-   Pages processed
+   643→-   Records read
+   644→-   Records created
+   645→-   Records updated
+   646→-   Records skipped
+   647→-   Retry count
+   648→
+   649→## SyncCheckpoint
+   650→
+   651→-   Resource
+   652→-   Cursor
+   653→-   Source watermark
+   654→-   Last completed page
+   655→-   Updated time
+   656→-   Execution
+   657→-   Organisation
+   658→
+   659→Persist a checkpoint after every successfully committed page.
+   660→
+   661→A failure on page 90 must resume from page 91 or the last safe provider
+   662→cursor.
+   663→
+   664→Do not claim resumption merely because a function accepts a cursor
+   665→argument.
+   666→
+   667→# 9. Batch and bound synchronization
+   668→
+   669→Refactor the synchronization engine.
+   670→
+   671→Current per-record query loops are not appropriate for scale.
+   672→
+   673→For each page:
+   674→
+   675→1.  Normalize provider data.
+   676→2.  Validate the full page.
+   677→3.  Load existing external IDs in one bounded query.
+   678→4.  Split records into creates and updates.
+   679→5.  Use `createMany({ skipDuplicates: true })` where supported.
+   680→6.  Batch updates in a controlled transaction or bounded concurrency.
+   681→7.  Commit the page.
+   682→8.  Persist the checkpoint.
+   683→9.  Emit usage and audit data.
+   684→
+   685→Avoid:
+   686→
+   687→-   `findFirst` for every course
+   688→-   `findFirst` for every product
+   689→-   one student upsert plus one product query plus one membership upsert
+   690→    per item
+   691→-   N+1 reconciliation
+   692→-   N+1 candidate detection
+   693→-   swallowing all database errors as duplicate events
+   694→
+   695→## Status normalization
+   696→
+   697→Remove:
+   698→
+   699→    membership.status as any
+   700→
+   701→Create explicit normalization:
+   702→
+   703→    normalizeMembershipStatus(externalStatus)
+   704→
+   705→Unknown statuses must:
+   706→
+   707→-   Map to a safe explicit state
+   708→-   Produce a structured warning
+   709→-   Never silently become active
+   710→
+   711→## Correct result accounting
+   712→
+   713→An upsert update must increment:
+   714→
+   715→`recordsUpdated`
+   716→
+   717→not:
+   718→
+   719→`recordsCreated`
+   720→
+   721→Add tests for result counters.
+   722→
+   723→# 10. Make progress ingestion correctly idempotent
+   724→
+   725→Do not treat every `create()` error as a duplicate.
+   726→
+   727→Use:
+   728→
+   729→-   `createMany({ skipDuplicates: true })`
+   730→-   Explicit unique-constraint detection
+   731→-   Structured failure classification
+   732→
+   733→Persist:
+   734→
+   735→-   External interaction ID
+   736→-   Source timestamp
+   737→-   Received timestamp
+   738→-   Lesson ID when available
+   739→-   Lesson title
+   740→-   Action
+   741→-   Payload hash
+   742→-   Source version
+   743→
+   744→Recalculate course state using bounded aggregation.
+   745→
+   746→Handle:
+   747→
+   748→-   Duplicate interactions
+   749→-   Out-of-order interactions
+   750→-   Older events arriving after newer events
+   751→-   Course lesson count changes
+   752→-   Removed lessons
+   753→-   Students with activity but no qualifying membership
+   754→-   Membership arriving after course activity
+   755→
+   756→# 11. Optimize reconciliation
+   757→
+   758→Replace per-student membership queries with set-based queries.
+   759→
+   760→Use:
+   761→
+   762→-   Mapped product IDs
+   763→-   Student IDs with qualifying memberships
+   764→-   Student IDs with course activity
+   765→-   Set difference in the application after bounded queries, or
+   766→    equivalent SQL aggregation
+   767→
+   768→Persist reconciliation outcomes with:
+   769→
+   770→-   Classification
+   771→-   Student
+   772→-   Membership
+   773→-   Course
+   774→-   Mapping
+   775→-   Execution
+   776→-   Evidence
+   777→-   Resolution state
+   778→
+   779→Add pagination and summary counts.
+   780→
+   781→# 12. Correct candidate detection
+   782→
+   783→Candidate detection must operate only on the campaign's confirmed
+   784→mapping.
+   785→
+   786→Add explicit campaign-to-mapping relationship if missing.
+   787→
+   788→Required checks:
+   789→
+   790→-   Organisation active
+   791→-   Organisation not paused
+   792→-   Installation active
+   793→-   Campaign active
+   794→-   Campaign is Activation Rescue
+   795→-   Manual approval enabled
+   796→-   Campaign version exists
+   797→-   Confirmed mapping belongs to campaign
+   798→-   Membership belongs to mapped product
+   799→-   Membership active or trialing
+   800→-   Membership not ending
+   801→-   Activation delay elapsed
+   802→-   Course activity absent
+   803→-   No course-, campaign- or organisation-level suppression
+   804→-   No existing equivalent active intervention
+   805→-   Campaign cooldown clear
+   806→-   Organisation-wide message limit clear
+   807→-   Campaign message limit clear
+   808→-   Plan allows monitored member
+   809→-   Source data sufficiently fresh
+   810→
+   811→Persist one immutable snapshot per:
+   812→
+   813→    student
+   814→    + campaign version
+   815→    + eligibility window
+   816→
+   817→Add a unique idempotency key.
+   818→
+   819→Re-running candidate detection must not create duplicate snapshots.
+   820→
+   821→Candidate detection should run in batches and avoid N+1 queries.
+   822→
+   823→# 13. Complete plan enforcement
+   824→
+   825→Current enforcement is limited to monitored members and team seats.
+   826→
+   827→Implement server-side limits for:
+   828→
+   829→-   Courses
+   830→-   Monitored members
+   831→-   Active campaigns
+   832→-   Team seats
+   833→-   Candidates evaluated per period
+   834→-   Interventions created per period
+   835→-   Notifications accepted per period
+   836→-   Stored high-volume events
+   837→-   Exports
+   838→
+   839→Use a reservation pattern for strict concurrency.
+   840→
+   841→Example:
+   842→
+   843→    check entitlement
+   844→    → atomically reserve usage
+   845→    → perform mutation
+   846→    → commit usage event
+   847→
+   848→If the mutation fails:
+   849→
+   850→-   Release or reverse reservation safely
+   851→
+   852→Usage events must have stable idempotency keys.
+   853→
+   854→Prevent concurrent requests from exceeding a hard limit.
+   855→
+   856→Add plan-override support with:
+   857→
+   858→-   Reason
+   859→-   Creator
+   860→-   Internal operator
+   861→-   Start
+   862→-   Expiration
+   863→-   Audit event
+   864→
+   865→# 14. Build the private-pilot application
+   866→
+   867→Create:
+   868→
+   869→`/private-pilot`
+   870→
+   871→Fields:
+   872→
+   873→-   Full name
+   874→-   Business name
+   875→-   Whop business URL
+   876→-   Email
+   877→-   Approximate paying members
+   878→-   Courses
+   879→-   Typical membership price
+   880→-   Monthly new members
+   881→-   Current student-follow-up process
+   882→-   Primary retention concern
+   883→-   Preferred pilot timing
+   884→-   Consent to contact
+   885→
+   886→Implement:
+   887→
+   888→-   Zod validation
+   889→-   Honeypot
+   890→-   Rate limiting
+   891→-   PostgreSQL persistence
+   892→-   Safe no-database state
+   893→-   Duplicate submission protection
+   894→-   Success state
+   895→-   Internal review status
+   896→-   Privacy disclosure
+   897→
+   898→Create model:
+   899→
+   900→    PilotApplication
+   901→
+   902→States:
+   903→
+   904→-   New
+   905→-   Reviewing
+   906→-   Qualified
+   907→-   Contacted
+   908→-   Accepted
+   909→-   Rejected
+   910→-   Withdrawn
+   911→
+   912→Do not expose applications through creator routes.
+   913→
+   914→# 15. Build the internal operations workspace
+   915→
+   916→Create:
+   917→
+   918→`/internal`
+   919→
+   920→Require a dedicated internal role.
+   921→
+   922→Do not rely on obscurity or route naming.
+   923→
+   924→Build:
+   925→
+   926→    /internal
+   927→    /internal/organisations
+   928→    /internal/sync
+   929→    /internal/jobs
+   930→    /internal/dead-letters
+   931→    /internal/webhooks
+   932→    /internal/pilots
+   933→    /internal/usage
+   934→    /internal/data-requests
+   935→
+   936→Show:
+   937→
+   938→-   Organisations
+   939→-   Installation states
+   940→-   Provider modes
+   941→-   Paused organisations
+   942→-   Sync failures
+   943→-   Outbox backlog
+   944→-   Dead letters
+   945→-   Failed webhooks
+   946→-   Usage limits
+   947→-   Plan overrides
+   948→-   Pilot applications
+   949→-   Data export requests
+   950→-   Data deletion requests
+   951→-   System configuration state
+   952→
+   953→Actions:
+   954→
+   955→-   Retry safe sync
+   956→-   Retry outbox event
+   957→-   Requeue dead letter after explicit review
+   958→-   Pause organisation
+   959→-   Resume organisation
+   960→-   Disable delivery
+   961→-   Revoke tokens
+   962→-   Apply plan override
+   963→-   Start data export
+   964→-   Start deletion workflow
+   965→
+   966→Every internal action needs:
+   967→
+   968→-   Internal actor
+   969→-   Reason
+   970→-   Audit record
+   971→-   Tenant
+   972→-   Previous state
+   973→-   New state
+   974→
+   975→# 16. Complete data export and deletion
+   976→
+   977→Create user-facing routes or settings actions for:
+   978→
+   979→-   Request data export
+   980→-   Request data deletion
+   981→
+   982→Create models:
+   983→
+   984→    DataExportRequest
+   985→    DataDeletionRequest
+   986→
+   987→## Export
+   988→
+   989→Include:
+   990→
+   991→-   Organisation profile
+   992→-   Members
+   993→-   Courses
+   994→-   Products
+   995→-   Mappings
+   996→-   Campaigns
+   997→-   Interventions
+   998→-   Responses
+   999→-   Suppressions
+  1000→-   Value events
+  1001→-   Audit events where appropriate
+  1002→-   Usage data
+  1003→
+  1004→Use a durable job.
+  1005→
+  1006→Generate a time-limited download token.
+  1007→
+  1008→Do not expose storage paths directly.
+  1009→
+  1010→## Deletion
+  1011→
+  1012→Use stages:
+  1013→
+  1014→-   Requested
+  1015→-   Verified
+  1016→-   Scheduled
+  1017→-   Processing
+  1018→-   Completed
+  1019→-   Failed
+  1020→-   Cancelled
+  1021→
+  1022→On deletion:
+  1023→
+  1024→-   Pause organisation
+  1025→-   Stop pending interventions
+  1026→-   Revoke student tokens
+  1027→-   Remove or anonymize personal data according to documented policy
+  1028→-   Preserve only legally or operationally justified audit metadata
+  1029→-   Record completion evidence
+  1030→
+  1031→Do not claim deletion is implemented until automated tests verify it.
+  1032→
+  1033→# 17. Add observability
+  1034→
+  1035→Initialize Sentry only when configured.
+  1036→
+  1037→Capture:
+  1038→
+  1039→-   Unexpected API errors
+  1040→-   Sync failures
+  1041→-   Outbox failures
+  1042→-   Dead letters
+  1043→-   Webhook failures
+  1044→-   Tenant-access violations
+  1045→-   Database errors
+  1046→-   Provider failures
+  1047→
+  1048→Redact:
+  1049→
+  1050→-   Whop API keys
+  1051→-   Webhook secrets
+  1052→-   Database URLs
+  1053→-   User tokens
+  1054→-   Student tokens
+  1055→-   Full emails
+  1056→-   Raw provider payloads
+  1057→-   Full student message content
+  1058→
+  1059→Create a structured logger.
+  1060→
+  1061→Required fields:
+  1062→
+  1063→-   Request ID
+  1064→-   Organisation ID
+  1065→-   Actor ID
+  1066→-   Route
+  1067→-   Action
+  1068→-   Sync execution ID
+  1069→-   Job execution ID
+  1070→-   Outbox event ID
+  1071→-   Result
+  1072→-   Error code
+  1073→
+  1074→Add PostHog only for non-sensitive creator-product events.
+  1075→
+  1076→Do not send student free-text responses to analytics.
+  1077→
+  1078→# 18. Add Redis-backed rate limiting abstraction
+  1079→
+  1080→Create:
+  1081→
+  1082→    RateLimiter
+  1083→
+  1084→Adapters:
+  1085→
+  1086→-   Upstash Redis
+  1087→-   In-memory test adapter
+  1088→
+  1089→Protect:
+  1090→
+  1091→-   Pilot applications
+  1092→-   Manual sync
+  1093→-   Authentication-sensitive routes
+  1094→-   Student token access
+  1095→-   Student responses
+  1096→-   Exports
+  1097→-   Internal retry actions
+  1098→-   Plan mutations
+  1099→
+  1100→Rate-limit keys should include appropriate combinations of:
+  1101→
+  1102→-   IP
+  1103→-   Organisation
+  1104→-   User
+  1105→-   Student token hash
+  1106→-   Route/action
+  1107→
+  1108→Do not use raw student tokens in Redis keys.
+  1109→
+  1110→# 19. Upgrade GitHub Actions
+  1111→
+  1112→Replace the single all-in-one job with separate jobs.
+  1113→
+  1114→Required jobs:
+  1115→
+  1116→## Lint and typecheck
+  1117→
+  1118→    lint
+  1119→    typecheck
+  1120→
+  1121→## Unit tests
+  1122→
+  1123→Run Vitest unit tests.
+  1124→
+  1125→## PostgreSQL integration tests
+  1126→
+  1127→-   PostgreSQL 16 service
+  1128→-   Prisma generation
+  1129→-   Migration deploy
+  1130→-   Seed
+  1131→-   Integration suite
+  1132→-   Tenant isolation
+  1133→-   Concurrency tests
+  1134→-   Outbox tests
+  1135→-   Usage tests
+  1136→
+  1137→## Provider contract tests
+  1138→
+  1139→Run the same contract suite against:
+  1140→
+  1141→-   Fixture providers
+  1142→-   Whop adapters using mocked network responses
+  1143→
+  1144→## Production build
+  1145→
+  1146→Run:
+  1147→
+  1148→    bun install --frozen-lockfile
+  1149→    prisma generate
+  1150→    next build
+  1151→
+  1152→without real production credentials.
+  1153→
+  1154→## Playwright
+  1155→
+  1156→-   Start application
+  1157→-   Use fixture mode
+  1158→-   Run browser tests
+  1159→-   Upload screenshots, traces and videos only on failure
+  1160→
+  1161→## Security
+  1162→
+  1163→Run:
+  1164→
+  1165→-   Secret scan
+  1166→-   Dependency audit
+  1167→-   Dangerous-pattern checks
+  1168→-   Tracked environment-file check
+  1169→
+  1170→Do not require real Whop credentials in CI.
+  1171→
+  1172→# 20. Add PostgreSQL integration tests
+  1173→
+  1174→Create a real integration-test directory.
+  1175→
+  1176→Test:
+  1177→
+  1178→-   Initial migration
+  1179→-   Every tenant-owned model
+  1180→-   Cross-tenant reads
+  1181→-   Cross-tenant mutations
+  1182→-   Direct-ID attacks
+  1183→-   Mapping isolation
+  1184→-   Candidate isolation
+  1185→-   Intervention isolation
+  1186→-   Response isolation
+  1187→-   Audit isolation
+  1188→-   Usage isolation
+  1189→-   Outbox isolation
+  1190→-   Data export isolation
+  1191→-   Data deletion isolation
+  1192→-   Concurrent outbox claiming
+  1193→-   Concurrent plan-limit enforcement
+  1194→-   Duplicate sync pages
+  1195→-   Cursor resumption
+  1196→-   Duplicate candidate runs
+  1197→-   Webhook replay
+  1198→-   Out-of-order progress
+  1199→
+  1200→Do not use mocked Prisma for these tests.
+  1201→
+  1202→# 21. Add provider contract tests
+  1203→
+  1204→Create a normalized contract suite for:
+  1205→
+  1206→-   Identity
+  1207→-   Courses
+  1208→-   Products
+  1209→-   Memberships
+  1210→-   Progress
+  1211→-   Notifications
+  1212→
+  1213→Test:
+  1214→
+  1215→-   Pagination
+  1216→-   Cursor continuation
+  1217→-   Empty page
+  1218→-   Missing permission
+  1219→-   Authentication failure
+  1220→-   Rate limit
+  1221→-   Upstream unavailable
+  1222→-   Unknown status
+  1223→-   Partial source data
+  1224→-   Duplicate source record
+  1225→-   Out-of-order source timestamp
+  1226→
+  1227→Run the contract against fixture providers.
+  1228→
+  1229→Run it against mocked Whop SDK/HTTP responses.
+  1230→
+  1231→# 22. Add Playwright tests
+  1232→
+  1233→Add a real Playwright configuration and browser tests.
+  1234→
+  1235→Use the fixture provider and isolated PostgreSQL database.
+  1236→
+  1237→Cover:
+  1238→
+  1239→## Marketing
+  1240→
+  1241→-   Header at 1440, 1280, 1024, 768 and 390
+  1242→-   Mobile menu
+  1243→-   Hero CTA
+  1244→-   Pricing
+  1245→-   FAQ
+  1246→-   Legal links
+  1247→-   Private-pilot form
+  1248→
+  1249→## Demo
+  1250→
+  1251→-   Demo badge
+  1252→-   Queue selection
+  1253→-   Approve
+  1254→-   Schedule
+  1255→-   Dismiss
+  1256→-   Undo
+  1257→-   Reset demo
+  1258→-   Student experience
+  1259→-   No inconsistent values across routes
+  1260→
+  1261→## Connected fixture workspace
+  1262→
+  1263→-   Installation bootstrap
+  1264→-   Onboarding
+  1265→-   Course selection
+  1266→-   Product selection
+  1267→-   Mapping
+  1268→-   Initial sync
+  1269→-   Sync centre
+  1270→-   Candidate queue
+  1271→-   Candidate evidence
+  1272→-   Draft creation
+  1273→-   Approval-disabled provider state
+  1274→-   Students
+  1275→-   Campaigns
+  1276→-   Responses
+  1277→-   Insights
+  1278→-   Value
+  1279→-   Audit
+  1280→-   Usage
+  1281→-   Emergency pause
+  1282→-   Cross-tenant route rejection
+  1283→
+  1284→## Student
+  1285→
+  1286→-   Valid fixture token
+  1287→-   Expired token
+  1288→-   Revoked token
+  1289→-   Continue
+  1290→-   Blocker response
+  1291→-   Reminder request
+  1292→-   Human help
+  1293→-   Opt-out
+  1294→
+  1295→## Internal
+  1296→
+  1297→-   Unauthorized denial
+  1298→-   Pilot review
+  1299→-   Job retry
+  1300→-   Dead-letter review
+  1301→-   Organisation pause
+  1302→-   Plan override
+  1303→-   Export request
+  1304→-   Deletion request
+  1305→
+  1306→# 23. Add visual regression
+  1307→
+  1308→Capture stable screenshots for:
+  1309→
+  1310→    1440 × 1000
+  1311→    1280 × 900
+  1312→    1024 × 768
+  1313→    768 × 1024
+  1314→    390 × 844
+  1315→    360 × 800
+  1316→
+  1317→Pages:
+  1318→
+  1319→-   Marketing home
+  1320→-   Pricing
+  1321→-   Demo overview
+  1322→-   Demo queue
+  1323→-   Connected overview
+  1324→-   Connected onboarding
+  1325→-   Connected sync
+  1326→-   Connected queue
+  1327→-   Connected students
+  1328→-   Student rescue
+  1329→-   Internal operations
+  1330→
+  1331→Use deterministic fixture data.
+  1332→
+  1333→Avoid unstable timestamps and animations during screenshots.
+  1334→
+  1335→# 24. Add performance and scale verification
+  1336→
+  1337→Target the first practical commercial milestone:
+  1338→
+  1339→    100 organisations
+  1340→    250,000 monitored members
+  1341→    millions of source and audit events
+  1342→
+  1343→Do not claim this is proven without tests.
+  1344→
+  1345→Add repeatable fixture generation for:
+  1346→
+  1347→-   100 organisations
+  1348→-   2,500 memberships each
+  1349→-   Multiple courses per organisation
+  1350→-   Progress events
+  1351→-   Candidate snapshots
+  1352→-   Audit events
+  1353→-   Outbox backlog
+  1354→
+  1355→Measure:
+  1356→
+  1357→-   Course sync page
+  1358→-   Membership sync page
+  1359→-   Candidate batch
+  1360→-   Students list
+  1361→-   Queue list
+  1362→-   Audit list
+  1363→-   Usage calculation
+  1364→-   Outbox claim
+  1365→-   Reconciliation
+  1366→
+  1367→Record:
+  1368→
+  1369→-   Query count
+  1370→-   Duration
+  1371→-   Rows processed
+  1372→-   Peak memory where available
+  1373→
+  1374→Set reasonable budgets.
+  1375→
+  1376→Examples:
+  1377→
+  1378→    No unbounded query
+  1379→    No request returns more than 100 list records
+  1380→    No sync page exceeds configured batch size
+  1381→    No N+1 query growth proportional to membership count
+  1382→
+  1383→Do not optimize through unsafe caching.
+  1384→
+  1385→# 25. Correct documentation and PR claims
+  1386→
+  1387→Update PR #1 to reflect the actual branch.
+  1388→
+  1389→Include:
+  1390→
+  1391→-   Current commit count
+  1392→-   Current test counts
+  1393→-   Current routes
+  1394→-   Which routes are real
+  1395→-   Which provider is fixture
+  1396→-   Which features remain unverified
+  1397→-   Vercel preview status
+  1398→-   CI status
+  1399→-   Database migration status
+  1400→-   Real Whop status
+  1401→-   No notification sent
+  1402→
+  1403→Update:
+  1404→
+  1405→    README.md
+  1406→    SETUP_PRIVATE_PILOT.md
+  1407→
+  1408→Create:
+  1409→
+  1410→    docs/FRONTEND_COMPLETION.md
+  1411→    docs/PROVIDER_ARCHITECTURE.md
+  1412→    docs/SYNC_ARCHITECTURE.md
+  1413→    docs/OUTBOX_AND_JOBS.md
+  1414→    docs/SCALE_ARCHITECTURE.md
+  1415→    docs/OPERATIONS_RUNBOOK.md
+  1416→    docs/INCIDENT_RESPONSE.md
+  1417→    docs/DATA_LIFECYCLE.md
+  1418→    docs/TESTING.md
+  1419→    docs/SECURITY_MODEL.md
+  1420→
+  1421→Correct outdated Whop permission names.
+  1422→
+  1423→Do not write that something is "production-ready" without evidence.
+  1424→
+  1425→# 26. Remove misleading or unsafe implementation remnants
+  1426→
+  1427→Remove:
+  1428→
+  1429→-   Stub-page helpers
+  1430→-   "Coming in Phase 2"
+  1431→-   "What this page will show"
+  1432→-   Lenient auth wrappers
+  1433→-   Silent job dispatch
+  1434→-   Manual local-product fallback in connected mode
+  1435→-   Broad `as any`
+  1436→-   Catch-all duplicate handling
+  1437→-   Unbounded queries
+  1438→-   Dead buttons
+  1439→-   Empty user-menu actions presented as functional
+  1440→-   Incorrect `delivered` terminology
+  1441→-   Tracked environment files
+  1442→-   Stale PR claims
+  1443→
+  1444→Every visible button must:
+  1445→
+  1446→-   Work
+  1447→-   Be disabled with a reason
+  1448→-   Or be explicitly marked planned
+  1449→
+  1450→# 27. Git workflow
+  1451→
+  1452→Continue on:
+  1453→
+  1454→`feat/private-pilot-activation-rescue`
+  1455→
+  1456→All commits must resolve to:
+  1457→
+  1458→`witejackel-eng`
+  1459→
+  1460→Use focused commits:
+  1461→
+  1462→    security: remove tracked environment files
+  1463→    fix: generate Prisma client during Vercel builds
+  1464→    fix: support fixture mode only outside production
+  1465→    feat: replace connected route stubs with database views
+  1466→    fix: make outbox dispatch truthful and atomic
+  1467→    feat: persist resumable synchronization checkpoints
+  1468→    perf: batch synchronization and reconciliation
+  1469→    feat: enforce plans with atomic usage reservations
+  1470→    feat: add pilot application and internal operations
+  1471→    feat: add data export deletion and observability
+  1472→    test: add PostgreSQL and provider contract coverage
+  1473→    test: add Playwright and visual regression coverage
+  1474→    ci: split verification into production-grade jobs
+  1475→    docs: document completed frontend and scale foundation
+  1476→
+  1477→Do not force-push unless genuinely necessary.
+  1478→
+  1479→Do not merge PR #1.
+  1480→
+  1481→# 28. Required verification
+  1482→
+  1483→Run:
+  1484→
+  1485→    bun install --frozen-lockfile
+  1486→    bunx prisma generate
+  1487→    bunx prisma migrate deploy
+  1488→    bun run lint
+  1489→    bun run typecheck
+  1490→    bun run test
+  1491→    bun run test:integration
+  1492→    bun run test:contracts
+  1493→    bun run test:e2e
+  1494→    bun run build
+  1495→
+  1496→Add any missing scripts.
+  1497→
+  1498→Verify a clean environment without Whop credentials.
+  1499→
+  1500→Verify fixture mode in Preview.
+  1501→
+  1502→Verify fixture mode is blocked in Production.
+  1503→
+  1504→Verify the latest Vercel Preview is `READY`.
+  1505→
+  1506→# Final evidence report
+  1507→
+  1508→Return only verifiable results.
+  1509→
+  1510→## Repository
+  1511→
+  1512→-   PR URL
+  1513→-   Final full commit SHA
+  1514→-   Compare result against `main`
+  1515→-   Number of commits ahead
+  1516→-   Changed-file count
+  1517→-   Confirmation repo remains private
+  1518→-   Confirmation `.env` is not tracked
+  1519→-   Secret-scan result
+  1520→
+  1521→## Deployment
+  1522→
+  1523→-   Vercel preview URL
+  1524→-   Vercel state
+  1525→-   Deployment commit SHA
+  1526→-   Build-command output
+  1527→-   Prisma-generation output
+  1528→
+  1529→## Frontend
+  1530→
+  1531→-   Completed routes
+  1532→-   Confirmation no connected stubs remain
+  1533→-   Responsive widths tested
+  1534→-   Accessibility checks
+  1535→-   Playwright route coverage
+  1536→-   Visual-regression artifacts
+  1537→
+  1538→## Backend
+  1539→
+  1540→-   Outbox dispatch contract
+  1541→-   Atomic claim method
+  1542→-   Sync checkpoint model
+  1543→-   Batching strategy
+  1544→-   Candidate idempotency
+  1545→-   Plan-reservation method
+  1546→-   Rate limiter
+  1547→-   Internal operations routes
+  1548→-   Export/deletion workflows
+  1549→-   Observability adapters
+  1550→
+  1551→## Testing
+  1552→
+  1553→-   Lint
+  1554→-   Typecheck
+  1555→-   Unit-test count
+  1556→-   PostgreSQL integration-test count
+  1557→-   Provider contract-test count
+  1558→-   Playwright-test count
+  1559→-   Security checks
+  1560→-   GitHub Actions URL and job statuses
+  1561→
+  1562→## Scale
+  1563→
+  1564→-   Fixture organisations tested
+  1565→-   Memberships tested
+  1566→-   Events tested
+  1567→-   Query-count results
+  1568→-   Batch-size results
+  1569→-   Outbox concurrency result
+  1570→-   Plan-concurrency result
+  1571→-   Known limits
+  1572→
+  1573→## Genuine remaining limitations
+  1574→
+  1575→These should primarily be:
+  1576→
+  1577→-   No real Whop credentials
+  1578→-   No real Whop company installation
+  1579→-   No live Whop permission approval
+  1580→-   No real provider synchronization
+  1581→-   No real notification
+  1582→-   No real student contacted
+  1583→-   No real pilot outcomes
+  1584→-   No billing checkout
+  1585→
+  1586→Do not claim real Whop integration.
+  1587→
+  1588→# Final definition of done
+  1589→
+  1590→This phase is complete only when:
+  1591→
+  1592→1.  `.env` is not tracked.
+  1593→2.  Secret scanning passes.
+  1594→3.  Vercel Preview is `READY`.
+  1595→4.  Prisma generates during Vercel builds.
+  1596→5.  Fixture mode works in Preview.
+  1597→6.  Fixture mode is impossible in Production.
+  1598→7.  No connected page is a stub.
+  1599→8.  Connected pages require strict authorization.
+  1600→9.  Outbox dispatch cannot falsely succeed.
+  1601→10. Outbox claiming is concurrency-safe.
+  1602→11. Sync checkpoints are persisted.
+  1603→12. Sync can resume after interruption.
+  1604→13. Synchronization uses bounded batches.
+  1605→14. Candidate detection is idempotent.
+  1606→15. Plan enforcement is atomic.
+  1607→16. Private-pilot application works.
+  1608→17. Internal operations workspace works.
+  1609→18. Data export works in fixture/integration tests.
+  1610→19. Data deletion works in fixture/integration tests.
+  1611→20. PostgreSQL tenant-isolation tests pass.
+  1612→21. Provider contract tests pass.
+  1613→22. Playwright tests pass.
+  1614→23. Security CI passes.
+  1615→24. GitHub Actions is green.
+  1616→25. PR #1 remains unmerged.
+  1617→26. No real Whop message is sent.
+  1618→27. No completion claim exceeds the evidence.
