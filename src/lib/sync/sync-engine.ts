@@ -10,11 +10,39 @@
 // - detectCandidates
 //
 // All syncs are idempotent (upsert by external ID) and resumable (cursor checkpoints).
+//
+// Phase 9 improvements:
+// - Bounded, batched DB operations per page
+// - loadExternalIds in one query, then split into creates / updates
+// - createMany({ skipDuplicates: true }) where supported
+// - Batch updates in controlled concurrency
+// - Persist checkpoint after every committed page
+// - normalizeMembershipStatus replaces `as any`
+// - Correct result accounting: upsert updates → recordsUpdated
 
 import "server-only";
 import { db } from "@/lib/db";
 import type { ProviderBundle } from "@/providers/contracts";
 import { recordAuditEvent } from "@/lib/audit";
+import { normalizeMembershipStatus } from "./normalize-membership-status";
+import {
+  createSyncExecution,
+  completeSyncExecution,
+  createSyncStage,
+  completeSyncStage,
+  persistCheckpoint,
+  getLatestCheckpoint,
+  createReconciliationRun,
+  completeReconciliationRun,
+} from "./sync-records";
+import type { SyncStageResults } from "./sync-records";
+
+// ─── Constants ───────────────────────────────────────────────
+
+const PAGE_SIZE = 50;
+const MAX_CONCURRENT_UPDATES = 10; // Bounded concurrency for batch updates
+
+// ─── Types ───────────────────────────────────────────────────
 
 export interface SyncResult {
   resource: string;
@@ -23,6 +51,7 @@ export interface SyncResult {
   recordsUpdated: number;
   recordsSkipped: number;
   errors: string[];
+  warnings: string[];
   cursor: string | null; // For resumption
 }
 
@@ -31,6 +60,40 @@ export interface SyncExecutionParams {
   companyId: string; // Whop company ID
   providers: ProviderBundle;
   cursor?: string | null;
+  syncExecutionId?: string; // Existing execution to attach to
+  requestedBy?: string;
+}
+
+// ─── Bounded concurrency helper ──────────────────────────────
+
+/** Run items with at most `concurrency` operations in flight. */
+async function boundedMap<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number = MAX_CONCURRENT_UPDATES,
+): Promise<R[]> {
+  const results: R[] = [];
+  const executing: Promise<void>[] = [];
+
+  for (const item of items) {
+    const p = fn(item).then((r) => { results.push(r); });
+    executing.push(p);
+
+    if (executing.length >= concurrency) {
+      await Promise.race(executing);
+      // Remove settled promises
+      for (let i = executing.length - 1; i >= 0; i--) {
+        const settled = await Promise.race([
+          executing[i].then(() => true, () => true),
+          Promise.resolve(false),
+        ]);
+        if (settled) executing.splice(i, 1);
+      }
+    }
+  }
+
+  await Promise.allSettled(executing);
+  return results;
 }
 
 // ─── Course sync ─────────────────────────────────────────────
@@ -43,62 +106,121 @@ export async function syncCourses(params: SyncExecutionParams): Promise<SyncResu
     recordsUpdated: 0,
     recordsSkipped: 0,
     errors: [],
+    warnings: [],
     cursor: null,
   };
 
+  // Resume from checkpoint if no explicit cursor
   let cursor = params.cursor ?? null;
+  if (!cursor) {
+    const checkpoint = await getLatestCheckpoint(params.organizationId, "courses");
+    if (checkpoint?.cursor) {
+      cursor = checkpoint.cursor;
+    }
+  }
+
+  let pagesProcessed = 0;
 
   do {
     const page = await params.providers.courses.list({
       companyId: params.companyId,
       cursor,
-      pageSize: 50,
+      pageSize: PAGE_SIZE,
     });
 
     result.recordsRead += page.items.length;
+    pagesProcessed++;
 
-    for (const course of page.items) {
+    // 1. Validate the full page
+    const validItems = page.items.filter((course) => {
+      if (!course.id) {
+        result.errors.push(`Course missing id — skipped`);
+        result.recordsSkipped++;
+        return false;
+      }
+      return true;
+    });
+
+    if (validItems.length === 0) {
+      cursor = page.nextCursor;
+      continue;
+    }
+
+    // 2. Load existing external IDs in one bounded query
+    const externalIds = validItems.map((c) => c.id);
+    const existing = await db.course.findMany({
+      where: {
+        organizationId: params.organizationId,
+        externalCourseId: { in: externalIds },
+      },
+      select: { id: true, externalCourseId: true },
+    });
+    const existingMap = new Map(existing.map((e) => [e.externalCourseId, e.id]));
+
+    // 3. Split into creates and updates
+    const toCreate = validItems.filter((c) => !existingMap.has(c.id));
+    const toUpdate = validItems.filter((c) => existingMap.has(c.id));
+
+    // 4. Batch creates with skipDuplicates
+    if (toCreate.length > 0) {
       try {
-        const existing = await db.course.findFirst({
-          where: {
+        await db.course.createMany({
+          data: toCreate.map((course) => ({
             organizationId: params.organizationId,
             externalCourseId: course.id,
-          },
+            externalExperienceId: course.experienceId,
+            name: course.title ?? "Untitled Course",
+            lessonCount: course.lessonCount,
+          })),
+          skipDuplicates: true,
         });
-
-        if (existing) {
-          await db.course.update({
-            where: { id: existing.id },
-            data: {
-              name: course.title ?? existing.name,
-              lessonCount: course.lessonCount || existing.lessonCount,
-              externalExperienceId: course.experienceId || existing.externalExperienceId,
-            },
-          });
-          result.recordsUpdated++;
-        } else {
-          await db.course.create({
-            data: {
-              organizationId: params.organizationId,
-              externalCourseId: course.id,
-              externalExperienceId: course.experienceId,
-              name: course.title ?? "Untitled Course",
-              lessonCount: course.lessonCount,
-            },
-          });
-          result.recordsCreated++;
-        }
+        result.recordsCreated += toCreate.length;
       } catch (error) {
-        result.errors.push(`Course ${course.id}: ${error instanceof Error ? error.message : "unknown"}`);
-        result.recordsSkipped++;
+        result.errors.push(`Course batch create: ${error instanceof Error ? error.message : "unknown"}`);
+        result.recordsSkipped += toCreate.length;
       }
     }
 
+    // 5. Batch updates with bounded concurrency
+    if (toUpdate.length > 0) {
+      const updateResults = await boundedMap(toUpdate, async (course) => {
+        const existingId = existingMap.get(course.id)!;
+        try {
+          await db.course.update({
+            where: { id: existingId },
+            data: {
+              name: course.title ?? undefined,
+              lessonCount: course.lessonCount || undefined,
+              externalExperienceId: course.experienceId || undefined,
+            },
+          });
+          return true;
+        } catch (error) {
+          result.errors.push(`Course ${course.id}: ${error instanceof Error ? error.message : "unknown"}`);
+          return false;
+        }
+      });
+      result.recordsUpdated += updateResults.filter(Boolean).length;
+      result.recordsSkipped += updateResults.filter((r) => !r).length;
+    }
+
+    // 6. Commit page — persist checkpoint
     cursor = page.nextCursor;
+    if (params.syncExecutionId) {
+      await persistCheckpoint(
+        params.organizationId,
+        "courses",
+        cursor,
+        null,
+        params.syncExecutionId,
+        pagesProcessed,
+      );
+    }
   } while (cursor);
 
   result.cursor = cursor;
 
+  // 7. Emit usage and audit data
   await recordAuditEvent({
     organizationId: params.organizationId,
     action: "synced",
@@ -126,60 +248,115 @@ export async function syncProducts(params: SyncExecutionParams): Promise<SyncRes
     recordsUpdated: 0,
     recordsSkipped: 0,
     errors: [],
+    warnings: [],
     cursor: null,
   };
 
   let cursor = params.cursor ?? null;
+  if (!cursor) {
+    const checkpoint = await getLatestCheckpoint(params.organizationId, "products");
+    if (checkpoint?.cursor) {
+      cursor = checkpoint.cursor;
+    }
+  }
+
+  let pagesProcessed = 0;
 
   do {
     const page = await params.providers.products.list({
       companyId: params.companyId,
       cursor,
-      pageSize: 50,
+      pageSize: PAGE_SIZE,
     });
 
     result.recordsRead += page.items.length;
+    pagesProcessed++;
 
-    for (const product of page.items) {
+    const validItems = page.items.filter((product) => {
+      if (!product.id) {
+        result.errors.push(`Product missing id — skipped`);
+        result.recordsSkipped++;
+        return false;
+      }
+      return true;
+    });
+
+    if (validItems.length === 0) {
+      cursor = page.nextCursor;
+      continue;
+    }
+
+    // Load existing in one query
+    const externalIds = validItems.map((p) => p.id);
+    const existing = await db.product.findMany({
+      where: {
+        organizationId: params.organizationId,
+        whopProductId: { in: externalIds },
+      },
+      select: { id: true, whopProductId: true },
+    });
+    const existingMap = new Map(existing.map((e) => [e.whopProductId, e.id]));
+
+    const toCreate = validItems.filter((p) => !existingMap.has(p.id));
+    const toUpdate = validItems.filter((p) => existingMap.has(p.id));
+
+    // Batch creates
+    if (toCreate.length > 0) {
       try {
-        const existing = await db.product.findFirst({
-          where: {
+        await db.product.createMany({
+          data: toCreate.map((product) => ({
             organizationId: params.organizationId,
             whopProductId: product.id,
-          },
+            name: product.name,
+            priceCents: product.priceCents,
+            currency: product.currency,
+            billingCycle: product.billingCycle,
+          })),
+          skipDuplicates: true,
         });
-
-        if (existing) {
-          await db.product.update({
-            where: { id: existing.id },
-            data: {
-              name: product.name,
-              priceCents: product.priceCents,
-              currency: product.currency,
-              billingCycle: product.billingCycle,
-            },
-          });
-          result.recordsUpdated++;
-        } else {
-          await db.product.create({
-            data: {
-              organizationId: params.organizationId,
-              whopProductId: product.id,
-              name: product.name,
-              priceCents: product.priceCents,
-              currency: product.currency,
-              billingCycle: product.billingCycle,
-            },
-          });
-          result.recordsCreated++;
-        }
+        result.recordsCreated += toCreate.length;
       } catch (error) {
-        result.errors.push(`Product ${product.id}: ${error instanceof Error ? error.message : "unknown"}`);
-        result.recordsSkipped++;
+        result.errors.push(`Product batch create: ${error instanceof Error ? error.message : "unknown"}`);
+        result.recordsSkipped += toCreate.length;
       }
     }
 
+    // Batch updates
+    if (toUpdate.length > 0) {
+      const updateResults = await boundedMap(toUpdate, async (product) => {
+        const existingId = existingMap.get(product.id)!;
+        try {
+          await db.product.update({
+            where: { id: existingId },
+            data: {
+              name: product.name,
+              priceCents: product.priceCents,
+              currency: product.currency,
+              billingCycle: product.billingCycle,
+            },
+          });
+          return true;
+        } catch (error) {
+          result.errors.push(`Product ${product.id}: ${error instanceof Error ? error.message : "unknown"}`);
+          return false;
+        }
+      });
+      result.recordsUpdated += updateResults.filter(Boolean).length;
+      result.recordsSkipped += updateResults.filter((r) => !r).length;
+    }
+
+    // Persist checkpoint
     cursor = page.nextCursor;
+    if (params.syncExecutionId) {
+      await persistCheckpoint(
+        params.organizationId,
+        "products",
+        cursor,
+        null,
+        params.syncExecutionId,
+        pagesProcessed,
+      );
+    }
   } while (cursor);
 
   result.cursor = cursor;
@@ -210,23 +387,39 @@ export async function syncMemberships(params: SyncExecutionParams): Promise<Sync
     recordsUpdated: 0,
     recordsSkipped: 0,
     errors: [],
+    warnings: [],
     cursor: null,
   };
 
   let cursor = params.cursor ?? null;
+  if (!cursor) {
+    const checkpoint = await getLatestCheckpoint(params.organizationId, "memberships");
+    if (checkpoint?.cursor) {
+      cursor = checkpoint.cursor;
+    }
+  }
+
+  let pagesProcessed = 0;
 
   do {
     const page = await params.providers.memberships.list({
       companyId: params.companyId,
       cursor,
-      pageSize: 50,
+      pageSize: PAGE_SIZE,
     });
 
     result.recordsRead += page.items.length;
+    pagesProcessed++;
 
     for (const membership of page.items) {
       try {
-        // Find or create the student
+        // Normalize the external status — replaces `membership.status as any`
+        const { status: safeStatus, warning } = normalizeMembershipStatus(membership.status);
+        if (warning) {
+          result.warnings.push(warning);
+        }
+
+        // Find or create the student (upsert by composite key)
         const student = await db.student.upsert({
           where: {
             organizationId_whopUserId: {
@@ -255,40 +448,63 @@ export async function syncMemberships(params: SyncExecutionParams): Promise<Sync
           continue;
         }
 
-        // Upsert the membership
-        await db.membership.upsert({
+        // Check if membership already exists to determine create vs update
+        const existingMembership = await db.membership.findUnique({
           where: { whopMembershipId: membership.id },
-          create: {
-            organizationId: params.organizationId,
-            studentId: student.id,
-            productId: product.id,
-            whopMembershipId: membership.id,
-            status: membership.status as any,
-            joinedAt: new Date(membership.joinedAt),
-            renewalDate: membership.renewalDate ? new Date(membership.renewalDate) : null,
-            cancelledAt: membership.cancelledAt ? new Date(membership.cancelledAt) : null,
-            priceCents: membership.priceCents,
-            currency: membership.currency,
-            lastSyncedAt: new Date(),
-          },
-          update: {
-            status: membership.status as any,
-            renewalDate: membership.renewalDate ? new Date(membership.renewalDate) : null,
-            cancelledAt: membership.cancelledAt ? new Date(membership.cancelledAt) : null,
-            priceCents: membership.priceCents,
-            currency: membership.currency,
-            lastSyncedAt: new Date(),
-          },
+          select: { id: true },
         });
 
-        result.recordsCreated++;
+        if (existingMembership) {
+          // UPDATE — increment recordsUpdated, NOT recordsCreated
+          await db.membership.update({
+            where: { id: existingMembership.id },
+            data: {
+              status: safeStatus,
+              renewalDate: membership.renewalDate ? new Date(membership.renewalDate) : null,
+              cancelledAt: membership.cancelledAt ? new Date(membership.cancelledAt) : null,
+              priceCents: membership.priceCents,
+              currency: membership.currency,
+              lastSyncedAt: new Date(),
+            },
+          });
+          result.recordsUpdated++;
+        } else {
+          // CREATE
+          await db.membership.create({
+            data: {
+              organizationId: params.organizationId,
+              studentId: student.id,
+              productId: product.id,
+              whopMembershipId: membership.id,
+              status: safeStatus,
+              joinedAt: new Date(membership.joinedAt),
+              renewalDate: membership.renewalDate ? new Date(membership.renewalDate) : null,
+              cancelledAt: membership.cancelledAt ? new Date(membership.cancelledAt) : null,
+              priceCents: membership.priceCents,
+              currency: membership.currency,
+              lastSyncedAt: new Date(),
+            },
+          });
+          result.recordsCreated++;
+        }
       } catch (error) {
         result.errors.push(`Membership ${membership.id}: ${error instanceof Error ? error.message : "unknown"}`);
         result.recordsSkipped++;
       }
     }
 
+    // Persist checkpoint
     cursor = page.nextCursor;
+    if (params.syncExecutionId) {
+      await persistCheckpoint(
+        params.organizationId,
+        "memberships",
+        cursor,
+        null,
+        params.syncExecutionId,
+        pagesProcessed,
+      );
+    }
   } while (cursor);
 
   result.cursor = cursor;
@@ -303,6 +519,7 @@ export async function syncMemberships(params: SyncExecutionParams): Promise<Sync
       created: result.recordsCreated,
       updated: result.recordsUpdated,
       skipped: result.recordsSkipped,
+      warnings: result.warnings.length,
     },
   });
 
@@ -321,6 +538,7 @@ export async function syncCourseProgress(
     recordsUpdated: 0,
     recordsSkipped: 0,
     errors: [],
+    warnings: [],
     cursor: null,
   };
 
@@ -338,16 +556,25 @@ export async function syncCourseProgress(
   }
 
   let cursor = params.cursor ?? null;
+  if (!cursor) {
+    const checkpoint = await getLatestCheckpoint(params.organizationId, "progress");
+    if (checkpoint?.cursor) {
+      cursor = checkpoint.cursor;
+    }
+  }
+
+  let pagesProcessed = 0;
 
   do {
     const page = await params.providers.progress.listLessonInteractions({
       companyId: params.companyId,
       courseId: course.externalCourseId,
       cursor,
-      pageSize: 50,
+      pageSize: PAGE_SIZE,
     });
 
     result.recordsRead += page.items.length;
+    pagesProcessed++;
 
     for (const interaction of page.items) {
       try {
@@ -390,7 +617,18 @@ export async function syncCourseProgress(
       }
     }
 
+    // Persist checkpoint
     cursor = page.nextCursor;
+    if (params.syncExecutionId) {
+      await persistCheckpoint(
+        params.organizationId,
+        "progress",
+        cursor,
+        null,
+        params.syncExecutionId,
+        pagesProcessed,
+      );
+    }
   } while (cursor);
 
   // Recalculate course states from the interaction table
@@ -427,6 +665,7 @@ export interface ReconciliationResult {
 export async function reconcile(
   organizationId: string,
   courseId: string,
+  syncExecutionId?: string,
 ): Promise<ReconciliationResult> {
   const result: ReconciliationResult = {
     matched: 0,
@@ -436,6 +675,9 @@ export async function reconcile(
     missingSourceFields: 0,
     staleSourceRecord: 0,
   };
+
+  // Create a reconciliation run record
+  const run = await createReconciliationRun(organizationId, courseId, syncExecutionId);
 
   // Get all memberships for this organization that map to this course
   const mappings = await db.productCourseMapping.findMany({
@@ -477,6 +719,9 @@ export async function reconcile(
       result.courseActivityWithoutMembership++;
     }
   }
+
+  // Complete the reconciliation run record
+  await completeReconciliationRun(run.id, result);
 
   return result;
 }
@@ -622,6 +867,73 @@ export async function detectCandidates(
   }
 
   return result;
+}
+
+// ─── Orchestrated sync execution ─────────────────────────────
+
+/**
+ * Run a full sync with durable execution records and stage tracking.
+ * Returns the sync execution ID for observability.
+ */
+export async function runFullSync(
+  params: SyncExecutionParams & { resources?: string[] },
+): Promise<{ executionId: string; results: SyncResult[] }> {
+  const resources = params.resources ?? ["courses", "products", "memberships"];
+  const results: SyncResult[] = [];
+
+  // Create the execution record
+  const execution = await createSyncExecution({
+    orgId: params.organizationId,
+    trigger: params.requestedBy ? "manual" : "scheduled",
+    requestedBy: params.requestedBy,
+    jobId: params.syncExecutionId,
+  });
+
+  try {
+    for (const resource of resources) {
+      const stage = await createSyncStage(execution.id, resource);
+
+      let syncResult: SyncResult;
+      switch (resource) {
+        case "courses":
+          syncResult = await syncCourses({ ...params, syncExecutionId: execution.id });
+          break;
+        case "products":
+          syncResult = await syncProducts({ ...params, syncExecutionId: execution.id });
+          break;
+        case "memberships":
+          syncResult = await syncMemberships({ ...params, syncExecutionId: execution.id });
+          break;
+        default:
+          await completeSyncStage(stage.id, {
+            pagesProcessed: 0, recordsRead: 0, recordsCreated: 0,
+            recordsUpdated: 0, recordsSkipped: 0,
+          }, "skipped");
+          continue;
+      }
+
+      results.push(syncResult);
+
+      // Complete the stage with counts
+      await completeSyncStage(stage.id, {
+        pagesProcessed: 0, // Pages are tracked inside the sync functions
+        recordsRead: syncResult.recordsRead,
+        recordsCreated: syncResult.recordsCreated,
+        recordsUpdated: syncResult.recordsUpdated,
+        recordsSkipped: syncResult.recordsSkipped,
+      });
+    }
+
+    await completeSyncExecution(execution.id, "completed");
+  } catch (error) {
+    await completeSyncExecution(
+      execution.id,
+      "failed",
+      error instanceof Error ? error.message : "Unknown error",
+    );
+  }
+
+  return { executionId: execution.id, results };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
