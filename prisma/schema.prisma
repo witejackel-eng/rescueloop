@@ -793,3 +793,136 @@ model DataDeletionRequest {
   @@index([organizationId])
   @@map("data_deletion_requests")
 }
+
+// ─── Transactional outbox ────────────────────────────────────
+// Ensures job dispatch is durable. When application state requires a job:
+// 1. Write the domain mutation + OutboxEvent in the same DB transaction
+// 2. Commit
+// 3. Dispatcher reads pending events and dispatches to Inngest
+// 4. Marks dispatched (or failed → dead-letter after retries)
+
+enum OutboxState {
+  pending
+  dispatching
+  dispatched
+  failed
+  dead_letter
+}
+
+model OutboxEvent {
+  id              String   @id @default(cuid())
+  organizationId  String
+  eventType       String   // e.g. "whop/webhook.received", "deliver/intervention"
+  payloadJson     Json
+  state           OutboxState @default(pending)
+  idempotencyKey  String   @unique
+  attemptCount    Int      @default(0)
+  maxAttempts     Int      @default(5)
+  lastError       String?
+  dispatchedAt    DateTime? @db.Timestamptz
+  nextAttemptAt   DateTime? @db.Timestamptz
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  @@index([organizationId, state])
+  @@index([state, nextAttemptAt])
+  @@map("outbox_events")
+}
+
+model JobExecution {
+  id              String   @id @default(cuid())
+  organizationId  String
+  outboxEventId   String?
+  jobType         String   // e.g. "process-webhook", "deliver-intervention"
+  runId           String?  // Inngest run ID
+  status          String   @default("pending") // pending, running, completed, failed
+  startedAt       DateTime? @db.Timestamptz
+  completedAt     DateTime? @db.Timestamptz
+  errorMessage    String?
+  metadataJson    Json?
+  createdAt       DateTime @default(now()) @db.Timestamptz
+
+  @@index([organizationId, status])
+  @@index([jobType, status])
+  @@map("job_executions")
+}
+
+model DeadLetterEvent {
+  id              String   @id @default(cuid())
+  organizationId  String
+  outboxEventId   String?
+  eventType       String
+  payloadJson     Json
+  errorMessage    String
+  attemptCount    Int
+  deadLetteredAt  DateTime @default(now()) @db.Timestamptz
+  createdAt       DateTime @default(now()) @db.Timestamptz
+
+  @@index([organizationId])
+  @@map("dead_letter_events")
+}
+
+// ─── Usage metering ──────────────────────────────────────────
+
+enum PlanTier {
+  rescue
+  growth
+  scale
+  internal
+  pilot
+}
+
+model Plan {
+  id              String   @id @default(cuid())
+  tier            PlanTier @unique
+  name            String
+  maxMonitoredMembers Int
+  maxCourses      Int
+  maxCampaigns    Int
+  maxSeats        Int
+  priceCents      Int
+  currency        String   @default("USD")
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  @@map("plans")
+}
+
+model SubscriptionEntitlement {
+  id              String   @id @default(cuid())
+  organizationId  String
+  planTier        PlanTier @default(pilot)
+  billingPeriodStart DateTime @db.Timestamptz
+  billingPeriodEnd   DateTime @db.Timestamptz
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  @@index([organizationId])
+  @@map("subscription_entitlements")
+}
+
+model UsageCounter {
+  id              String   @id @default(cuid())
+  organizationId  String
+  metric          String   // "monitored_members", "candidates_evaluated", etc.
+  period          String   // "2026-08" (YYYY-MM)
+  count           Int      @default(0)
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  @@unique([organizationId, metric, period])
+  @@index([organizationId, period])
+  @@map("usage_counters")
+}
+
+model UsageEvent {
+  id              String   @id @default(cuid())
+  organizationId  String
+  metric          String
+  increment       Int      @default(1)
+  metadataJson    Json?
+  occurredAt      DateTime @default(now()) @db.Timestamptz
+  createdAt       DateTime @default(now()) @db.Timestamptz
+
+  @@index([organizationId, metric, occurredAt])
+  @@map("usage_events")
+}
