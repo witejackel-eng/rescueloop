@@ -1,0 +1,38 @@
+# RescueLoop — Vercel Preview Deployment Check
+# Validates that Vercel can build the project for preview deployments
+# without requiring real production credentials.
+
+name: Vercel Preview Check
+
+on:
+  deployment_status:
+    types: [created]
+
+jobs:
+  verify-preview:
+    name: Verify Preview Deployment
+    runs-on: ubuntu-latest
+    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Preview'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify deployment URL
+        run: |
+          echo "Preview deployment succeeded: ${{ github.event.deployment_status.target_url }}"
+          echo "Environment: ${{ github.event.deployment.environment }}"
+
+      - name: Health check
+        run: |
+          url="${{ github.event.deployment_status.target_url }}"
+          if [ -n "$url" ]; then
+            status=$(curl -s -o /dev/null -w "%{http_code}" "$url" --max-time 30 || echo "000")
+            echo "HTTP status: $status"
+            if [ "$status" -ge "200" ] && [ "$status" -lt "400" ]; then
+              echo "Preview deployment is healthy"
+            else
+              echo "::warning::Preview deployment returned HTTP $status"
+            fi
+          else
+            echo "No deployment URL found — skipping health check"
+          fi
