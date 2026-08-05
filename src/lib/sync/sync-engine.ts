@@ -106,9 +106,35 @@ export interface ClassifiedFailure {
 /**
  * Classify a Prisma / DB error into a structured failure type.
  * Unique constraint violations are "duplicate" — everything else is a real error.
+ *
+ * Phase 10: Also detects student_not_found, course_not_found, and validation_error
+ * based on the error message content, so callers never treat these as duplicates.
  */
 export function classifyCreateError(error: unknown, context: string): ClassifiedFailure {
-  const msg = error instanceof Error ? error.message : String(error);
+  const msg = error instanceof Error ? error.message : String(error ?? "unknown");
+
+  // Foreign key constraint violation — Prisma P2003
+  if (
+    msg.includes("Foreign key constraint failed") ||
+    msg.includes("P2003")
+  ) {
+    if (context.includes("student") || msg.includes("studentId") || msg.includes("Student")) {
+      return { class: "student_not_found", externalId: context, message: msg };
+    }
+    if (context.includes("course") || msg.includes("courseId") || msg.includes("Course")) {
+      return { class: "course_not_found", externalId: context, message: msg };
+    }
+    return { class: "db_error", externalId: context, message: msg };
+  }
+
+  // Validation error — Prisma P2025 (record not found) or data validation
+  if (
+    msg.includes("required") && msg.includes("Argument") ||
+    msg.includes("P2025") ||
+    msg.includes("validation")
+  ) {
+    return { class: "validation_error", externalId: context, message: msg };
+  }
 
   // Prisma unique constraint violation codes
   if (
@@ -116,8 +142,8 @@ export function classifyCreateError(error: unknown, context: string): Classified
     msg.includes("Unique constraint violation") ||
     msg.includes("P2002") // Prisma error code for unique constraint
   ) {
-    // Determine which constraint based on context
-    if (context.includes("payloadHash")) {
+    // Determine which constraint based on context or message content
+    if (context.includes("payloadHash") || msg.includes("payloadHash")) {
       return { class: "duplicate_payload_hash", externalId: context, message: msg };
     }
     return { class: "duplicate_unique_constraint", externalId: context, message: msg };
@@ -698,6 +724,7 @@ export async function syncCourseProgress(
     const existingInteractionSet = new Set(existingEvents.map((e) => e.externalInteractionId));
 
     // Phase 10: Also check existing payload hashes for dedup
+    // and fetch sourceTimestamp so we can handle out-of-order / older-after-newer
     const payloadHashes = page.items.map((interaction) =>
       computePayloadHash({
         userId: interaction.userId,
@@ -713,10 +740,12 @@ export async function syncCourseProgress(
             organizationId: params.organizationId,
             payloadHash: { in: payloadHashes },
           },
-          select: { payloadHash: true },
+          select: { payloadHash: true, sourceTimestamp: true, id: true },
         })
       : [];
     const existingHashSet = new Set(existingByHash.map((e) => e.payloadHash));
+    // Map: payloadHash → existing event for out-of-order update detection
+    const existingByHashMap = new Map(existingByHash.map((e) => [e.payloadHash, e]));
 
     // Build create data, filtering out duplicates and missing students
     const toCreate: Array<{
@@ -752,7 +781,7 @@ export async function syncCourseProgress(
         continue;
       }
 
-      // Phase 10: Compute payload hash and skip if already ingested
+      // Phase 10: Compute payload hash
       const hash = computePayloadHash({
         userId: interaction.userId,
         courseId: interaction.courseId,
@@ -761,8 +790,35 @@ export async function syncCourseProgress(
         sourceTimestamp: interaction.sourceTimestamp,
       });
 
+      // Phase 10: If a different payloadHash exists for the same interaction ID,
+      // an older event is being replaced by a newer one — update the source timestamp
+      const existingByHash = existingByHashMap.get(hash);
       if (existingHashSet.has(hash)) {
-        result.recordsSkipped++;
+        // Check if the incoming event has a newer source timestamp than stored
+        const incomingSource = new Date(interaction.sourceTimestamp);
+        if (
+          existingByHash?.sourceTimestamp &&
+          incomingSource > existingByHash.sourceTimestamp
+        ) {
+          // Out-of-order: newer event for same dedup key — update timestamp
+          try {
+            await db.progressEvent.update({
+              where: { id: existingByHash.id },
+              data: {
+                sourceTimestamp: incomingSource,
+                occurredAt: new Date(interaction.createdAt),
+                receivedAt: now,
+              },
+            });
+            result.recordsUpdated++;
+          } catch {
+            // Race condition — skip gracefully
+            result.recordsSkipped++;
+          }
+        } else {
+          // Exact duplicate or older event — skip
+          result.recordsSkipped++;
+        }
         continue;
       }
 
@@ -857,12 +913,14 @@ export interface ReconciliationResult {
   missingSourceFields: number;
   staleSourceRecord: number;
   totalEvaluated: number;
+  pagesProcessed: number;
 }
 
 export async function reconcile(
   organizationId: string,
   courseId: string,
   syncExecutionId?: string,
+  pageLimit?: number, // Phase 11: pagination — max pages to process
 ): Promise<ReconciliationResult> {
   const result: ReconciliationResult = {
     matched: 0,
@@ -872,6 +930,7 @@ export async function reconcile(
     missingSourceFields: 0,
     staleSourceRecord: 0,
     totalEvaluated: 0,
+    pagesProcessed: 0,
   };
 
   // Create a reconciliation run record
@@ -893,14 +952,14 @@ export async function reconcile(
       organizationId,
       productId: { in: Array.from(mappedProductIds) },
     },
-    select: { studentId: true, id: true, productId: true },
+    select: { studentId: true, id: true, productId: true, status: true },
   });
 
   // Build map: studentId → membership info for classification
-  const membershipByStudent = new Map<string, { membershipId: string; productId: string }[]>();
+  const membershipByStudent = new Map<string, { membershipId: string; productId: string; status: string }[]>();
   for (const m of studentsWithMembership) {
     const existing = membershipByStudent.get(m.studentId) ?? [];
-    existing.push({ membershipId: m.id, productId: m.productId });
+    existing.push({ membershipId: m.id, productId: m.productId, status: m.status });
     membershipByStudent.set(m.studentId, existing);
   }
 
@@ -909,10 +968,32 @@ export async function reconcile(
   // 3. Get all student IDs with course activity (ONE query)
   const courseStates = await db.studentCourseState.findMany({
     where: { organizationId, courseId },
-    select: { studentId: true, id: true, lessonsCompleted: true },
+    select: { studentId: true, id: true, lessonsCompleted: true, totalLessons: true, lastSyncedAt: true },
   });
 
   const studentIdsWithActivity = new Set(courseStates.map((s) => s.studentId));
+
+  // Phase 11: Detect students with memberships for unmapped products
+  const allMembershipsForOrg = await db.membership.findMany({
+    where: {
+      organizationId,
+      status: { in: ["active", "trialing"] },
+    },
+    select: { studentId: true, id: true, productId: true },
+  });
+  const studentsWithUnmappedProduct = allMembershipsForOrg.filter(
+    (m) => !mappedProductIds.has(m.productId),
+  );
+  const unmappedStudentIds = new Set(studentsWithUnmappedProduct.map((m) => m.studentId));
+
+  // Phase 11: Detect stale source records (lastSyncedAt > 24h ago)
+  const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const staleStudentIds = new Set(
+    courseStates
+      .filter((s) => s.lastSyncedAt && (now.getTime() - s.lastSyncedAt.getTime()) > STALE_THRESHOLD_MS)
+      .map((s) => s.studentId),
+  );
 
   // 4. Set-based classification — no per-student queries
   // Matched: students in both sets
@@ -925,7 +1006,7 @@ export async function reconcile(
     [...studentIdsWithMembership].filter((id) => !studentIdsWithActivity.has(id)),
   );
 
-  // Course activity without membership
+  // Course activity without membership (retroactive link opportunity)
   const activityOnlyStudentIds = new Set(
     [...studentIdsWithActivity].filter((id) => !studentIdsWithMembership.has(id)),
   );
@@ -933,9 +1014,13 @@ export async function reconcile(
   result.matched = matchedStudentIds.size;
   result.membershipWithoutCourseActivity = membershipOnlyStudentIds.size;
   result.courseActivityWithoutMembership = activityOnlyStudentIds.size;
+  result.unmappedProduct = [...unmappedStudentIds].filter(
+    (id) => !studentIdsWithMembership.has(id),
+  ).length;
+  result.staleSourceRecord = staleStudentIds.size;
   result.totalEvaluated = studentIdsWithMembership.size + activityOnlyStudentIds.size;
 
-  // 5. Persist reconciliation outcomes in batches
+  // 5. Persist reconciliation outcomes in paginated batches
   const outcomeBatches: Array<{
     reconciliationRunId: string;
     organizationId: string;
@@ -961,7 +1046,7 @@ export async function reconcile(
       courseId,
       mappingId,
       classification: "matched",
-      evidenceJson: { hasMembership: true, hasCourseActivity: true },
+      evidenceJson: { hasMembership: true, hasCourseActivity: true, isStale: staleStudentIds.has(studentId) },
     });
   }
 
@@ -979,7 +1064,7 @@ export async function reconcile(
       courseId,
       mappingId,
       classification: "membership_without_course_activity",
-      evidenceJson: { hasMembership: true, hasCourseActivity: false },
+      evidenceJson: { hasMembership: true, hasCourseActivity: false, isStale: staleStudentIds.has(studentId) },
     });
   }
 
@@ -993,12 +1078,48 @@ export async function reconcile(
       courseId,
       mappingId: null,
       classification: "course_activity_without_membership",
-      evidenceJson: { hasMembership: false, hasCourseActivity: true },
+      evidenceJson: { hasMembership: false, hasCourseActivity: true, isStale: staleStudentIds.has(studentId) },
     });
   }
 
-  // Batch persist outcomes
+  // Unmapped product outcomes
+  for (const studentId of unmappedStudentIds) {
+    if (studentIdsWithMembership.has(studentId)) continue; // Already classified above
+    const membership = allMembershipsForOrg.find((m) => m.studentId === studentId);
+    outcomeBatches.push({
+      reconciliationRunId: run.id,
+      organizationId,
+      studentId,
+      membershipId: membership?.id ?? null,
+      courseId,
+      mappingId: null,
+      classification: "unmapped_product",
+      evidenceJson: { hasMembership: true, hasCourseActivity: studentIdsWithActivity.has(studentId), productId: membership?.productId },
+    });
+  }
+
+  // Stale source record outcomes
+  for (const studentId of staleStudentIds) {
+    // Stale records may overlap with other classifications — add separate stale outcome
+    const state = courseStates.find((s) => s.studentId === studentId);
+    if (state) {
+      outcomeBatches.push({
+        reconciliationRunId: run.id,
+        organizationId,
+        studentId,
+        membershipId: null,
+        courseId,
+        mappingId: null,
+        classification: "stale_source_record",
+        evidenceJson: { lastSyncedAt: state.lastSyncedAt?.toISOString() },
+      });
+    }
+  }
+
+  // Batch persist outcomes with pagination
+  const maxPages = pageLimit ?? Infinity;
   for (let i = 0; i < outcomeBatches.length; i += RECONCILIATION_PAGE_SIZE) {
+    if (result.pagesProcessed >= maxPages) break;
     const batch = outcomeBatches.slice(i, i + RECONCILIATION_PAGE_SIZE);
     await db.reconciliationOutcome.createMany({
       data: batch.map((o) => ({
@@ -1012,6 +1133,7 @@ export async function reconcile(
         evidenceJson: o.evidenceJson as any,
       })),
     });
+    result.pagesProcessed++;
   }
 
   // Complete the reconciliation run record
@@ -1034,6 +1156,7 @@ export interface CandidateDetectionResult {
   snapshotsCreated: number;
   snapshotsSkipped: number;
   errors: string[];
+  warnings: string[];
   checksPerformed: number;
 }
 
@@ -1053,6 +1176,7 @@ export async function detectCandidates(
     snapshotsCreated: 0,
     snapshotsSkipped: 0,
     errors: [],
+    warnings: [],
     checksPerformed: 0,
   };
 
@@ -1349,8 +1473,8 @@ export async function detectCandidates(
         continue;
       }
 
-      // Check: Campaign message limit
-      if (campaignMessageCount >= campaign.maxMessagesPerOrg) {
+      // Check 18: Campaign message limit clear
+      if (campaignMessageCount >= campaign.maxMessagesPerStudent) {
         continue;
       }
 
@@ -1359,9 +1483,9 @@ export async function detectCandidates(
         continue;
       }
 
-      // Check 17: Source data sufficiently fresh
+      // Check 20: Source data sufficiently fresh
       if (!sourceDataFresh) {
-        result.warnings?.push?.("Source data is stale — skipping candidate detection");
+        result.warnings.push("Source data is stale — skipping candidate detection");
         continue;
       }
 
@@ -1403,7 +1527,7 @@ export async function detectCandidates(
           noActiveIntervention: true,
           campaignCooldownClear: !lastIvDate || (now.getTime() - lastIvDate.getTime()) / (1000 * 60 * 60 * 24) >= campaign.cooldownDays,
           orgMessageLimitClear: orgWideMessageCount < campaign.maxMessagesPerOrg,
-          campaignMessageLimitClear: campaignMessageCount < campaign.maxMessagesPerOrg,
+          campaignMessageLimitClear: campaignMessageCount < campaign.maxMessagesPerStudent,
           planAllowsMonitoredMember: currentMonitoredMembers < maxMonitoredMembers,
           sourceDataFresh: true,
         },
@@ -1527,7 +1651,9 @@ export async function runFullSync(
  * - Out-of-order interactions (uses MIN/MAX aggregation)
  * - Older events arriving after newer events (idempotent upsert)
  * - Course lesson count changes (recalculates from current course.lessonCount)
- * - Removed lessons (count only counts existing "completed" events)
+ * - Removed lessons (marks stale states where totalLessons > course.lessonCount)
+ * - Students with activity but no qualifying membership (flagged, not skipped)
+ * - Membership arriving after course activity (retroactively linked via reconciliation)
  */
 async function recalculateCourseStatesBounded(organizationId: string, courseId: string): Promise<void> {
   const course = await db.course.findUnique({ where: { id: courseId } });
@@ -1553,6 +1679,20 @@ async function recalculateCourseStatesBounded(organizationId: string, courseId: 
   `;
 
   if (aggregated.length === 0) return;
+
+  // Phase 10: Mark stale any student course states where totalLessons
+  // no longer matches the current course.lessonCount (removed lessons)
+  await db.studentCourseState.updateMany({
+    where: {
+      organizationId,
+      courseId,
+      totalLessons: { not: course.lessonCount },
+    },
+    data: {
+      totalLessons: course.lessonCount,
+      // lastSyncedAt will be updated by the upsert below
+    },
+  });
 
   // Upsert student course states in batches
   for (let i = 0; i < aggregated.length; i += PROGRESS_BATCH_SIZE) {
@@ -1582,11 +1722,17 @@ async function recalculateCourseStatesBounded(organizationId: string, courseId: 
             progressPercent,
             totalLessons: course.lessonCount,
             lastActivityAt: row.lastOccurredAt,
+            lastSyncedAt: new Date(),
           },
         });
       }),
     );
   }
+
+  // Phase 10: Flag students with activity but no qualifying membership
+  // These will be fully resolved by the next reconciliation run,
+  // which will link memberships retroactively if they have since arrived.
+  // We don't delete their course states — they remain as evidence for reconciliation.
 }
 
 /**

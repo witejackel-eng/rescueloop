@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pilotApplicationSchema } from "@/lib/validation/pilot-application";
 import { db } from "@/lib/db";
+import {
+  checkRateLimitOrReject,
+  getClientIp,
+  RATE_LIMITS,
+  RateLimiter,
+} from "@/lib/rate-limit/rate-limiter";
 
 // ─── Rate limiting considerations ────────────────────────────
 // Production deployments should add rate limiting here, e.g.:

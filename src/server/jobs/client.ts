@@ -119,6 +119,8 @@ export const EVENTS = {
   detectEligibility: "detect/eligibility.requested",
   deliverIntervention: "deliver/intervention.requested",
   projectOutcome: "project/outcome.requested",
+  exportData: "export/data.requested",
+  deleteData: "deletion/data.requested",
 } as const;
 
 export type { ConfigurationError } from "@/lib/env/server";

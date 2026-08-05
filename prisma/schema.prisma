@@ -168,9 +168,20 @@ enum AuditAction {
 
 enum DataDeletionStatus {
   requested
+  verified
+  scheduled
   processing
   completed
+  failed
   cancelled
+}
+
+enum DataExportStatus {
+  Requested
+  Processing
+  Completed
+  Failed
+  Expired
 }
 
 enum PaymentStatus {
@@ -220,6 +231,7 @@ model Organization {
   valueEvents        ValueEvent[]
   suppressions       Suppression[]
   deletionRequests   DataDeletionRequest[]
+  exportRequests     DataExportRequest[]
   syncExecutions     SyncExecution[]
   syncCheckpoints    SyncCheckpoint[]
   reconciliationRuns ReconciliationRun[]
@@ -807,13 +819,35 @@ model DataDeletionRequest {
   requestedById  String?
   status         DataDeletionStatus @default(requested)
   reason         String?
+  verifiedAt     DateTime?          @db.Timestamptz
+  scheduledAt    DateTime?          @db.Timestamptz
+  processedAt    DateTime?          @db.Timestamptz
   requestedAt    DateTime           @default(now()) @db.Timestamptz
   completedAt    DateTime?          @db.Timestamptz
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([status])
   @@map("data_deletion_requests")
+}
+
+model DataExportRequest {
+  id                String           @id @default(cuid())
+  organizationId    String
+  requestedById     String?
+  status            DataExportStatus @default(Requested)
+  downloadToken     String           @unique // Opaque time-limited download token
+  downloadExpiresAt DateTime         @db.Timestamptz
+  createdAt         DateTime         @default(now()) @db.Timestamptz
+  completedAt       DateTime?        @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([downloadToken])
+  @@index([status])
+  @@map("data_export_requests")
 }
 
 // ─── Transactional outbox ────────────────────────────────────

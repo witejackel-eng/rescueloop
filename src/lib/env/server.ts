@@ -125,6 +125,25 @@ export function getObservabilityEnv(): ObservabilityEnv {
   return result.success ? result.data : {};
 }
 
+// ─── Upstash Redis (rate limiting) ─────────────────────────
+
+const upstashSchema = z.object({
+  UPSTASH_REDIS_REST_URL: z.string().trim().min(1).optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().trim().min(1).optional(),
+});
+
+export type UpstashEnv = z.infer<typeof upstashSchema>;
+
+export function getUpstashEnv(): UpstashEnv {
+  const result = upstashSchema.safeParse(process.env);
+  return result.success ? result.data : {};
+}
+
+export function isUpstashConfigured(): boolean {
+  const result = upstashSchema.safeParse(process.env);
+  return result.success && !!result.data.UPSTASH_REDIS_REST_URL && !!result.data.UPSTASH_REDIS_REST_TOKEN;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────
 
 function parseOrThrow<T>(schema: z.ZodSchema<T>, subsystem: string): T {
