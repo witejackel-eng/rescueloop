@@ -1,0 +1,777 @@
+     1→// Inngest job functions for the Activation Rescue workflow.
+     2→// Each function is durable, retryable, and idempotent.
+     3→//
+     4→// NOTE: Function definitions are created lazily via getJobFunctions() to
+     5→// avoid calling getInngestClient() at module import time, which would
+     6→// crash `next build` when Inngest is not configured.
+     7→
+     8→import "server-only";
+     9→import { getInngestClient, EVENTS, isInngestReady } from "./client";
+    10→import { db } from "@/lib/db";
+    11→import { getWhopClient } from "@/lib/whop/client";
+    12→import { recordAuditEvent } from "@/lib/audit";
+    13→import {
+    14→  createStudentAccessToken,
+    15→} from "@/lib/crypto/student-access-tokens";
+    16→import {
+    17→  classifyActivationProgressOutcome,
+    18→  createObservedPaymentValueEvent,
+    19→} from "@/lib/attribution/engine";
+    20→
+    21→// ─── Job function definitions (lazy) ─────────────────────────
+    22→
+    23→/**
+    24→ * Create and return the Inngest job functions.
+    25→ * Call this only when Inngest is configured — it calls getInngestClient().
+    26→ */
+    27→export function getJobFunctions(): any[] {
+    28→  if (!isInngestReady()) return [];
+    29→  const client = getInngestClient();
+    30→
+    31→  const processWebhook = client.createFunction(
+    32→  {
+    33→    id: "process-webhook",
+    34→    retries: 5,
+    35→  },
+    36→  { event: EVENTS.webhookReceived },
+    37→  async ({ event, step }) => {
+    38→    const { receiptId } = event.data as { receiptId: string };
+    39→
+    40→    // Step 1: Mark as processing (idempotent — skip if already processed)
+    41→    await step.run("mark-processing", async () => {
+    42→      const receipt = await db.webhookReceipt.findUnique({
+    43→        where: { id: receiptId },
+    44→      });
+    45→      if (!receipt || receipt.status === "processed") {
+    46→        return { skipped: true };
+    47→      }
+    48→      await db.webhookReceipt.update({
+    49→        where: { id: receiptId },
+    50→        data: { status: "processing", attemptCount: { increment: 1 } },
+    51→      });
+    52→      return { skipped: false };
+    53→    });
+    54→
+    55→    const receipt = await db.webhookReceipt.findUnique({
+    56→      where: { id: receiptId },
+    57→    });
+    58→
+    59→    if (!receipt || receipt.status === "processed") {
+    60→      return { processed: false, reason: "already-processed" };
+    61→    }
+    62→
+    63→    // The payload is the verified event object from whopsdk.webhooks.unwrap()
+    64→    const eventPayload = receipt.payloadJson as any;
+    65→
+    66→    try {
+    67→      // Step 2: Process based on event type (using official Whop event names)
+    68→      if (receipt.eventType === "membership.activated") {
+    69→        await step.run("handle-membership-activated", async () => {
+    70→          await handleMembershipActivated(receipt.organizationId, eventPayload, receiptId);
+    71→        });
+    72→      } else if (receipt.eventType === "membership.deactivated") {
+    73→        await step.run("handle-membership-deactivated", async () => {
+    74→          await handleMembershipDeactivated(receipt.organizationId, eventPayload, receiptId);
+    75→        });
+    76→      } else if (receipt.eventType === "payment.succeeded") {
+    77→        await step.run("handle-payment-succeeded", async () => {
+    78→          await handlePaymentSucceeded(receipt.organizationId, eventPayload, receiptId);
+    79→        });
+    80→      } else if (receipt.eventType === "course_lesson_interaction.completed") {
+    81→        await step.run("handle-lesson-completed", async () => {
+    82→          await handleLessonCompleted(receipt.organizationId, eventPayload, receiptId);
+    83→        });
+    84→      } else {
+    85→        // Unknown event type — acknowledge but don't process
+    86→        await step.run("mark-unknown", async () => {
+    87→          await db.webhookReceipt.update({
+    88→            where: { id: receiptId },
+    89→            data: {
+    90→              status: "processed",
+    91→              processedAt: new Date(),
+    92→              lastError: `Unknown event type: ${receipt.eventType}`,
+    93→            },
+    94→          });
+    95→        });
+    96→        return { processed: false, reason: "unknown-event-type" };
+    97→      }
+    98→
+    99→      // Step 3: Mark as processed
+   100→      await step.run("mark-processed", async () => {
+   101→        await db.webhookReceipt.update({
+   102→          where: { id: receiptId },
+   103→          data: { status: "processed", processedAt: new Date() },
+   104→        });
+   105→      });
+   106→
+   107→      return { processed: true };
+   108→    } catch (error) {
+   109→      // Record the failure
+   110→      await db.webhookReceipt.update({
+   111→        where: { id: receiptId },
+   112→        data: {
+   113→          status: "failed",
+   114→          lastError: error instanceof Error ? error.message : "Unknown error",
+   115→        },
+   116→      });
+   117→      throw error; // Let Inngest retry
+   118→    }
+   119→  },
+   120→);
+   121→
+   122→/**
+   123→ * Intervention delivery job.
+   124→ *
+   125→ * Before every send, transactionally re-checks ALL safety conditions.
+   126→ * Uses a stable idempotency key derived from the intervention + delivery
+   127→ * version (never Date.now()).
+   128→ *
+   129→ * Calls the official notification API:
+   130→ *   whopsdk.notifications.create({ experience_id, title, content, user_ids, rest_path })
+   131→ *
+   132→ * Records the delivery state truthfully:
+   133→ * - api_accepted: the Whop API returned { success: true }
+   134→ * - failed: the API threw or returned { success: false }
+   135→ * - stopped_before_send: a safety check failed
+   136→ *
+   137→ * Does NOT set the intervention to "delivered" merely because the API
+   138→ * accepted the notification. Uses "notification_accepted" as the
+   139→ * intervention state.
+   140→ */
+   141→  const deliverIntervention = client.createFunction(
+   142→  {
+   143→    id: "deliver-intervention",
+   144→    retries: 3,
+   145→  },
+   146→  { event: EVENTS.deliverIntervention },
+   147→  async ({ event, step }) => {
+   148→    const { interventionId } = event.data as { interventionId: string };
+   149→
+   150→    const intervention = await db.intervention.findUnique({
+   151→      where: { id: interventionId },
+   152→      include: {
+   153→        student: { include: { memberships: { include: { product: { include: { mappings: true } } } }, suppressions: true } },
+   154→        campaign: true,
+   155→        organization: true,
+   156→      },
+   157→    });
+   158→
+   159→    if (!intervention) {
+   160→      return { delivered: false, reason: "not-found" };
+   161→    }
+   162→
+   163→    // Stable idempotency key — derived from intervention + campaign version, NOT Date.now()
+   164→    const idempotencyKey = `delivery-${intervention.id}-${intervention.campaignVersionId ?? "v1"}`;
+   165→
+   166→    // Check for existing accepted delivery (idempotency)
+   167→    const existingAttempt = await db.deliveryAttempt.findUnique({
+   168→      where: { idempotencyKey },
+   169→    });
+   170→
+   171→    if (existingAttempt?.state === "api_accepted") {
+   172→      return { delivered: false, reason: "already-accepted" };
+   173→    }
+   174→
+   175→    // ─── Transactional safety re-checks ───────────────────────
+   176→    const safetyResult = await step.run("safety-recheck", async () => {
+   177→      return await db.$transaction(async (tx) => {
+   178→        const checks: { condition: string; passed: boolean; detail: string }[] = [];
+   179→
+   180→        // 1. Organisation status is active
+   181→        const orgActive = intervention.organization.status === "active";
+   182→        checks.push({ condition: "org_status_active", passed: orgActive, detail: orgActive ? "OK" : `Status: ${intervention.organization.status}` });
+   183→
+   184→        // 2. Organisation global pause is false
+   185→        const notPaused = !intervention.organization.isPaused;
+   186→        checks.push({ condition: "org_not_paused", passed: notPaused, detail: notPaused ? "OK" : "Organisation is paused" });
+   187→
+   188→        // 3. Campaign is active
+   189→        const campaignActive = intervention.campaign.status === "active";
+   190→        checks.push({ condition: "campaign_active", passed: campaignActive, detail: campaignActive ? "OK" : `Campaign: ${intervention.campaign.status}` });
+   191→
+   192→        // 4. Campaign uses manual approval
+   193→        const manualApproval = intervention.campaign.approvalMode === "manual";
+   194→        checks.push({ condition: "manual_approval", passed: manualApproval, detail: manualApproval ? "OK" : "Automatic mode not supported in pilot" });
+   195→
+   196→        // 5. Intervention is approved or validly scheduled
+   197→        const approved = intervention.state === "approved" || intervention.state === "scheduled";
+   198→        checks.push({ condition: "intervention_approved", passed: approved, detail: approved ? "OK" : `State: ${intervention.state}` });
+   199→
+   200→        // 6. scheduledFor <= now (if scheduled)
+   201→        const now = new Date();
+   202→        const scheduledOk = !intervention.scheduledFor || intervention.scheduledFor <= now;
+   203→        checks.push({ condition: "schedule_reached", passed: scheduledOk, detail: scheduledOk ? "OK" : "Scheduled for future" });
+   204→
+   205→        // 7. Relevant membership is active or trialing
+   206→        const activeMembership = intervention.student.memberships.find(
+   207→          (m) => m.status === "active" || m.status === "trialing",
+   208→        );
+   209→        const membershipActive = !!activeMembership;
+   210→        checks.push({ condition: "membership_active", passed: membershipActive, detail: membershipActive ? `Status: ${activeMembership!.status}` : "No active membership" });
+   211→
+   212→        // 8. Membership grants access to the mapped course
+   213→        const productMapsToCourse = activeMembership?.product.mappings.some(
+   214→          (m) => m.isConfirmed,
+   215→        ) ?? false;
+   216→        checks.push({ condition: "product_mapped", passed: productMapsToCourse, detail: productMapsToCourse ? "OK" : "Product not mapped to course" });
+   217→
+   218→        // 9. Membership is not cancelling or ending
+   219→        const notCancelling = activeMembership?.status !== "cancelling" && activeMembership?.status !== "cancelled";
+   220→        checks.push({ condition: "membership_not_ending", passed: notCancelling, detail: notCancelling ? "OK" : "Membership ending" });
+   221→
+   222→        // 10. No course interaction has appeared (check progress events)
+   223→        const progressEvents = await tx.progressEvent.findFirst({
+   224→          where: { studentId: intervention.studentId, organizationId: intervention.organizationId },
+   225→        });
+   226→        const noCourseActivity = !progressEvents;
+   227→        checks.push({ condition: "no_course_activity", passed: noCourseActivity, detail: noCourseActivity ? "OK" : "Course activity detected — stopping" });
+   228→
+   229→        // 11. No student response has appeared
+   230→        const existingResponse = await tx.studentResponse.findFirst({
+   231→          where: { interventionId: intervention.id },
+   232→        });
+   233→        const noResponse = !existingResponse;
+   234→        checks.push({ condition: "no_student_response", passed: noResponse, detail: noResponse ? "OK" : "Student already responded" });
+   235→
+   236→        // 12. No organisation/course suppression exists
+   237→        const notSuppressed = intervention.student.suppressions.length === 0;
+   238→        checks.push({ condition: "not_suppressed", passed: notSuppressed, detail: notSuppressed ? "OK" : "Student opted out" });
+   239→
+   240→        // 13. Campaign cooldown has elapsed
+   241→        const cooldownDays = intervention.campaign.cooldownDays;
+   242→        const lastIntervention = await tx.intervention.findFirst({
+   243→          where: {
+   244→            studentId: intervention.studentId,
+   245→            organizationId: intervention.organizationId,
+   246→            id: { not: intervention.id },
+   247→          },
+   248→          orderBy: { createdAt: "desc" },
+   249→        });
+   250→        const cooldownElapsed = !lastIntervention ||
+   251→          (now.getTime() - lastIntervention.createdAt.getTime()) / (1000 * 60 * 60 * 24) >= cooldownDays;
+   252→        checks.push({ condition: "cooldown_elapsed", passed: cooldownElapsed, detail: cooldownElapsed ? "OK" : `Within ${cooldownDays}-day cooldown` });
+   253→
+   254→        // 14. Maximum messages in the configured period has not been reached
+   255→        const maxMessages = intervention.campaign.maxMessagesPerStudent;
+   256→        const recentInterventions = await tx.intervention.count({
+   257→          where: {
+   258→            studentId: intervention.studentId,
+   259→            organizationId: intervention.organizationId,
+   260→            campaignId: intervention.campaignId,
+   261→            createdAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
+   262→            state: { in: ["delivered", "notification_accepted"] },
+   263→          },
+   264→        });
+   265→        const underMaxMessages = recentInterventions < maxMessages;
+   266→        checks.push({ condition: "under_max_messages", passed: underMaxMessages, detail: underMaxMessages ? `${recentInterventions}/${maxMessages}` : `Max reached: ${recentInterventions}/${maxMessages}` });
+   267→
+   268→        // 15. Current student-local time is outside quiet hours
+   269→        // (Simplified — real implementation would use student timezone)
+   270→        const quietHoursOk = checkQuietHours(intervention.campaign.quietHoursStart, intervention.campaign.quietHoursEnd, now);
+   271→        checks.push({ condition: "outside_quiet_hours", passed: quietHoursOk, detail: quietHoursOk ? "OK" : "Within quiet hours" });
+   272→
+   273→        // 16. No equivalent active intervention exists
+   274→        const equivalentActive = await tx.intervention.findFirst({
+   275→          where: {
+   276→            studentId: intervention.studentId,
+   277→            organizationId: intervention.organizationId,
+   278→            campaignId: intervention.campaignId,
+   279→            id: { not: intervention.id },
+   280→            state: { in: ["approved", "scheduled", "queued", "delivered", "notification_accepted"] },
+   281→          },
+   282→        });
+   283→        const noEquivalent = !equivalentActive;
+   284→        checks.push({ condition: "no_equivalent_active", passed: noEquivalent, detail: noEquivalent ? "OK" : "Equivalent intervention exists" });
+   285→
+   286→        // 17. Stable idempotency key has not already been accepted
+   287→        const existingAccepted = await tx.deliveryAttempt.findUnique({
+   288→          where: { idempotencyKey },
+   289→        });
+   290→        const notAlreadyAccepted = !existingAccepted || existingAccepted.state !== "api_accepted";
+   291→        checks.push({ condition: "idempotency_clear", passed: notAlreadyAccepted, detail: notAlreadyAccepted ? "OK" : "Already accepted" });
+   292→
+   293→        const allPassed = checks.every((c) => c.passed);
+   294→
+   295→        // Create the delivery attempt record inside the transaction
+   296→        if (!allPassed) {
+   297→          await tx.deliveryAttempt.create({
+   298→            data: {
+   299→              interventionId: intervention.id,
+   300→              state: "stopped_before_send",
+   301→              idempotencyKey,
+   302→              errorMessage: JSON.stringify(checks.filter((c) => !c.passed)),
+   303→            },
+   304→          });
+   305→          await tx.intervention.update({
+   306→            where: { id: intervention.id },
+   307→            data: { state: "stopped" },
+   308→          });
+   309→        }
+   310→
+   311→        return { allPassed, checks, activeMembership };
+   312→      });
+   313→    });
+   314→
+   315→    if (!safetyResult.allPassed) {
+   316→      await recordAuditEvent({
+   317→        organizationId: intervention.organizationId,
+   318→        action: "updated",
+   319→        objectType: "intervention",
+   320→        objectId: intervention.id,
+   321→        interventionId: intervention.id,
+   322→        previousState: intervention.state,
+   323→        newState: "stopped",
+   324→        reason: "Safety check failed at delivery time",
+   325→        metadata: { checks: safetyResult.checks },
+   326→      });
+   327→      return { delivered: false, reason: "safety-check-failed" };
+   328→    }
+   329→
+   330→    // ─── Generate opaque student access token ─────────────────
+   331→    const tokenResult = await createStudentAccessToken({
+   332→      organizationId: intervention.organizationId,
+   333→      interventionId: intervention.id,
+   334→      studentId: intervention.studentId,
+   335→      expiresInSeconds: 7 * 24 * 60 * 60, // 7 days
+   336→    });
+   337→
+   338→    const restPath = `rescue/${tokenResult.token}`;
+   339→
+   340→    // ─── Send the notification via the official API ───────────
+   341→    const message = intervention.messageEdited ?? intervention.messagePreview;
+   342→
+   343→    try {
+   344→      const sendResult = await step.run("send-notification", async () => {
+   345→        // Find the course to get the externalExperienceId
+   346→        const course = await db.course.findFirst({
+   347→          where: { organizationId: intervention.organizationId },
+   348→        });
+   349→
+   350→        if (!course?.externalExperienceId) {
+   351→          throw new Error("Course has no externalExperienceId — cannot send notification");
+   352→        }
+   353→
+   354→        // Call the official Whop notification API
+   355→        const result = await getWhopClient().notifications.create({
+   356→          experience_id: course.externalExperienceId,
+   357→          title: "Continue your course",
+   358→          content: message,
+   359→          user_ids: [intervention.student.whopUserId],
+   360→          rest_path: restPath,
+   361→        });
+   362→
+   363→        return result;
+   364→      });
+   365→
+   366→      // Record the delivery attempt truthfully
+   367→      if (sendResult.success) {
+   368→        await db.deliveryAttempt.create({
+   369→          data: {
+   370→            interventionId: intervention.id,
+   371→            state: "api_accepted", // API accepted — NOT "delivered"
+   372→            idempotencyKey,
+   373→            apiAcceptedAt: new Date(),
+   374→          },
+   375→        });
+   376→
+   377→        // Set intervention state to "notification_accepted" — NOT "delivered"
+   378→        // because API acceptance ≠ confirmed delivery
+   379→        await db.intervention.update({
+   380→          where: { id: intervention.id },
+   381→          data: { state: "notification_accepted", sentAt: new Date() },
+   382→        });
+   383→
+   384→        await recordAuditEvent({
+   385→          organizationId: intervention.organizationId,
+   386→          action: "delivered",
+   387→          objectType: "intervention",
+   388→          objectId: intervention.id,
+   389→          interventionId: intervention.id,
+   390→          newState: "notification_accepted",
+   391→          reason: "Whop API accepted the notification",
+   392→        });
+   393→
+   394→        return { delivered: true, apiAccepted: true };
+   395→      } else {
+   396→        // API returned success: false
+   397→        await db.deliveryAttempt.create({
+   398→          data: {
+   399→            interventionId: intervention.id,
+   400→            state: "failed",
+   401→            idempotencyKey,
+   402→            failedAt: new Date(),
+   403→            errorMessage: "Whop API returned success: false",
+   404→          },
+   405→        });
+   406→
+   407→        return { delivered: false, reason: "api-rejected" };
+   408→      }
+   409→    } catch (error) {
+   410→      // Record failure
+   411→      await db.deliveryAttempt.upsert({
+   412→        where: { idempotencyKey },
+   413→        create: {
+   414→          interventionId: intervention.id,
+   415→          state: "failed",
+   416→          idempotencyKey,
+   417→          failedAt: new Date(),
+   418→          errorMessage: error instanceof Error ? error.message : "Unknown error",
+   419→        },
+   420→        update: {
+   421→          state: "failed",
+   422→          failedAt: new Date(),
+   423→          errorMessage: error instanceof Error ? error.message : "Unknown error",
+   424→        },
+   425→      });
+   426→
+   427→      throw error; // Let Inngest retry with backoff
+   428→    }
+   429→  },
+   430→);
+   431→
+   432→  return [processWebhook, deliverIntervention];
+   433→}
+   434→
+   435→// ─── Quiet hours check ───────────────────────────────────────
+   436→
+   437→function checkQuietHours(start: string, end: string, now: Date): boolean {
+   438→  // Simplified: check if current hour is within the quiet period.
+   439→  // Real implementation would use the student's timezone.
+   440→  const currentHour = now.getHours();
+   441→  const startHour = parseInt(start.split(":")[0]);
+   442→  const endHour = parseInt(end.split(":")[0]);
+   443→
+   444→  if (startHour < endHour) {
+   445→    // e.g., 12:00 - 14:00
+   446→    return currentHour < startHour || currentHour >= endHour;
+   447→  } else {
+   448→    // Overnight: e.g., 20:00 - 08:00
+   449→    return currentHour < endHour || currentHour >= startHour;
+   450→  }
+   451→}
+   452→
+   453→// ─── Typed webhook event handlers ────────────────────────────
+   454→
+   455→async function handleMembershipActivated(
+   456→  organizationId: string,
+   457→  event: any,
+   458→  webhookReceiptId: string,
+   459→) {
+   460→  const membership = event.data;
+   461→  const whopUserId = (membership as any).user?.id ?? (membership as any).member?.id;
+   462→
+   463→  if (!whopUserId) return;
+   464→
+   465→  // Find or create the student
+   466→  const student = await db.student.upsert({
+   467→    where: {
+   468→      organizationId_whopUserId: { organizationId, whopUserId },
+   469→    },
+   470→    create: {
+   471→      organizationId,
+   472→      whopUserId,
+   473→    },
+   474→    update: {},
+   475→  });
+   476→
+   477→  // Find the product
+   478→  const product = await db.product.findFirst({
+   479→    where: { whopProductId: (membership as any).product?.id ?? "" },
+   480→  });
+   481→
+   482→  if (!product) return;
+   483→
+   484→  // Create or update the membership
+   485→  await db.membership.upsert({
+   486→    where: { whopMembershipId: membership.id },
+   487→    create: {
+   488→      organizationId,
+   489→      studentId: student.id,
+   490→      productId: product.id,
+   491→      whopMembershipId: membership.id,
+   492→      status: "active",
+   493→      joinedAt: new Date(membership.created_at),
+   494→      renewalDate: (membership as any).renewal_period_end_date ? new Date((membership as any).renewal_period_end_date) : null,
+   495→      priceCents: (membership as any).plan?.price ?? 0,
+   496→      lastSyncedAt: new Date(),
+   497→    },
+   498→    update: {
+   499→      status: "active",
+   500→      lastSyncedAt: new Date(),
+   501→    },
+   502→  });
+   503→
+   504→  // Record the event
+   505→  await db.membershipEvent.create({
+   506→    data: {
+   507→      organizationId,
+   508→      membershipId: membership.id, // Note: this is the Whop ID; the DB uses a separate ID
+   509→      eventType: "activated",
+   510→      occurredAt: new Date(event.timestamp),
+   511→      webhookReceiptId,
+   512→    },
+   513→  });
+   514→}
+   515→
+   516→async function handleMembershipDeactivated(
+   517→  organizationId: string,
+   518→  event: any,
+   519→  webhookReceiptId: string,
+   520→) {
+   521→  const membership = event.data;
+   522→
+   523→  // Update membership status
+   524→  const dbMembership = await db.membership.findUnique({
+   525→    where: { whopMembershipId: membership.id },
+   526→  });
+   527→
+   528→  if (!dbMembership) return;
+   529→
+   530→  await db.membership.update({
+   531→    where: { id: dbMembership.id },
+   532→    data: {
+   533→      status: "cancelled",
+   534→      cancelledAt: new Date(event.timestamp),
+   535→      lastSyncedAt: new Date(),
+   536→    },
+   537→  });
+   538→
+   539→  // Stop any pending interventions for this student
+   540→  await db.intervention.updateMany({
+   541→    where: {
+   542→      studentId: dbMembership.studentId,
+   543→      organizationId,
+   544→      state: { in: ["approved", "scheduled", "queued"] },
+   545→    },
+   546→    data: { state: "stopped" },
+   547→  });
+   548→
+   549→  // Record the event
+   550→  await db.membershipEvent.create({
+   551→    data: {
+   552→      organizationId,
+   553→      membershipId: dbMembership.id,
+   554→      eventType: "deactivated",
+   555→      occurredAt: new Date(event.timestamp),
+   556→      webhookReceiptId,
+   557→    },
+   558→  });
+   559→}
+   560→
+   561→async function handlePaymentSucceeded(
+   562→  organizationId: string,
+   563→  event: any,
+   564→  webhookReceiptId: string,
+   565→) {
+   566→  const payment = event.data;
+   567→  const whopMembershipId = (payment as any).membership?.id;
+   568→
+   569→  if (!whopMembershipId) return;
+   570→
+   571→  const membership = await db.membership.findUnique({
+   572→    where: { whopMembershipId },
+   573→  });
+   574→
+   575→  if (!membership) return;
+   576→
+   577→  // Record the payment event (idempotent via unique whopPaymentId)
+   578→  await db.paymentEvent.upsert({
+   579→    where: { whopPaymentId: payment.id },
+   580→    create: {
+   581→      organizationId,
+   582→      membershipId: membership.id,
+   583→      whopPaymentId: payment.id,
+   584→      status: "succeeded",
+   585→      amountCents: (payment as any).amount ?? 0,
+   586→      occurredAt: new Date(event.timestamp),
+   587→      webhookReceiptId,
+   588→    },
+   589→    update: {},
+   590→  });
+   591→
+   592→  // For Activation Rescue, ordinary payments are NOT confirmed revenue.
+   593→  // Record as "observed subsequent payment" with estimated attribution.
+   594→  const recentInterventions = await db.intervention.findMany({
+   595→    where: {
+   596→      organizationId,
+   597→      studentId: membership.studentId,
+   598→      state: { in: ["notification_accepted", "delivered"] },
+   599→      sentAt: { lt: new Date(event.timestamp) },
+   600→    },
+   601→  });
+   602→
+   603→  for (const intervention of recentInterventions) {
+   604→    // Check if course activity occurred
+   605→    const progressEvent = await db.progressEvent.findFirst({
+   606→      where: {
+   607→        studentId: membership.studentId,
+   608→        organizationId,
+   609→        occurredAt: { gt: intervention.sentAt ?? new Date(0) },
+   610→      },
+   611→    });
+   612→
+   613→    await createObservedPaymentValueEvent({
+   614→      organizationId,
+   615→      interventionId: intervention.id,
+   616→      studentId: membership.studentId,
+   617→      paymentEventId: payment.id, // Unique — prevents duplicate attribution
+   618→      amountCents: (payment as any).amount ?? 0,
+   619→      courseActivityOccurred: !!progressEvent,
+   620→      paymentSucceededAt: new Date(event.timestamp),
+   621→      interventionDeliveredAt: intervention.sentAt,
+   622→    });
+   623→  }
+   624→}
+   625→
+   626→async function handleLessonCompleted(
+   627→  organizationId: string,
+   628→  event: any,
+   629→  webhookReceiptId: string,
+   630→) {
+   631→  const interaction = event.data;
+   632→  const whopUserId = (interaction as any).user?.id;
+   633→  const courseId = (interaction as any).course?.id;
+   634→  const lessonId = (interaction as any).lesson?.id;
+   635→  const interactionId = interaction.id; // Whop's unique interaction ID
+   636→
+   637→  if (!whopUserId || !courseId) return;
+   638→
+   639→  const student = await db.student.findFirst({
+   640→    where: { organizationId, whopUserId },
+   641→  });
+   642→
+   643→  if (!student) return;
+   644→
+   645→  const course = await db.course.findFirst({
+   646→    where: { organizationId, externalCourseId: courseId },
+   647→  });
+   648→
+   649→  if (!course) return;
+   650→
+   651→  // Record the progress event with the unique external interaction ID.
+   652→  // The unique constraint prevents the same lesson interaction from being counted twice.
+   653→  try {
+   654→    await db.progressEvent.create({
+   655→      data: {
+   656→        organizationId,
+   657→        studentId: student.id,
+   658→        courseId: course.id,
+   659→        externalInteractionId: interactionId,
+   660→        lessonIndex: 0, // Whop doesn't provide an index; we use the interaction ID for uniqueness
+   661→        lessonTitle: (interaction as any).lesson?.title ?? null,
+   662→        action: "completed",
+   663→        occurredAt: new Date(event.timestamp),
+   664→        webhookReceiptId,
+   665→      },
+   666→    });
+   667→  } catch {
+   668→    // Unique constraint violation — this interaction was already recorded.
+   669→    // This is expected behavior for idempotent processing.
+   670→    return;
+   671→  }
+   672→
+   673→  // Recalculate the student's course state from authoritative data
+   674→  // (don't blindly increment — recalculate from the interaction table)
+   675→  const completedCount = await db.progressEvent.count({
+   676→    where: {
+   677→      studentId: student.id,
+   678→      courseId: course.id,
+   679→      action: "completed",
+   680→    },
+   681→  });
+   682→
+   683→  // Update the student course state (recalculate, don't increment)
+   684→  const existingState = await db.studentCourseState.findUnique({
+   685→    where: {
+   686→      studentId_courseId: { studentId: student.id, courseId: course.id },
+   687→    },
+   688→  });
+   689→
+   690→  const progressPercent = course.lessonCount > 0
+   691→    ? Math.round((completedCount / course.lessonCount) * 100)
+   692→    : 0;
+   693→
+   694→  const occurredAt = new Date(event.timestamp);
+   695→
+   696→  // Only update lastActivityAt if the incoming event is later
+   697→  // (handle out-of-order webhooks)
+   698→  const shouldUpdateLastActivity =
+   699→    !existingState?.lastActivityAt || occurredAt > existingState.lastActivityAt;
+   700→
+   701→  await db.studentCourseState.upsert({
+   702→    where: {
+   703→      studentId_courseId: { studentId: student.id, courseId: course.id },
+   704→    },
+   705→    create: {
+   706→      organizationId,
+   707→      studentId: student.id,
+   708→      courseId: course.id,
+   709→      progressPercent,
+   710→      lessonsCompleted: completedCount,
+   711→      totalLessons: course.lessonCount,
+   712→      firstActivityAt: occurredAt,
+   713→      lastActivityAt: occurredAt,
+   714→    },
+   715→    update: {
+   716→      lessonsCompleted: completedCount, // Recalculated, not incremented
+   717→      progressPercent,
+   718→      lastActivityAt: shouldUpdateLastActivity ? occurredAt : undefined,
+   719→    },
+   720→  });
+   721→
+   722→  // Check for recent interventions to attribute
+   723→  const recentInterventions = await db.intervention.findMany({
+   724→    where: {
+   725→      studentId: student.id,
+   726→      organizationId,
+   727→      state: { in: ["notification_accepted", "delivered"] },
+   728→      sentAt: { gte: new Date(occurredAt.getTime() - 14 * 24 * 60 * 60 * 1000) },
+   729→    },
+   730→  });
+   731→
+   732→  for (const intervention of recentInterventions) {
+   733→    const result = classifyActivationProgressOutcome({
+   734→      interventionDeliveredAt: intervention.sentAt,
+   735→      courseStartedAt: occurredAt,
+   736→      progressResumedAt: occurredAt,
+   737→    });
+   738→
+   739→    if (result.state !== "unattributed") {
+   740→      // Update intervention outcome
+   741→      await db.intervention.update({
+   742→        where: { id: intervention.id },
+   743→        data: {
+   744→          outcomeState: "progress_resumed",
+   745→          attributionState: result.state,
+   746→          recoveredAt: occurredAt,
+   747→        },
+   748→      });
+   749→
+   750→      // Create a value event (strongly_associated, $0 — no financial value)
+   751→      const valueEvent = await db.valueEvent.create({
+   752→        data: {
+   753→          organizationId,
+   754→          interventionId: intervention.id,
+   755→          studentId: student.id,
+   756→          event: "Course activity resumed after notification",
+   757→          attributionLevel: result.state,
+   758→          amountCents: 0, // No financial value claimed
+   759→          formula: result.formula,
+   760→          policyVersion: result.policyVersion,
+   761→        },
+   762→      });
+   763→
+   764→      // Store the evidence chain
+   765→      await db.attributionEvidence.createMany({
+   766→        data: result.evidence.map((e) => ({
+   767→          valueEventId: valueEvent.id,
+   768→          evidenceType: e.eventType,
+   769→          evidenceRef: e.timestamp,
+   770→          timestamp: new Date(e.timestamp),
+   771→          metadataJson: { detail: e.detail },
+   772→        })),
+   773→      });
+   774→    }
+   775→  }
+   776→}
+   777→

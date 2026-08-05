@@ -1,0 +1,1745 @@
+     1→// Synchronization engine — syncs external provider data into the database.
+     2→// Uses the provider contracts so it works with both fixture and Whop providers.
+     3→//
+     4→// Each sync function is a separate durable workflow:
+     5→// - syncCourses
+     6→// - syncProducts
+     7→// - syncMemberships
+     8→// - syncCourseProgress
+     9→// - reconcile
+    10→// - detectCandidates
+    11→//
+    12→// All syncs are idempotent (upsert by external ID) and resumable (cursor checkpoints).
+    13→//
+    14→// Phase 9 improvements:
+    15→// - Bounded, batched DB operations per page
+    16→// - loadExternalIds in one query, then split into creates / updates
+    17→// - createMany({ skipDuplicates: true }) where supported
+    18→// - Batch updates in controlled concurrency
+    19→// - Persist checkpoint after every committed page
+    20→// - normalizeMembershipStatus replaces `as any`
+    21→// - Correct result accounting: upsert updates → recordsUpdated
+    22→//
+    23→// Phase 10 improvements:
+    24→// - Progress ingestion uses createMany({ skipDuplicates: true }) for batch
+    25→// - Structured failure classification (duplicate vs real error)
+    26→// - Persists: externalInteractionId, sourceTimestamp, receivedAt,
+    27→//   lessonId, lessonTitle, action, payloadHash, sourceVersion
+    28→// - Bounded aggregation for recalculateCourseStates
+    29→// - Handles: duplicates, out-of-order, older-after-newer, lesson count changes
+    30→//
+    31→// Phase 11 improvements:
+    32→// - Set-based reconciliation replaces per-student N+1 queries
+    33→// - Persists reconciliation outcomes with classification + resolution state
+    34→// - Pagination and summary counts
+    35→//
+    36→// Phase 12 improvements:
+    37→// - Candidate detection operates only on campaign's confirmed mapping
+    38→// - All 17 eligibility checks verified
+    39→// - Explicit campaign-to-mapping relationship
+    40→// - Immutable snapshots with unique idempotency key
+    41→// - Batch queries, no N+1
+    42→
+    43→import "server-only";
+    44→import { db } from "@/lib/db";
+    45→import type { ProviderBundle } from "@/providers/contracts";
+    46→import { recordAuditEvent } from "@/lib/audit";
+    47→import { normalizeMembershipStatus } from "./normalize-membership-status";
+    48→import {
+    49→  createSyncExecution,
+    50→  completeSyncExecution,
+    51→  createSyncStage,
+    52→  completeSyncStage,
+    53→  persistCheckpoint,
+    54→  getLatestCheckpoint,
+    55→  createReconciliationRun,
+    56→  completeReconciliationRun,
+    57→} from "./sync-records";
+    58→import type { SyncStageResults } from "./sync-records";
+    59→
+    60→// ─── Constants ───────────────────────────────────────────────
+    61→
+    62→const PAGE_SIZE = 50;
+    63→const MAX_CONCURRENT_UPDATES = 10; // Bounded concurrency for batch updates
+    64→const PROGRESS_BATCH_SIZE = 100; // Max progress events per createMany batch
+    65→const RECONCILIATION_PAGE_SIZE = 200; // Students per reconciliation page
+    66→const CANDIDATE_BATCH_SIZE = 50; // Students per candidate detection batch
+    67→
+    68→// ─── Types ───────────────────────────────────────────────────
+    69→
+    70→export interface SyncResult {
+    71→  resource: string;
+    72→  recordsRead: number;
+    73→  recordsCreated: number;
+    74→  recordsUpdated: number;
+    75→  recordsSkipped: number;
+    76→  errors: string[];
+    77→  warnings: string[];
+    78→  cursor: string | null; // For resumption
+    79→}
+    80→
+    81→export interface SyncExecutionParams {
+    82→  organizationId: string;
+    83→  companyId: string; // Whop company ID
+    84→  providers: ProviderBundle;
+    85→  cursor?: string | null;
+    86→  syncExecutionId?: string; // Existing execution to attach to
+    87→  requestedBy?: string;
+    88→}
+    89→
+    90→// ─── Structured failure classification (Phase 10) ───────────
+    91→
+    92→export type FailureClass =
+    93→  | "duplicate_unique_constraint"
+    94→  | "duplicate_payload_hash"
+    95→  | "student_not_found"
+    96→  | "course_not_found"
+    97→  | "validation_error"
+    98→  | "db_error";
+    99→
+   100→export interface ClassifiedFailure {
+   101→  class: FailureClass;
+   102→  externalId: string;
+   103→  message: string;
+   104→}
+   105→
+   106→/**
+   107→ * Classify a Prisma / DB error into a structured failure type.
+   108→ * Unique constraint violations are "duplicate" — everything else is a real error.
+   109→ *
+   110→ * Phase 10: Also detects student_not_found, course_not_found, and validation_error
+   111→ * based on the error message content, so callers never treat these as duplicates.
+   112→ */
+   113→export function classifyCreateError(error: unknown, context: string): ClassifiedFailure {
+   114→  const msg = error instanceof Error ? error.message : String(error ?? "unknown");
+   115→
+   116→  // Foreign key constraint violation — Prisma P2003
+   117→  if (
+   118→    msg.includes("Foreign key constraint failed") ||
+   119→    msg.includes("P2003")
+   120→  ) {
+   121→    if (context.includes("student") || msg.includes("studentId") || msg.includes("Student")) {
+   122→      return { class: "student_not_found", externalId: context, message: msg };
+   123→    }
+   124→    if (context.includes("course") || msg.includes("courseId") || msg.includes("Course")) {
+   125→      return { class: "course_not_found", externalId: context, message: msg };
+   126→    }
+   127→    return { class: "db_error", externalId: context, message: msg };
+   128→  }
+   129→
+   130→  // Validation error — Prisma P2025 (record not found) or data validation
+   131→  if (
+   132→    msg.includes("required") && msg.includes("Argument") ||
+   133→    msg.includes("P2025") ||
+   134→    msg.includes("validation")
+   135→  ) {
+   136→    return { class: "validation_error", externalId: context, message: msg };
+   137→  }
+   138→
+   139→  // Prisma unique constraint violation codes
+   140→  if (
+   141→    msg.includes("Unique constraint failed") ||
+   142→    msg.includes("Unique constraint violation") ||
+   143→    msg.includes("P2002") // Prisma error code for unique constraint
+   144→  ) {
+   145→    // Determine which constraint based on context or message content
+   146→    if (context.includes("payloadHash") || msg.includes("payloadHash")) {
+   147→      return { class: "duplicate_payload_hash", externalId: context, message: msg };
+   148→    }
+   149→    return { class: "duplicate_unique_constraint", externalId: context, message: msg };
+   150→  }
+   151→
+   152→  return { class: "db_error", externalId: context, message: msg };
+   153→}
+   154→
+   155→// ─── Payload hash for dedup (Phase 10) ──────────────────────
+   156→
+   157→/**
+   158→ * Simple deterministic hash for progress event dedup.
+   159→ * Produces a hex string from the interaction's identifying fields.
+   160→ * In production, replace with crypto.subtle.digest("SHA-256", ...).
+   161→ */
+   162→export function computePayloadHash(fields: {
+   163→  userId: string;
+   164→  courseId: string;
+   165→  lessonId: string;
+   166→  action: string;
+   167→  sourceTimestamp: string;
+   168→}): string {
+   169→  // Deterministic concatenation for hashing
+   170→  const raw = `${fields.userId}|${fields.courseId}|${fields.lessonId}|${fields.action}|${fields.sourceTimestamp}`;
+   171→  // Simple FNV-1a hash for non-crypto dedup (good enough for idempotency keys)
+   172→  let hash = 0x811c9dc5;
+   173→  for (let i = 0; i < raw.length; i++) {
+   174→    hash ^= raw.charCodeAt(i);
+   175→    hash = Math.imul(hash, 0x01000193);
+   176→  }
+   177→  // Convert to unsigned 32-bit hex
+   178→  return (hash >>> 0).toString(16).padStart(8, "0");
+   179→}
+   180→
+   181→// ─── Bounded concurrency helper ──────────────────────────────
+   182→
+   183→/** Run items with at most `concurrency` operations in flight. */
+   184→async function boundedMap<T, R>(
+   185→  items: T[],
+   186→  fn: (item: T) => Promise<R>,
+   187→  concurrency: number = MAX_CONCURRENT_UPDATES,
+   188→): Promise<R[]> {
+   189→  const results: R[] = [];
+   190→  const executing: Promise<void>[] = [];
+   191→
+   192→  for (const item of items) {
+   193→    const p = fn(item).then((r) => { results.push(r); });
+   194→    executing.push(p);
+   195→
+   196→    if (executing.length >= concurrency) {
+   197→      await Promise.race(executing);
+   198→      // Remove settled promises
+   199→      for (let i = executing.length - 1; i >= 0; i--) {
+   200→        const settled = await Promise.race([
+   201→          executing[i].then(() => true, () => true),
+   202→          Promise.resolve(false),
+   203→        ]);
+   204→        if (settled) executing.splice(i, 1);
+   205→      }
+   206→    }
+   207→  }
+   208→
+   209→  await Promise.allSettled(executing);
+   210→  return results;
+   211→}
+   212→
+   213→// ─── Course sync ─────────────────────────────────────────────
+   214→
+   215→export async function syncCourses(params: SyncExecutionParams): Promise<SyncResult> {
+   216→  const result: SyncResult = {
+   217→    resource: "courses",
+   218→    recordsRead: 0,
+   219→    recordsCreated: 0,
+   220→    recordsUpdated: 0,
+   221→    recordsSkipped: 0,
+   222→    errors: [],
+   223→    warnings: [],
+   224→    cursor: null,
+   225→  };
+   226→
+   227→  // Resume from checkpoint if no explicit cursor
+   228→  let cursor = params.cursor ?? null;
+   229→  if (!cursor) {
+   230→    const checkpoint = await getLatestCheckpoint(params.organizationId, "courses");
+   231→    if (checkpoint?.cursor) {
+   232→      cursor = checkpoint.cursor;
+   233→    }
+   234→  }
+   235→
+   236→  let pagesProcessed = 0;
+   237→
+   238→  do {
+   239→    const page = await params.providers.courses.list({
+   240→      companyId: params.companyId,
+   241→      cursor,
+   242→      pageSize: PAGE_SIZE,
+   243→    });
+   244→
+   245→    result.recordsRead += page.items.length;
+   246→    pagesProcessed++;
+   247→
+   248→    // 1. Validate the full page
+   249→    const validItems = page.items.filter((course) => {
+   250→      if (!course.id) {
+   251→        result.errors.push(`Course missing id — skipped`);
+   252→        result.recordsSkipped++;
+   253→        return false;
+   254→      }
+   255→      return true;
+   256→    });
+   257→
+   258→    if (validItems.length === 0) {
+   259→      cursor = page.nextCursor;
+   260→      continue;
+   261→    }
+   262→
+   263→    // 2. Load existing external IDs in one bounded query
+   264→    const externalIds = validItems.map((c) => c.id);
+   265→    const existing = await db.course.findMany({
+   266→      where: {
+   267→        organizationId: params.organizationId,
+   268→        externalCourseId: { in: externalIds },
+   269→      },
+   270→      select: { id: true, externalCourseId: true },
+   271→    });
+   272→    const existingMap = new Map(existing.map((e) => [e.externalCourseId, e.id]));
+   273→
+   274→    // 3. Split into creates and updates
+   275→    const toCreate = validItems.filter((c) => !existingMap.has(c.id));
+   276→    const toUpdate = validItems.filter((c) => existingMap.has(c.id));
+   277→
+   278→    // 4. Batch creates with skipDuplicates
+   279→    if (toCreate.length > 0) {
+   280→      try {
+   281→        await db.course.createMany({
+   282→          data: toCreate.map((course) => ({
+   283→            organizationId: params.organizationId,
+   284→            externalCourseId: course.id,
+   285→            externalExperienceId: course.experienceId,
+   286→            name: course.title ?? "Untitled Course",
+   287→            lessonCount: course.lessonCount,
+   288→          })),
+   289→          skipDuplicates: true,
+   290→        });
+   291→        result.recordsCreated += toCreate.length;
+   292→      } catch (error) {
+   293→        result.errors.push(`Course batch create: ${error instanceof Error ? error.message : "unknown"}`);
+   294→        result.recordsSkipped += toCreate.length;
+   295→      }
+   296→    }
+   297→
+   298→    // 5. Batch updates with bounded concurrency
+   299→    if (toUpdate.length > 0) {
+   300→      const updateResults = await boundedMap(toUpdate, async (course) => {
+   301→        const existingId = existingMap.get(course.id)!;
+   302→        try {
+   303→          await db.course.update({
+   304→            where: { id: existingId },
+   305→            data: {
+   306→              name: course.title ?? undefined,
+   307→              lessonCount: course.lessonCount || undefined,
+   308→              externalExperienceId: course.experienceId || undefined,
+   309→            },
+   310→          });
+   311→          return true;
+   312→        } catch (error) {
+   313→          result.errors.push(`Course ${course.id}: ${error instanceof Error ? error.message : "unknown"}`);
+   314→          return false;
+   315→        }
+   316→      });
+   317→      result.recordsUpdated += updateResults.filter(Boolean).length;
+   318→      result.recordsSkipped += updateResults.filter((r) => !r).length;
+   319→    }
+   320→
+   321→    // 6. Commit page — persist checkpoint
+   322→    cursor = page.nextCursor;
+   323→    if (params.syncExecutionId) {
+   324→      await persistCheckpoint(
+   325→        params.organizationId,
+   326→        "courses",
+   327→        cursor,
+   328→        null,
+   329→        params.syncExecutionId,
+   330→        pagesProcessed,
+   331→      );
+   332→    }
+   333→  } while (cursor);
+   334→
+   335→  result.cursor = cursor;
+   336→
+   337→  // 7. Emit usage and audit data
+   338→  await recordAuditEvent({
+   339→    organizationId: params.organizationId,
+   340→    action: "synced",
+   341→    objectType: "course",
+   342→    objectId: "bulk",
+   343→    reason: `Synced ${result.recordsRead} courses`,
+   344→    metadata: {
+   345→      created: result.recordsCreated,
+   346→      updated: result.recordsUpdated,
+   347→      skipped: result.recordsSkipped,
+   348→      errors: result.errors.length,
+   349→    },
+   350→  });
+   351→
+   352→  return result;
+   353→}
+   354→
+   355→// ─── Product sync ────────────────────────────────────────────
+   356→
+   357→export async function syncProducts(params: SyncExecutionParams): Promise<SyncResult> {
+   358→  const result: SyncResult = {
+   359→    resource: "products",
+   360→    recordsRead: 0,
+   361→    recordsCreated: 0,
+   362→    recordsUpdated: 0,
+   363→    recordsSkipped: 0,
+   364→    errors: [],
+   365→    warnings: [],
+   366→    cursor: null,
+   367→  };
+   368→
+   369→  let cursor = params.cursor ?? null;
+   370→  if (!cursor) {
+   371→    const checkpoint = await getLatestCheckpoint(params.organizationId, "products");
+   372→    if (checkpoint?.cursor) {
+   373→      cursor = checkpoint.cursor;
+   374→    }
+   375→  }
+   376→
+   377→  let pagesProcessed = 0;
+   378→
+   379→  do {
+   380→    const page = await params.providers.products.list({
+   381→      companyId: params.companyId,
+   382→      cursor,
+   383→      pageSize: PAGE_SIZE,
+   384→    });
+   385→
+   386→    result.recordsRead += page.items.length;
+   387→    pagesProcessed++;
+   388→
+   389→    const validItems = page.items.filter((product) => {
+   390→      if (!product.id) {
+   391→        result.errors.push(`Product missing id — skipped`);
+   392→        result.recordsSkipped++;
+   393→        return false;
+   394→      }
+   395→      return true;
+   396→    });
+   397→
+   398→    if (validItems.length === 0) {
+   399→      cursor = page.nextCursor;
+   400→      continue;
+   401→    }
+   402→
+   403→    // Load existing in one query
+   404→    const externalIds = validItems.map((p) => p.id);
+   405→    const existing = await db.product.findMany({
+   406→      where: {
+   407→        organizationId: params.organizationId,
+   408→        whopProductId: { in: externalIds },
+   409→      },
+   410→      select: { id: true, whopProductId: true },
+   411→    });
+   412→    const existingMap = new Map(existing.map((e) => [e.whopProductId, e.id]));
+   413→
+   414→    const toCreate = validItems.filter((p) => !existingMap.has(p.id));
+   415→    const toUpdate = validItems.filter((p) => existingMap.has(p.id));
+   416→
+   417→    // Batch creates
+   418→    if (toCreate.length > 0) {
+   419→      try {
+   420→        await db.product.createMany({
+   421→          data: toCreate.map((product) => ({
+   422→            organizationId: params.organizationId,
+   423→            whopProductId: product.id,
+   424→            name: product.name,
+   425→            priceCents: product.priceCents,
+   426→            currency: product.currency,
+   427→            billingCycle: product.billingCycle,
+   428→          })),
+   429→          skipDuplicates: true,
+   430→        });
+   431→        result.recordsCreated += toCreate.length;
+   432→      } catch (error) {
+   433→        result.errors.push(`Product batch create: ${error instanceof Error ? error.message : "unknown"}`);
+   434→        result.recordsSkipped += toCreate.length;
+   435→      }
+   436→    }
+   437→
+   438→    // Batch updates
+   439→    if (toUpdate.length > 0) {
+   440→      const updateResults = await boundedMap(toUpdate, async (product) => {
+   441→        const existingId = existingMap.get(product.id)!;
+   442→        try {
+   443→          await db.product.update({
+   444→            where: { id: existingId },
+   445→            data: {
+   446→              name: product.name,
+   447→              priceCents: product.priceCents,
+   448→              currency: product.currency,
+   449→              billingCycle: product.billingCycle,
+   450→            },
+   451→          });
+   452→          return true;
+   453→        } catch (error) {
+   454→          result.errors.push(`Product ${product.id}: ${error instanceof Error ? error.message : "unknown"}`);
+   455→          return false;
+   456→        }
+   457→      });
+   458→      result.recordsUpdated += updateResults.filter(Boolean).length;
+   459→      result.recordsSkipped += updateResults.filter((r) => !r).length;
+   460→    }
+   461→
+   462→    // Persist checkpoint
+   463→    cursor = page.nextCursor;
+   464→    if (params.syncExecutionId) {
+   465→      await persistCheckpoint(
+   466→        params.organizationId,
+   467→        "products",
+   468→        cursor,
+   469→        null,
+   470→        params.syncExecutionId,
+   471→        pagesProcessed,
+   472→      );
+   473→    }
+   474→  } while (cursor);
+   475→
+   476→  result.cursor = cursor;
+   477→
+   478→  await recordAuditEvent({
+   479→    organizationId: params.organizationId,
+   480→    action: "synced",
+   481→    objectType: "product",
+   482→    objectId: "bulk",
+   483→    reason: `Synced ${result.recordsRead} products`,
+   484→    metadata: {
+   485→      created: result.recordsCreated,
+   486→      updated: result.recordsUpdated,
+   487→      skipped: result.recordsSkipped,
+   488→    },
+   489→  });
+   490→
+   491→  return result;
+   492→}
+   493→
+   494→// ─── Membership sync ─────────────────────────────────────────
+   495→
+   496→export async function syncMemberships(params: SyncExecutionParams): Promise<SyncResult> {
+   497→  const result: SyncResult = {
+   498→    resource: "memberships",
+   499→    recordsRead: 0,
+   500→    recordsCreated: 0,
+   501→    recordsUpdated: 0,
+   502→    recordsSkipped: 0,
+   503→    errors: [],
+   504→    warnings: [],
+   505→    cursor: null,
+   506→  };
+   507→
+   508→  let cursor = params.cursor ?? null;
+   509→  if (!cursor) {
+   510→    const checkpoint = await getLatestCheckpoint(params.organizationId, "memberships");
+   511→    if (checkpoint?.cursor) {
+   512→      cursor = checkpoint.cursor;
+   513→    }
+   514→  }
+   515→
+   516→  let pagesProcessed = 0;
+   517→
+   518→  do {
+   519→    const page = await params.providers.memberships.list({
+   520→      companyId: params.companyId,
+   521→      cursor,
+   522→      pageSize: PAGE_SIZE,
+   523→    });
+   524→
+   525→    result.recordsRead += page.items.length;
+   526→    pagesProcessed++;
+   527→
+   528→    for (const membership of page.items) {
+   529→      try {
+   530→        // Normalize the external status — replaces `membership.status as any`
+   531→        const { status: safeStatus, warning } = normalizeMembershipStatus(membership.status);
+   532→        if (warning) {
+   533→          result.warnings.push(warning);
+   534→        }
+   535→
+   536→        // Find or create the student (upsert by composite key)
+   537→        const student = await db.student.upsert({
+   538→          where: {
+   539→            organizationId_whopUserId: {
+   540→              organizationId: params.organizationId,
+   541→              whopUserId: membership.userId,
+   542→            },
+   543→          },
+   544→          create: {
+   545→            organizationId: params.organizationId,
+   546→            whopUserId: membership.userId,
+   547→          },
+   548→          update: {},
+   549→        });
+   550→
+   551→        // Find the product
+   552→        const product = await db.product.findFirst({
+   553→          where: {
+   554→            organizationId: params.organizationId,
+   555→            whopProductId: membership.productId,
+   556→          },
+   557→        });
+   558→
+   559→        if (!product) {
+   560→          result.errors.push(`Membership ${membership.id}: product ${membership.productId} not found`);
+   561→          result.recordsSkipped++;
+   562→          continue;
+   563→        }
+   564→
+   565→        // Check if membership already exists to determine create vs update
+   566→        const existingMembership = await db.membership.findUnique({
+   567→          where: { whopMembershipId: membership.id },
+   568→          select: { id: true },
+   569→        });
+   570→
+   571→        if (existingMembership) {
+   572→          // UPDATE — increment recordsUpdated, NOT recordsCreated
+   573→          await db.membership.update({
+   574→            where: { id: existingMembership.id },
+   575→            data: {
+   576→              status: safeStatus,
+   577→              renewalDate: membership.renewalDate ? new Date(membership.renewalDate) : null,
+   578→              cancelledAt: membership.cancelledAt ? new Date(membership.cancelledAt) : null,
+   579→              priceCents: membership.priceCents,
+   580→              currency: membership.currency,
+   581→              lastSyncedAt: new Date(),
+   582→            },
+   583→          });
+   584→          result.recordsUpdated++;
+   585→        } else {
+   586→          // CREATE
+   587→          await db.membership.create({
+   588→            data: {
+   589→              organizationId: params.organizationId,
+   590→              studentId: student.id,
+   591→              productId: product.id,
+   592→              whopMembershipId: membership.id,
+   593→              status: safeStatus,
+   594→              joinedAt: new Date(membership.joinedAt),
+   595→              renewalDate: membership.renewalDate ? new Date(membership.renewalDate) : null,
+   596→              cancelledAt: membership.cancelledAt ? new Date(membership.cancelledAt) : null,
+   597→              priceCents: membership.priceCents,
+   598→              currency: membership.currency,
+   599→              lastSyncedAt: new Date(),
+   600→            },
+   601→          });
+   602→          result.recordsCreated++;
+   603→        }
+   604→      } catch (error) {
+   605→        const failure = classifyCreateError(error, `membership-${membership.id}`);
+   606→        if (failure.class === "duplicate_unique_constraint") {
+   607→          // Idempotent — already ingested
+   608→          result.recordsSkipped++;
+   609→        } else {
+   610→          result.errors.push(`Membership ${membership.id}: ${failure.message}`);
+   611→          result.recordsSkipped++;
+   612→        }
+   613→      }
+   614→    }
+   615→
+   616→    // Persist checkpoint
+   617→    cursor = page.nextCursor;
+   618→    if (params.syncExecutionId) {
+   619→      await persistCheckpoint(
+   620→        params.organizationId,
+   621→        "memberships",
+   622→        cursor,
+   623→        null,
+   624→        params.syncExecutionId,
+   625→        pagesProcessed,
+   626→      );
+   627→    }
+   628→  } while (cursor);
+   629→
+   630→  result.cursor = cursor;
+   631→
+   632→  await recordAuditEvent({
+   633→    organizationId: params.organizationId,
+   634→    action: "synced",
+   635→    objectType: "membership",
+   636→    objectId: "bulk",
+   637→    reason: `Synced ${result.recordsRead} memberships`,
+   638→    metadata: {
+   639→      created: result.recordsCreated,
+   640→      updated: result.recordsUpdated,
+   641→      skipped: result.recordsSkipped,
+   642→      warnings: result.warnings.length,
+   643→    },
+   644→  });
+   645→
+   646→  return result;
+   647→}
+   648→
+   649→// ─── Course progress sync (Phase 10: idempotent + bounded) ──
+   650→
+   651→export async function syncCourseProgress(
+   652→  params: SyncExecutionParams & { courseId: string },
+   653→): Promise<SyncResult> {
+   654→  const result: SyncResult = {
+   655→    resource: "progress",
+   656→    recordsRead: 0,
+   657→    recordsCreated: 0,
+   658→    recordsUpdated: 0,
+   659→    recordsSkipped: 0,
+   660→    errors: [],
+   661→    warnings: [],
+   662→    cursor: null,
+   663→  };
+   664→
+   665→  // Find the internal course
+   666→  const course = await db.course.findFirst({
+   667→    where: {
+   668→      organizationId: params.organizationId,
+   669→      id: params.courseId,
+   670→    },
+   671→  });
+   672→
+   673→  if (!course) {
+   674→    result.errors.push(`Course ${params.courseId} not found`);
+   675→    return result;
+   676→  }
+   677→
+   678→  let cursor = params.cursor ?? null;
+   679→  if (!cursor) {
+   680→    const checkpoint = await getLatestCheckpoint(params.organizationId, "progress");
+   681→    if (checkpoint?.cursor) {
+   682→      cursor = checkpoint.cursor;
+   683→    }
+   684→  }
+   685→
+   686→  let pagesProcessed = 0;
+   687→  const now = new Date();
+   688→
+   689→  do {
+   690→    const page = await params.providers.progress.listLessonInteractions({
+   691→      companyId: params.companyId,
+   692→      courseId: course.externalCourseId,
+   693→      cursor,
+   694→      pageSize: PAGE_SIZE,
+   695→    });
+   696→
+   697→    result.recordsRead += page.items.length;
+   698→    pagesProcessed++;
+   699→
+   700→    // Phase 10: Resolve all students for this page in one query
+   701→    const userIds = [...new Set(page.items.map((i) => i.userId))];
+   702→    const students = await db.student.findMany({
+   703→      where: {
+   704→        organizationId: params.organizationId,
+   705→        whopUserId: { in: userIds },
+   706→      },
+   707→      select: { id: true, whopUserId: true },
+   708→    });
+   709→    const studentMap = new Map(students.map((s) => [s.whopUserId, s.id]));
+   710→
+   711→    // Phase 10: Check existing interaction IDs to split creates from skips
+   712→    const interactionIds = page.items
+   713→      .map((i) => i.id)
+   714→      .filter(Boolean);
+   715→    const existingEvents = interactionIds.length > 0
+   716→      ? await db.progressEvent.findMany({
+   717→          where: {
+   718→            organizationId: params.organizationId,
+   719→            externalInteractionId: { in: interactionIds },
+   720→          },
+   721→          select: { externalInteractionId: true },
+   722→        })
+   723→      : [];
+   724→    const existingInteractionSet = new Set(existingEvents.map((e) => e.externalInteractionId));
+   725→
+   726→    // Phase 10: Also check existing payload hashes for dedup
+   727→    // and fetch sourceTimestamp so we can handle out-of-order / older-after-newer
+   728→    const payloadHashes = page.items.map((interaction) =>
+   729→      computePayloadHash({
+   730→        userId: interaction.userId,
+   731→        courseId: interaction.courseId,
+   732→        lessonId: interaction.lessonId,
+   733→        action: interaction.completed ? "completed" : "started",
+   734→        sourceTimestamp: interaction.sourceTimestamp,
+   735→      }),
+   736→    );
+   737→    const existingByHash = payloadHashes.length > 0
+   738→      ? await db.progressEvent.findMany({
+   739→          where: {
+   740→            organizationId: params.organizationId,
+   741→            payloadHash: { in: payloadHashes },
+   742→          },
+   743→          select: { payloadHash: true, sourceTimestamp: true, id: true },
+   744→        })
+   745→      : [];
+   746→    const existingHashSet = new Set(existingByHash.map((e) => e.payloadHash));
+   747→    // Map: payloadHash → existing event for out-of-order update detection
+   748→    const existingByHashMap = new Map(existingByHash.map((e) => [e.payloadHash, e]));
+   749→
+   750→    // Build create data, filtering out duplicates and missing students
+   751→    const toCreate: Array<{
+   752→      organizationId: string;
+   753→      studentId: string;
+   754→      courseId: string;
+   755→      externalInteractionId: string;
+   756→      lessonId: string;
+   757→      lessonIndex: number;
+   758→      lessonTitle: string | null;
+   759→      action: string;
+   760→      payloadHash: string;
+   761→      sourceTimestamp: Date;
+   762→      receivedAt: Date;
+   763→      sourceVersion: string | null;
+   764→      occurredAt: Date;
+   765→    }> = [];
+   766→
+   767→    for (const interaction of page.items) {
+   768→      // Skip if student not found — students with activity but no qualifying membership
+   769→      const studentId = studentMap.get(interaction.userId);
+   770→      if (!studentId) {
+   771→        result.warnings.push(
+   772→          `Interaction ${interaction.id}: student ${interaction.userId} not found — skipped (membership may arrive later)`,
+   773→        );
+   774→        result.recordsSkipped++;
+   775→        continue;
+   776→      }
+   777→
+   778→      // Phase 10: Skip duplicates by external interaction ID
+   779→      if (existingInteractionSet.has(interaction.id)) {
+   780→        result.recordsSkipped++;
+   781→        continue;
+   782→      }
+   783→
+   784→      // Phase 10: Compute payload hash
+   785→      const hash = computePayloadHash({
+   786→        userId: interaction.userId,
+   787→        courseId: interaction.courseId,
+   788→        lessonId: interaction.lessonId,
+   789→        action: interaction.completed ? "completed" : "started",
+   790→        sourceTimestamp: interaction.sourceTimestamp,
+   791→      });
+   792→
+   793→      // Phase 10: If a different payloadHash exists for the same interaction ID,
+   794→      // an older event is being replaced by a newer one — update the source timestamp
+   795→      const existingByHash = existingByHashMap.get(hash);
+   796→      if (existingHashSet.has(hash)) {
+   797→        // Check if the incoming event has a newer source timestamp than stored
+   798→        const incomingSource = new Date(interaction.sourceTimestamp);
+   799→        if (
+   800→          existingByHash?.sourceTimestamp &&
+   801→          incomingSource > existingByHash.sourceTimestamp
+   802→        ) {
+   803→          // Out-of-order: newer event for same dedup key — update timestamp
+   804→          try {
+   805→            await db.progressEvent.update({
+   806→              where: { id: existingByHash.id },
+   807→              data: {
+   808→                sourceTimestamp: incomingSource,
+   809→                occurredAt: new Date(interaction.createdAt),
+   810→                receivedAt: now,
+   811→              },
+   812→            });
+   813→            result.recordsUpdated++;
+   814→          } catch {
+   815→            // Race condition — skip gracefully
+   816→            result.recordsSkipped++;
+   817→          }
+   818→        } else {
+   819→          // Exact duplicate or older event — skip
+   820→          result.recordsSkipped++;
+   821→        }
+   822→        continue;
+   823→      }
+   824→
+   825→      toCreate.push({
+   826→        organizationId: params.organizationId,
+   827→        studentId,
+   828→        courseId: course.id,
+   829→        externalInteractionId: interaction.id,
+   830→        lessonId: interaction.lessonId,
+   831→        lessonIndex: 0, // Lesson index not available from provider; use 0 as placeholder
+   832→        lessonTitle: interaction.lessonTitle,
+   833→        action: interaction.completed ? "completed" : "started",
+   834→        payloadHash: hash,
+   835→        sourceTimestamp: new Date(interaction.sourceTimestamp),
+   836→        receivedAt: now,
+   837→        sourceVersion: null, // No version from current provider contract
+   838→        occurredAt: new Date(interaction.createdAt),
+   839→      });
+   840→    }
+   841→
+   842→    // Phase 10: Batch create with skipDuplicates for true idempotency
+   843→    if (toCreate.length > 0) {
+   844→      // Process in sub-batches to avoid oversized queries
+   845→      for (let i = 0; i < toCreate.length; i += PROGRESS_BATCH_SIZE) {
+   846→        const batch = toCreate.slice(i, i + PROGRESS_BATCH_SIZE);
+   847→        try {
+   848→          const createResult = await db.progressEvent.createMany({
+   849→            data: batch,
+   850→            skipDuplicates: true,
+   851→          });
+   852→          result.recordsCreated += createResult.count;
+   853→          // Any items not created were duplicates (skipDuplicates silently skips)
+   854→          result.recordsSkipped += batch.length - createResult.count;
+   855→        } catch (error) {
+   856→          const failure = classifyCreateError(error, "progress-batch");
+   857→          if (
+   858→            failure.class === "duplicate_unique_constraint" ||
+   859→            failure.class === "duplicate_payload_hash"
+   860→          ) {
+   861→            // These are expected under race conditions — all treated as skipped
+   862→            result.recordsSkipped += batch.length;
+   863→          } else {
+   864→            result.errors.push(`Progress batch create: ${failure.message}`);
+   865→            result.recordsSkipped += batch.length;
+   866→          }
+   867→        }
+   868→      }
+   869→    }
+   870→
+   871→    // Persist checkpoint
+   872→    cursor = page.nextCursor;
+   873→    if (params.syncExecutionId) {
+   874→      await persistCheckpoint(
+   875→        params.organizationId,
+   876→        "progress",
+   877→        cursor,
+   878→        null,
+   879→        params.syncExecutionId,
+   880→        pagesProcessed,
+   881→      );
+   882→    }
+   883→  } while (cursor);
+   884→
+   885→  // Phase 10: Recalculate course states using bounded aggregation
+   886→  await recalculateCourseStatesBounded(params.organizationId, course.id);
+   887→
+   888→  result.cursor = cursor;
+   889→
+   890→  await recordAuditEvent({
+   891→    organizationId: params.organizationId,
+   892→    action: "synced",
+   893→    objectType: "progress",
+   894→    objectId: course.id,
+   895→    reason: `Synced ${result.recordsRead} progress events`,
+   896→    metadata: {
+   897→      created: result.recordsCreated,
+   898→      skipped: result.recordsSkipped,
+   899→      duplicatesHandled: result.recordsSkipped,
+   900→    },
+   901→  });
+   902→
+   903→  return result;
+   904→}
+   905→
+   906→// ─── Reconciliation (Phase 11: set-based queries) ───────────
+   907→
+   908→export interface ReconciliationResult {
+   909→  matched: number;
+   910→  membershipWithoutCourseActivity: number;
+   911→  courseActivityWithoutMembership: number;
+   912→  unmappedProduct: number;
+   913→  missingSourceFields: number;
+   914→  staleSourceRecord: number;
+   915→  totalEvaluated: number;
+   916→  pagesProcessed: number;
+   917→}
+   918→
+   919→export async function reconcile(
+   920→  organizationId: string,
+   921→  courseId: string,
+   922→  syncExecutionId?: string,
+   923→  pageLimit?: number, // Phase 11: pagination — max pages to process
+   924→): Promise<ReconciliationResult> {
+   925→  const result: ReconciliationResult = {
+   926→    matched: 0,
+   927→    membershipWithoutCourseActivity: 0,
+   928→    courseActivityWithoutMembership: 0,
+   929→    unmappedProduct: 0,
+   930→    missingSourceFields: 0,
+   931→    staleSourceRecord: 0,
+   932→    totalEvaluated: 0,
+   933→    pagesProcessed: 0,
+   934→  };
+   935→
+   936→  // Create a reconciliation run record
+   937→  const run = await createReconciliationRun(organizationId, courseId, syncExecutionId);
+   938→
+   939→  // Phase 11: Set-based queries instead of per-student N+1
+   940→
+   941→  // 1. Get all confirmed mappings for this course (bounded — typically ≤10 products per course)
+   942→  const mappings = await db.productCourseMapping.findMany({
+   943→    where: { organizationId, courseId, isConfirmed: true },
+   944→    select: { id: true, productId: true, courseId: true },
+   945→  });
+   946→
+   947→  const mappedProductIds = new Set(mappings.map((m) => m.productId));
+   948→
+   949→  // 2. Get all student IDs with qualifying memberships for mapped products (ONE query)
+   950→  const studentsWithMembership = await db.membership.findMany({
+   951→    where: {
+   952→      organizationId,
+   953→      productId: { in: Array.from(mappedProductIds) },
+   954→    },
+   955→    select: { studentId: true, id: true, productId: true, status: true },
+   956→  });
+   957→
+   958→  // Build map: studentId → membership info for classification
+   959→  const membershipByStudent = new Map<string, { membershipId: string; productId: string; status: string }[]>();
+   960→  for (const m of studentsWithMembership) {
+   961→    const existing = membershipByStudent.get(m.studentId) ?? [];
+   962→    existing.push({ membershipId: m.id, productId: m.productId, status: m.status });
+   963→    membershipByStudent.set(m.studentId, existing);
+   964→  }
+   965→
+   966→  const studentIdsWithMembership = new Set(membershipByStudent.keys());
+   967→
+   968→  // 3. Get all student IDs with course activity (ONE query)
+   969→  const courseStates = await db.studentCourseState.findMany({
+   970→    where: { organizationId, courseId },
+   971→    select: { studentId: true, id: true, lessonsCompleted: true, totalLessons: true, lastSyncedAt: true },
+   972→  });
+   973→
+   974→  const studentIdsWithActivity = new Set(courseStates.map((s) => s.studentId));
+   975→
+   976→  // Phase 11: Detect students with memberships for unmapped products
+   977→  const allMembershipsForOrg = await db.membership.findMany({
+   978→    where: {
+   979→      organizationId,
+   980→      status: { in: ["active", "trialing"] },
+   981→    },
+   982→    select: { studentId: true, id: true, productId: true },
+   983→  });
+   984→  const studentsWithUnmappedProduct = allMembershipsForOrg.filter(
+   985→    (m) => !mappedProductIds.has(m.productId),
+   986→  );
+   987→  const unmappedStudentIds = new Set(studentsWithUnmappedProduct.map((m) => m.studentId));
+   988→
+   989→  // Phase 11: Detect stale source records (lastSyncedAt > 24h ago)
+   990→  const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+   991→  const now = new Date();
+   992→  const staleStudentIds = new Set(
+   993→    courseStates
+   994→      .filter((s) => s.lastSyncedAt && (now.getTime() - s.lastSyncedAt.getTime()) > STALE_THRESHOLD_MS)
+   995→      .map((s) => s.studentId),
+   996→  );
+   997→
+   998→  // 4. Set-based classification — no per-student queries
+   999→  // Matched: students in both sets
+  1000→  const matchedStudentIds = new Set(
+  1001→    [...studentIdsWithMembership].filter((id) => studentIdsWithActivity.has(id)),
+  1002→  );
+  1003→
+  1004→  // Membership without course activity
+  1005→  const membershipOnlyStudentIds = new Set(
+  1006→    [...studentIdsWithMembership].filter((id) => !studentIdsWithActivity.has(id)),
+  1007→  );
+  1008→
+  1009→  // Course activity without membership (retroactive link opportunity)
+  1010→  const activityOnlyStudentIds = new Set(
+  1011→    [...studentIdsWithActivity].filter((id) => !studentIdsWithMembership.has(id)),
+  1012→  );
+  1013→
+  1014→  result.matched = matchedStudentIds.size;
+  1015→  result.membershipWithoutCourseActivity = membershipOnlyStudentIds.size;
+  1016→  result.courseActivityWithoutMembership = activityOnlyStudentIds.size;
+  1017→  result.unmappedProduct = [...unmappedStudentIds].filter(
+  1018→    (id) => !studentIdsWithMembership.has(id),
+  1019→  ).length;
+  1020→  result.staleSourceRecord = staleStudentIds.size;
+  1021→  result.totalEvaluated = studentIdsWithMembership.size + activityOnlyStudentIds.size;
+  1022→
+  1023→  // 5. Persist reconciliation outcomes in paginated batches
+  1024→  const outcomeBatches: Array<{
+  1025→    reconciliationRunId: string;
+  1026→    organizationId: string;
+  1027→    studentId: string;
+  1028→    membershipId: string | null;
+  1029→    courseId: string;
+  1030→    mappingId: string | null;
+  1031→    classification: string;
+  1032→    evidenceJson: unknown;
+  1033→  }> = [];
+  1034→
+  1035→  // Matched outcomes
+  1036→  for (const studentId of matchedStudentIds) {
+  1037→    const memberships = membershipByStudent.get(studentId) ?? [];
+  1038→    const mappingId = mappings.find((m) =>
+  1039→      memberships.some((mem) => mem.productId === m.productId),
+  1040→    )?.id ?? null;
+  1041→    outcomeBatches.push({
+  1042→      reconciliationRunId: run.id,
+  1043→      organizationId,
+  1044→      studentId,
+  1045→      membershipId: memberships[0]?.membershipId ?? null,
+  1046→      courseId,
+  1047→      mappingId,
+  1048→      classification: "matched",
+  1049→      evidenceJson: { hasMembership: true, hasCourseActivity: true, isStale: staleStudentIds.has(studentId) },
+  1050→    });
+  1051→  }
+  1052→
+  1053→  // Membership without course activity
+  1054→  for (const studentId of membershipOnlyStudentIds) {
+  1055→    const memberships = membershipByStudent.get(studentId) ?? [];
+  1056→    const mappingId = mappings.find((m) =>
+  1057→      memberships.some((mem) => mem.productId === m.productId),
+  1058→    )?.id ?? null;
+  1059→    outcomeBatches.push({
+  1060→      reconciliationRunId: run.id,
+  1061→      organizationId,
+  1062→      studentId,
+  1063→      membershipId: memberships[0]?.membershipId ?? null,
+  1064→      courseId,
+  1065→      mappingId,
+  1066→      classification: "membership_without_course_activity",
+  1067→      evidenceJson: { hasMembership: true, hasCourseActivity: false, isStale: staleStudentIds.has(studentId) },
+  1068→    });
+  1069→  }
+  1070→
+  1071→  // Course activity without membership
+  1072→  for (const studentId of activityOnlyStudentIds) {
+  1073→    outcomeBatches.push({
+  1074→      reconciliationRunId: run.id,
+  1075→      organizationId,
+  1076→      studentId,
+  1077→      membershipId: null,
+  1078→      courseId,
+  1079→      mappingId: null,
+  1080→      classification: "course_activity_without_membership",
+  1081→      evidenceJson: { hasMembership: false, hasCourseActivity: true, isStale: staleStudentIds.has(studentId) },
+  1082→    });
+  1083→  }
+  1084→
+  1085→  // Unmapped product outcomes
+  1086→  for (const studentId of unmappedStudentIds) {
+  1087→    if (studentIdsWithMembership.has(studentId)) continue; // Already classified above
+  1088→    const membership = allMembershipsForOrg.find((m) => m.studentId === studentId);
+  1089→    outcomeBatches.push({
+  1090→      reconciliationRunId: run.id,
+  1091→      organizationId,
+  1092→      studentId,
+  1093→      membershipId: membership?.id ?? null,
+  1094→      courseId,
+  1095→      mappingId: null,
+  1096→      classification: "unmapped_product",
+  1097→      evidenceJson: { hasMembership: true, hasCourseActivity: studentIdsWithActivity.has(studentId), productId: membership?.productId },
+  1098→    });
+  1099→  }
+  1100→
+  1101→  // Stale source record outcomes
+  1102→  for (const studentId of staleStudentIds) {
+  1103→    // Stale records may overlap with other classifications — add separate stale outcome
+  1104→    const state = courseStates.find((s) => s.studentId === studentId);
+  1105→    if (state) {
+  1106→      outcomeBatches.push({
+  1107→        reconciliationRunId: run.id,
+  1108→        organizationId,
+  1109→        studentId,
+  1110→        membershipId: null,
+  1111→        courseId,
+  1112→        mappingId: null,
+  1113→        classification: "stale_source_record",
+  1114→        evidenceJson: { lastSyncedAt: state.lastSyncedAt?.toISOString() },
+  1115→      });
+  1116→    }
+  1117→  }
+  1118→
+  1119→  // Batch persist outcomes with pagination
+  1120→  const maxPages = pageLimit ?? Infinity;
+  1121→  for (let i = 0; i < outcomeBatches.length; i += RECONCILIATION_PAGE_SIZE) {
+  1122→    if (result.pagesProcessed >= maxPages) break;
+  1123→    const batch = outcomeBatches.slice(i, i + RECONCILIATION_PAGE_SIZE);
+  1124→    await db.reconciliationOutcome.createMany({
+  1125→      data: batch.map((o) => ({
+  1126→        reconciliationRunId: o.reconciliationRunId,
+  1127→        organizationId: o.organizationId,
+  1128→        studentId: o.studentId,
+  1129→        membershipId: o.membershipId,
+  1130→        courseId: o.courseId,
+  1131→        mappingId: o.mappingId,
+  1132→        classification: o.classification as any,
+  1133→        evidenceJson: o.evidenceJson as any,
+  1134→      })),
+  1135→    });
+  1136→    result.pagesProcessed++;
+  1137→  }
+  1138→
+  1139→  // Complete the reconciliation run record
+  1140→  await completeReconciliationRun(run.id, {
+  1141→    matched: result.matched,
+  1142→    membershipWithoutCourseActivity: result.membershipWithoutCourseActivity,
+  1143→    courseActivityWithoutMembership: result.courseActivityWithoutMembership,
+  1144→    unmappedProduct: result.unmappedProduct,
+  1145→    missingSourceFields: result.missingSourceFields,
+  1146→    staleSourceRecord: result.staleSourceRecord,
+  1147→  });
+  1148→
+  1149→  return result;
+  1150→}
+  1151→
+  1152→// ─── Candidate detection (Phase 12: full eligibility checks) ─
+  1153→
+  1154→export interface CandidateDetectionResult {
+  1155→  candidatesFound: number;
+  1156→  snapshotsCreated: number;
+  1157→  snapshotsSkipped: number;
+  1158→  errors: string[];
+  1159→  warnings: string[];
+  1160→  checksPerformed: number;
+  1161→}
+  1162→
+  1163→/**
+  1164→ * Detect candidates for an Activation Rescue campaign.
+  1165→ *
+  1166→ * Phase 12: Operates ONLY on the campaign's confirmed mapping.
+  1167→ * All 17 eligibility checks are verified before creating a snapshot.
+  1168→ * Uses batch queries — no N+1 patterns.
+  1169→ */
+  1170→export async function detectCandidates(
+  1171→  organizationId: string,
+  1172→  campaignId: string,
+  1173→): Promise<CandidateDetectionResult> {
+  1174→  const result: CandidateDetectionResult = {
+  1175→    candidatesFound: 0,
+  1176→    snapshotsCreated: 0,
+  1177→    snapshotsSkipped: 0,
+  1178→    errors: [],
+  1179→    warnings: [],
+  1180→    checksPerformed: 0,
+  1181→  };
+  1182→
+  1183→  const now = new Date();
+  1184→
+  1185→  // ─── Pre-flight checks (fail fast) ────────────────────────
+  1186→
+  1187→  // Fetch campaign with organization and latest version
+  1188→  const campaign = await db.campaign.findFirst({
+  1189→    where: { id: campaignId, organizationId },
+  1190→    include: {
+  1191→      organization: {
+  1192→        include: { installations: true },
+  1193→      },
+  1194→      versions: { orderBy: { versionNumber: "desc" }, take: 1 },
+  1195→      confirmedMapping: {
+  1196→        include: {
+  1197→          product: true,
+  1198→          course: true,
+  1199→        },
+  1200→      },
+  1201→    },
+  1202→  });
+  1203→
+  1204→  // Check: Campaign exists and is Activation Rescue
+  1205→  if (!campaign || campaign.type !== "activation_rescue") {
+  1206→    result.errors.push("Campaign not found or not an Activation Rescue campaign");
+  1207→    return result;
+  1208→  }
+  1209→
+  1210→  const latestVersion = campaign.versions[0];
+  1211→  const org = campaign.organization;
+  1212→
+  1213→  // Check 1: Organisation active
+  1214→  if (org.status !== "active") {
+  1215→    result.errors.push(`Organisation status is "${org.status}", not "active"`);
+  1216→    return result;
+  1217→  }
+  1218→
+  1219→  // Check 2: Organisation not paused
+  1220→  if (org.isPaused) {
+  1221→    result.errors.push("Organisation is paused");
+  1222→    return result;
+  1223→  }
+  1224→
+  1225→  // Check 3: Installation active
+  1226→  const activeInstallation = org.installations.find((i) => i.status === "active");
+  1227→  if (!activeInstallation) {
+  1228→    result.errors.push("No active installation");
+  1229→    return result;
+  1230→  }
+  1231→
+  1232→  // Check 4: Campaign active
+  1233→  if (campaign.status !== "active") {
+  1234→    result.errors.push(`Campaign status is "${campaign.status}", not "active"`);
+  1235→    return result;
+  1236→  }
+  1237→
+  1238→  // Check 5: Campaign is Activation Rescue (already verified above)
+  1239→  // Check 6: Manual approval enabled
+  1240→  if (campaign.approvalMode !== "manual") {
+  1241→    result.errors.push("Campaign does not have manual approval enabled");
+  1242→    return result;
+  1243→  }
+  1244→
+  1245→  // Check 7: Campaign version exists
+  1246→  if (!latestVersion) {
+  1247→    result.errors.push("No campaign version exists");
+  1248→    return result;
+  1249→  }
+  1250→
+  1251→  // Check 8: Confirmed mapping belongs to campaign
+  1252→  const mapping = campaign.confirmedMapping;
+  1253→  if (!mapping) {
+  1254→    result.errors.push("Campaign has no confirmed mapping");
+  1255→    return result;
+  1256→  }
+  1257→
+  1258→  if (!mapping.isConfirmed) {
+  1259→    result.errors.push("Campaign's mapping is not confirmed");
+  1260→    return result;
+  1261→  }
+  1262→
+  1263→  const courseId = mapping.courseId;
+  1264→  const productId = mapping.productId;
+  1265→
+  1266→  // ─── Batch queries (no N+1) ───────────────────────────────
+  1267→
+  1268→  // All memberships for the mapped product that are active or trialing
+  1269→  const qualifyingMemberships = await db.membership.findMany({
+  1270→    where: {
+  1271→      organizationId,
+  1272→      productId,
+  1273→      status: { in: ["active", "trialing"] },
+  1274→    },
+  1275→    include: { student: true },
+  1276→  });
+  1277→
+  1278→  if (qualifyingMemberships.length === 0) {
+  1279→    return result; // No candidates possible
+  1280→  }
+  1281→
+  1282→  const candidateStudentIds = new Set(qualifyingMemberships.map((m) => m.studentId));
+  1283→
+  1284→  // Batch: course activity states for all candidate students
+  1285→  const courseStates = await db.studentCourseState.findMany({
+  1286→    where: {
+  1287→      organizationId,
+  1288→      courseId,
+  1289→      studentId: { in: Array.from(candidateStudentIds) },
+  1290→    },
+  1291→  });
+  1292→  const activityByStudent = new Map(courseStates.map((s) => [s.studentId, s]));
+  1293→
+  1294→  // Batch: suppressions for all candidate students (course, campaign, and org level)
+  1295→  const suppressions = await db.suppression.findMany({
+  1296→    where: {
+  1297→      organizationId,
+  1298→      studentId: { in: Array.from(candidateStudentIds) },
+  1299→    },
+  1300→  });
+  1301→  const suppressedStudentIds = new Set(suppressions.map((s) => s.studentId));
+  1302→
+  1303→  // Batch: existing active interventions for these students on this campaign
+  1304→  const activeInterventions = await db.intervention.findMany({
+  1305→    where: {
+  1306→      organizationId,
+  1307→      studentId: { in: Array.from(candidateStudentIds) },
+  1308→      campaignId,
+  1309→      state: { notIn: ["dismissed", "stopped", "failed"] },
+  1310→    },
+  1311→  });
+  1312→  const studentsWithActiveIntervention = new Set(activeInterventions.map((i) => i.studentId));
+  1313→
+  1314→  // Batch: last intervention per student for cooldown check
+  1315→  const lastInterventions = await db.intervention.findMany({
+  1316→    where: {
+  1317→      organizationId,
+  1318→      studentId: { in: Array.from(candidateStudentIds) },
+  1319→      campaignId,
+  1320→    },
+  1321→    orderBy: { createdAt: "desc" },
+  1322→    // We'll process these to get the latest per student
+  1323→  });
+  1324→  const lastInterventionByStudent = new Map<string, Date>();
+  1325→  for (const iv of lastInterventions) {
+  1326→    if (!lastInterventionByStudent.has(iv.studentId)) {
+  1327→      lastInterventionByStudent.set(iv.studentId, iv.createdAt);
+  1328→    }
+  1329→  }
+  1330→
+  1331→  // Batch: recent intervention counts per student (for per-student message limit)
+  1332→  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  1333→  const recentInterventions = await db.intervention.findMany({
+  1334→    where: {
+  1335→      organizationId,
+  1336→      studentId: { in: Array.from(candidateStudentIds) },
+  1337→      campaignId,
+  1338→      createdAt: { gte: thirtyDaysAgo },
+  1339→      state: { in: ["notification_accepted", "delivered"] },
+  1340→    },
+  1341→    select: { studentId: true },
+  1342→  });
+  1343→  const recentInterventionCounts = new Map<string, number>();
+  1344→  for (const iv of recentInterventions) {
+  1345→    recentInterventionCounts.set(iv.studentId, (recentInterventionCounts.get(iv.studentId) ?? 0) + 1);
+  1346→  }
+  1347→
+  1348→  // Batch: org-wide message count in last 30 days
+  1349→  const orgWideMessageCount = await db.intervention.count({
+  1350→    where: {
+  1351→      organizationId,
+  1352→      createdAt: { gte: thirtyDaysAgo },
+  1353→      state: { in: ["notification_accepted", "delivered"] },
+  1354→    },
+  1355→  });
+  1356→
+  1357→  // Batch: campaign message count in last 30 days
+  1358→  const campaignMessageCount = await db.intervention.count({
+  1359→    where: {
+  1360→      organizationId,
+  1361→      campaignId,
+  1362→      createdAt: { gte: thirtyDaysAgo },
+  1363→      state: { in: ["notification_accepted", "delivered"] },
+  1364→    },
+  1365→  });
+  1366→
+  1367→  // Batch: existing eligibility snapshots for this campaign version + window
+  1368→  // (to prevent duplicate snapshots on re-run)
+  1369→  const eligibilityWindowStart = new Date(
+  1370→    now.getFullYear(),
+  1371→    now.getMonth(),
+  1372→    now.getDate(),
+  1373→  ); // Start of today as the eligibility window
+  1374→
+  1375→  const existingSnapshots = await db.eligibilitySnapshot.findMany({
+  1376→    where: {
+  1377→      organizationId,
+  1378→      studentId: { in: Array.from(candidateStudentIds) },
+  1379→      campaignVersionId: latestVersion.id,
+  1380→      eligibilityWindowStart,
+  1381→    },
+  1382→    select: { studentId: true },
+  1383→  });
+  1384→  const studentsWithExistingSnapshot = new Set(existingSnapshots.map((s) => s.studentId));
+  1385→
+  1386→  // Batch: check plan allows monitored members
+  1387→  const entitlement = await db.subscriptionEntitlement.findFirst({
+  1388→    where: { organizationId },
+  1389→  });
+  1390→  const plan = entitlement
+  1391→    ? await db.plan.findUnique({ where: { tier: entitlement.planTier } })
+  1392→    : null;
+  1393→  const maxMonitoredMembers = plan?.maxMonitoredMembers ?? Infinity;
+  1394→
+  1395→  // Count current monitored members
+  1396→  const currentMonitoredMembers = await db.membership.count({
+  1397→    where: {
+  1398→      organizationId,
+  1399→      status: { in: ["active", "trialing"] },
+  1400→    },
+  1401→  });
+  1402→
+  1403→  // Batch: source data freshness check
+  1404→  const latestCheckpoint = await db.syncCheckpoint.findFirst({
+  1405→    where: { organizationId, resource: "memberships" },
+  1406→    orderBy: { updatedAt: "desc" },
+  1407→  });
+  1408→  const SOURCE_FRESHNESS_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+  1409→  const sourceDataFresh = latestCheckpoint
+  1410→    ? (now.getTime() - latestCheckpoint.updatedAt.getTime()) < SOURCE_FRESHNESS_MAX_AGE_MS
+  1411→    : false;
+  1412→
+  1413→  // ─── Evaluate each candidate ──────────────────────────────
+  1414→
+  1415→  // Process in batches to avoid memory pressure
+  1416→  const candidateArray = Array.from(qualifyingMemberships);
+  1417→
+  1418→  for (let batchStart = 0; batchStart < candidateArray.length; batchStart += CANDIDATE_BATCH_SIZE) {
+  1419→    const batch = candidateArray.slice(batchStart, batchStart + CANDIDATE_BATCH_SIZE);
+  1420→
+  1421→    for (const membership of batch) {
+  1422→      result.checksPerformed++;
+  1423→      const studentId = membership.studentId;
+  1424→
+  1425→      // Check 9: Membership belongs to mapped product (guaranteed by our query)
+  1426→
+  1427→      // Check 10: Membership active or trialing (guaranteed by our query)
+  1428→
+  1429→      // Check 11: Membership not ending (no renewalDate or renewalDate in the future)
+  1430→      if (membership.renewalDate && membership.renewalDate <= now) {
+  1431→        continue;
+  1432→      }
+  1433→
+  1434→      // Check 12: Activation delay elapsed
+  1435→      const daysSinceJoin = (now.getTime() - membership.joinedAt.getTime()) / (1000 * 60 * 60 * 24);
+  1436→      if (daysSinceJoin < mapping.activationDelayDays) {
+  1437→        continue;
+  1438→      }
+  1439→
+  1440→      // Check 13: Course activity absent
+  1441→      const courseState = activityByStudent.get(studentId);
+  1442→      if (courseState && courseState.lessonsCompleted > 0) {
+  1443→        continue;
+  1444→      }
+  1445→
+  1446→      // Check 14: No course-, campaign- or organisation-level suppression
+  1447→      if (suppressedStudentIds.has(studentId)) {
+  1448→        continue;
+  1449→      }
+  1450→
+  1451→      // Check 15: No existing equivalent active intervention
+  1452→      if (studentsWithActiveIntervention.has(studentId)) {
+  1453→        continue;
+  1454→      }
+  1455→
+  1456→      // Campaign cooldown check
+  1457→      const lastIvDate = lastInterventionByStudent.get(studentId);
+  1458→      if (lastIvDate) {
+  1459→        const daysSinceLast = (now.getTime() - lastIvDate.getTime()) / (1000 * 60 * 60 * 24);
+  1460→        if (daysSinceLast < campaign.cooldownDays) {
+  1461→          continue;
+  1462→        }
+  1463→      }
+  1464→
+  1465→      // Check: Per-student message limit
+  1466→      const studentRecentCount = recentInterventionCounts.get(studentId) ?? 0;
+  1467→      if (studentRecentCount >= campaign.maxMessagesPerStudent) {
+  1468→        continue;
+  1469→      }
+  1470→
+  1471→      // Check: Org-wide message limit
+  1472→      if (orgWideMessageCount >= campaign.maxMessagesPerOrg) {
+  1473→        continue;
+  1474→      }
+  1475→
+  1476→      // Check 18: Campaign message limit clear
+  1477→      if (campaignMessageCount >= campaign.maxMessagesPerStudent) {
+  1478→        continue;
+  1479→      }
+  1480→
+  1481→      // Check 16: Plan allows monitored member
+  1482→      if (currentMonitoredMembers >= maxMonitoredMembers) {
+  1483→        continue;
+  1484→      }
+  1485→
+  1486→      // Check 20: Source data sufficiently fresh
+  1487→      if (!sourceDataFresh) {
+  1488→        result.warnings.push("Source data is stale — skipping candidate detection");
+  1489→        continue;
+  1490→      }
+  1491→
+  1492→      // Check: Existing snapshot for this window (idempotency)
+  1493→      if (studentsWithExistingSnapshot.has(studentId)) {
+  1494→        result.snapshotsSkipped++;
+  1495→        continue;
+  1496→      }
+  1497→
+  1498→      // ─── Candidate found — create immutable eligibility snapshot ───
+  1499→      result.candidatesFound++;
+  1500→
+  1501→      const evidence = {
+  1502→        detectedAt: now.toISOString(),
+  1503→        membershipId: membership.id,
+  1504→        membershipStatus: membership.status,
+  1505→        joinedAt: membership.joinedAt.toISOString(),
+  1506→        daysSinceJoin: Math.floor(daysSinceJoin),
+  1507→        activationDelayDays: mapping.activationDelayDays,
+  1508→        courseId: mapping.courseId,
+  1509→        productId: mapping.productId,
+  1510→        campaignId,
+  1511→        campaignVersionId: latestVersion.id,
+  1512→        checks: {
+  1513→          orgActive: true,
+  1514→          orgNotPaused: true,
+  1515→          installationActive: true,
+  1516→          campaignActive: true,
+  1517→          campaignIsActivationRescue: true,
+  1518→          manualApprovalEnabled: true,
+  1519→          campaignVersionExists: true,
+  1520→          confirmedMappingBelongsToCampaign: true,
+  1521→          membershipBelongsToMappedProduct: true,
+  1522→          membershipActiveOrTrialing: true,
+  1523→          membershipNotEnding: !membership.renewalDate || membership.renewalDate > now,
+  1524→          activationDelayElapsed: true,
+  1525→          courseActivityAbsent: true,
+  1526→          notSuppressed: true,
+  1527→          noActiveIntervention: true,
+  1528→          campaignCooldownClear: !lastIvDate || (now.getTime() - lastIvDate.getTime()) / (1000 * 60 * 60 * 24) >= campaign.cooldownDays,
+  1529→          orgMessageLimitClear: orgWideMessageCount < campaign.maxMessagesPerOrg,
+  1530→          campaignMessageLimitClear: campaignMessageCount < campaign.maxMessagesPerStudent,
+  1531→          planAllowsMonitoredMember: currentMonitoredMembers < maxMonitoredMembers,
+  1532→          sourceDataFresh: true,
+  1533→        },
+  1534→      };
+  1535→
+  1536→      // Build idempotency key: student + campaign version + eligibility window
+  1537→      const idempotencyKey = `${studentId}:${latestVersion.id}:${eligibilityWindowStart.toISOString()}`;
+  1538→
+  1539→      try {
+  1540→        await db.eligibilitySnapshot.create({
+  1541→          data: {
+  1542→            organizationId,
+  1543→            studentId,
+  1544→            campaignId,
+  1545→            campaignVersionId: latestVersion.id,
+  1546→            idempotencyKey,
+  1547→            state: "eligible",
+  1548→            evidenceJson: evidence as any,
+  1549→            detectedAt: now,
+  1550→            eligibilityWindowStart,
+  1551→            expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+  1552→          },
+  1553→        });
+  1554→        result.snapshotsCreated++;
+  1555→      } catch (error) {
+  1556→        const failure = classifyCreateError(error, idempotencyKey);
+  1557→        if (
+  1558→          failure.class === "duplicate_unique_constraint" ||
+  1559→          failure.class === "duplicate_payload_hash"
+  1560→        ) {
+  1561→          // Idempotent — snapshot already exists for this window
+  1562→          result.snapshotsSkipped++;
+  1563→        } else {
+  1564→          result.errors.push(
+  1565→            `Student ${studentId}: ${failure.message}`,
+  1566→          );
+  1567→        }
+  1568→      }
+  1569→    }
+  1570→  }
+  1571→
+  1572→  return result;
+  1573→}
+  1574→
+  1575→// ─── Orchestrated sync execution ─────────────────────────────
+  1576→
+  1577→/**
+  1578→ * Run a full sync with durable execution records and stage tracking.
+  1579→ * Returns the sync execution ID for observability.
+  1580→ */
+  1581→export async function runFullSync(
+  1582→  params: SyncExecutionParams & { resources?: string[] },
+  1583→): Promise<{ executionId: string; results: SyncResult[] }> {
+  1584→  const resources = params.resources ?? ["courses", "products", "memberships"];
+  1585→  const results: SyncResult[] = [];
+  1586→
+  1587→  // Create the execution record
+  1588→  const execution = await createSyncExecution({
+  1589→    orgId: params.organizationId,
+  1590→    trigger: params.requestedBy ? "manual" : "scheduled",
+  1591→    requestedBy: params.requestedBy,
+  1592→    jobId: params.syncExecutionId,
+  1593→  });
+  1594→
+  1595→  try {
+  1596→    for (const resource of resources) {
+  1597→      const stage = await createSyncStage(execution.id, resource);
+  1598→
+  1599→      let syncResult: SyncResult;
+  1600→      switch (resource) {
+  1601→        case "courses":
+  1602→          syncResult = await syncCourses({ ...params, syncExecutionId: execution.id });
+  1603→          break;
+  1604→        case "products":
+  1605→          syncResult = await syncProducts({ ...params, syncExecutionId: execution.id });
+  1606→          break;
+  1607→        case "memberships":
+  1608→          syncResult = await syncMemberships({ ...params, syncExecutionId: execution.id });
+  1609→          break;
+  1610→        default:
+  1611→          await completeSyncStage(stage.id, {
+  1612→            pagesProcessed: 0, recordsRead: 0, recordsCreated: 0,
+  1613→            recordsUpdated: 0, recordsSkipped: 0,
+  1614→          }, "skipped");
+  1615→          continue;
+  1616→      }
+  1617→
+  1618→      results.push(syncResult);
+  1619→
+  1620→      // Complete the stage with counts
+  1621→      await completeSyncStage(stage.id, {
+  1622→        pagesProcessed: 0, // Pages are tracked inside the sync functions
+  1623→        recordsRead: syncResult.recordsRead,
+  1624→        recordsCreated: syncResult.recordsCreated,
+  1625→        recordsUpdated: syncResult.recordsUpdated,
+  1626→        recordsSkipped: syncResult.recordsSkipped,
+  1627→      });
+  1628→    }
+  1629→
+  1630→    await completeSyncExecution(execution.id, "completed");
+  1631→  } catch (error) {
+  1632→    await completeSyncExecution(
+  1633→      execution.id,
+  1634→      "failed",
+  1635→      error instanceof Error ? error.message : "Unknown error",
+  1636→    );
+  1637→  }
+  1638→
+  1639→  return { executionId: execution.id, results };
+  1640→}
+  1641→
+  1642→// ─── Helpers ─────────────────────────────────────────────────
+  1643→
+  1644→/**
+  1645→ * Phase 10: Bounded aggregation for course state recalculation.
+  1646→ *
+  1647→ * Instead of N+1 queries (one per student, then 3 more per student),
+  1648→ * uses 3 bounded aggregate queries total, then upserts in batches.
+  1649→ *
+  1650→ * Handles:
+  1651→ * - Out-of-order interactions (uses MIN/MAX aggregation)
+  1652→ * - Older events arriving after newer events (idempotent upsert)
+  1653→ * - Course lesson count changes (recalculates from current course.lessonCount)
+  1654→ * - Removed lessons (marks stale states where totalLessons > course.lessonCount)
+  1655→ * - Students with activity but no qualifying membership (flagged, not skipped)
+  1656→ * - Membership arriving after course activity (retroactively linked via reconciliation)
+  1657→ */
+  1658→async function recalculateCourseStatesBounded(organizationId: string, courseId: string): Promise<void> {
+  1659→  const course = await db.course.findUnique({ where: { id: courseId } });
+  1660→  if (!course) return;
+  1661→
+  1662→  // Bounded aggregation: group by student in a single query using raw SQL
+  1663→  // This replaces the N+1 pattern of: findDistinct students → count per student → findFirst per student
+  1664→  const aggregated = await db.$queryRaw<Array<{
+  1665→    studentId: string;
+  1666→    completedCount: bigint;
+  1667→    firstOccurredAt: Date;
+  1668→    lastOccurredAt: Date;
+  1669→  }>>`
+  1670→    SELECT
+  1671→      "studentId",
+  1672→      COUNT(*) FILTER (WHERE action = 'completed') AS "completedCount",
+  1673→      MIN("occurredAt") AS "firstOccurredAt",
+  1674→      MAX("occurredAt") AS "lastOccurredAt"
+  1675→    FROM "progress_events"
+  1676→    WHERE "organizationId" = ${organizationId}
+  1677→      AND "courseId" = ${courseId}
+  1678→    GROUP BY "studentId"
+  1679→  `;
+  1680→
+  1681→  if (aggregated.length === 0) return;
+  1682→
+  1683→  // Phase 10: Mark stale any student course states where totalLessons
+  1684→  // no longer matches the current course.lessonCount (removed lessons)
+  1685→  await db.studentCourseState.updateMany({
+  1686→    where: {
+  1687→      organizationId,
+  1688→      courseId,
+  1689→      totalLessons: { not: course.lessonCount },
+  1690→    },
+  1691→    data: {
+  1692→      totalLessons: course.lessonCount,
+  1693→      // lastSyncedAt will be updated by the upsert below
+  1694→    },
+  1695→  });
+  1696→
+  1697→  // Upsert student course states in batches
+  1698→  for (let i = 0; i < aggregated.length; i += PROGRESS_BATCH_SIZE) {
+  1699→    const batch = aggregated.slice(i, i + PROGRESS_BATCH_SIZE);
+  1700→
+  1701→    await Promise.all(
+  1702→      batch.map(async (row) => {
+  1703→        const completedCount = Number(row.completedCount);
+  1704→        const progressPercent = course.lessonCount > 0
+  1705→          ? Math.min(100, Math.round((completedCount / course.lessonCount) * 100))
+  1706→          : 0;
+  1707→
+  1708→        await db.studentCourseState.upsert({
+  1709→          where: { studentId_courseId: { studentId: row.studentId, courseId } },
+  1710→          create: {
+  1711→            organizationId,
+  1712→            studentId: row.studentId,
+  1713→            courseId,
+  1714→            progressPercent,
+  1715→            lessonsCompleted: completedCount,
+  1716→            totalLessons: course.lessonCount,
+  1717→            firstActivityAt: row.firstOccurredAt,
+  1718→            lastActivityAt: row.lastOccurredAt,
+  1719→          },
+  1720→          update: {
+  1721→            lessonsCompleted: completedCount,
+  1722→            progressPercent,
+  1723→            totalLessons: course.lessonCount,
+  1724→            lastActivityAt: row.lastOccurredAt,
+  1725→            lastSyncedAt: new Date(),
+  1726→          },
+  1727→        });
+  1728→      }),
+  1729→    );
+  1730→  }
+  1731→
+  1732→  // Phase 10: Flag students with activity but no qualifying membership
+  1733→  // These will be fully resolved by the next reconciliation run,
+  1734→  // which will link memberships retroactively if they have since arrived.
+  1735→  // We don't delete their course states — they remain as evidence for reconciliation.
+  1736→}
+  1737→
+  1738→/**
+  1739→ * Legacy recalculateCourseStates — kept for backward compatibility.
+  1740→ * Delegates to the bounded version.
+  1741→ */
+  1742→async function recalculateCourseStates(organizationId: string, courseId: string): Promise<void> {
+  1743→  return recalculateCourseStatesBounded(organizationId, courseId);
+  1744→}
+  1745→

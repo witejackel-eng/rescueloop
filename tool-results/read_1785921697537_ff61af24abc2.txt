@@ -1,0 +1,996 @@
+     1→// Synchronization engine — syncs external provider data into the database.
+     2→// Uses the provider contracts so it works with both fixture and Whop providers.
+     3→//
+     4→// Each sync function is a separate durable workflow:
+     5→// - syncCourses
+     6→// - syncProducts
+     7→// - syncMemberships
+     8→// - syncCourseProgress
+     9→// - reconcile
+    10→// - detectCandidates
+    11→//
+    12→// All syncs are idempotent (upsert by external ID) and resumable (cursor checkpoints).
+    13→//
+    14→// Phase 9 improvements:
+    15→// - Bounded, batched DB operations per page
+    16→// - loadExternalIds in one query, then split into creates / updates
+    17→// - createMany({ skipDuplicates: true }) where supported
+    18→// - Batch updates in controlled concurrency
+    19→// - Persist checkpoint after every committed page
+    20→// - normalizeMembershipStatus replaces `as any`
+    21→// - Correct result accounting: upsert updates → recordsUpdated
+    22→
+    23→import "server-only";
+    24→import { db } from "@/lib/db";
+    25→import type { ProviderBundle } from "@/providers/contracts";
+    26→import { recordAuditEvent } from "@/lib/audit";
+    27→import { normalizeMembershipStatus } from "./normalize-membership-status";
+    28→import {
+    29→  createSyncExecution,
+    30→  completeSyncExecution,
+    31→  createSyncStage,
+    32→  completeSyncStage,
+    33→  persistCheckpoint,
+    34→  getLatestCheckpoint,
+    35→  createReconciliationRun,
+    36→  completeReconciliationRun,
+    37→} from "./sync-records";
+    38→import type { SyncStageResults } from "./sync-records";
+    39→
+    40→// ─── Constants ───────────────────────────────────────────────
+    41→
+    42→const PAGE_SIZE = 50;
+    43→const MAX_CONCURRENT_UPDATES = 10; // Bounded concurrency for batch updates
+    44→
+    45→// ─── Types ───────────────────────────────────────────────────
+    46→
+    47→export interface SyncResult {
+    48→  resource: string;
+    49→  recordsRead: number;
+    50→  recordsCreated: number;
+    51→  recordsUpdated: number;
+    52→  recordsSkipped: number;
+    53→  errors: string[];
+    54→  warnings: string[];
+    55→  cursor: string | null; // For resumption
+    56→}
+    57→
+    58→export interface SyncExecutionParams {
+    59→  organizationId: string;
+    60→  companyId: string; // Whop company ID
+    61→  providers: ProviderBundle;
+    62→  cursor?: string | null;
+    63→  syncExecutionId?: string; // Existing execution to attach to
+    64→  requestedBy?: string;
+    65→}
+    66→
+    67→// ─── Bounded concurrency helper ──────────────────────────────
+    68→
+    69→/** Run items with at most `concurrency` operations in flight. */
+    70→async function boundedMap<T, R>(
+    71→  items: T[],
+    72→  fn: (item: T) => Promise<R>,
+    73→  concurrency: number = MAX_CONCURRENT_UPDATES,
+    74→): Promise<R[]> {
+    75→  const results: R[] = [];
+    76→  const executing: Promise<void>[] = [];
+    77→
+    78→  for (const item of items) {
+    79→    const p = fn(item).then((r) => { results.push(r); });
+    80→    executing.push(p);
+    81→
+    82→    if (executing.length >= concurrency) {
+    83→      await Promise.race(executing);
+    84→      // Remove settled promises
+    85→      for (let i = executing.length - 1; i >= 0; i--) {
+    86→        const settled = await Promise.race([
+    87→          executing[i].then(() => true, () => true),
+    88→          Promise.resolve(false),
+    89→        ]);
+    90→        if (settled) executing.splice(i, 1);
+    91→      }
+    92→    }
+    93→  }
+    94→
+    95→  await Promise.allSettled(executing);
+    96→  return results;
+    97→}
+    98→
+    99→// ─── Course sync ─────────────────────────────────────────────
+   100→
+   101→export async function syncCourses(params: SyncExecutionParams): Promise<SyncResult> {
+   102→  const result: SyncResult = {
+   103→    resource: "courses",
+   104→    recordsRead: 0,
+   105→    recordsCreated: 0,
+   106→    recordsUpdated: 0,
+   107→    recordsSkipped: 0,
+   108→    errors: [],
+   109→    warnings: [],
+   110→    cursor: null,
+   111→  };
+   112→
+   113→  // Resume from checkpoint if no explicit cursor
+   114→  let cursor = params.cursor ?? null;
+   115→  if (!cursor) {
+   116→    const checkpoint = await getLatestCheckpoint(params.organizationId, "courses");
+   117→    if (checkpoint?.cursor) {
+   118→      cursor = checkpoint.cursor;
+   119→    }
+   120→  }
+   121→
+   122→  let pagesProcessed = 0;
+   123→
+   124→  do {
+   125→    const page = await params.providers.courses.list({
+   126→      companyId: params.companyId,
+   127→      cursor,
+   128→      pageSize: PAGE_SIZE,
+   129→    });
+   130→
+   131→    result.recordsRead += page.items.length;
+   132→    pagesProcessed++;
+   133→
+   134→    // 1. Validate the full page
+   135→    const validItems = page.items.filter((course) => {
+   136→      if (!course.id) {
+   137→        result.errors.push(`Course missing id — skipped`);
+   138→        result.recordsSkipped++;
+   139→        return false;
+   140→      }
+   141→      return true;
+   142→    });
+   143→
+   144→    if (validItems.length === 0) {
+   145→      cursor = page.nextCursor;
+   146→      continue;
+   147→    }
+   148→
+   149→    // 2. Load existing external IDs in one bounded query
+   150→    const externalIds = validItems.map((c) => c.id);
+   151→    const existing = await db.course.findMany({
+   152→      where: {
+   153→        organizationId: params.organizationId,
+   154→        externalCourseId: { in: externalIds },
+   155→      },
+   156→      select: { id: true, externalCourseId: true },
+   157→    });
+   158→    const existingMap = new Map(existing.map((e) => [e.externalCourseId, e.id]));
+   159→
+   160→    // 3. Split into creates and updates
+   161→    const toCreate = validItems.filter((c) => !existingMap.has(c.id));
+   162→    const toUpdate = validItems.filter((c) => existingMap.has(c.id));
+   163→
+   164→    // 4. Batch creates with skipDuplicates
+   165→    if (toCreate.length > 0) {
+   166→      try {
+   167→        await db.course.createMany({
+   168→          data: toCreate.map((course) => ({
+   169→            organizationId: params.organizationId,
+   170→            externalCourseId: course.id,
+   171→            externalExperienceId: course.experienceId,
+   172→            name: course.title ?? "Untitled Course",
+   173→            lessonCount: course.lessonCount,
+   174→          })),
+   175→          skipDuplicates: true,
+   176→        });
+   177→        result.recordsCreated += toCreate.length;
+   178→      } catch (error) {
+   179→        result.errors.push(`Course batch create: ${error instanceof Error ? error.message : "unknown"}`);
+   180→        result.recordsSkipped += toCreate.length;
+   181→      }
+   182→    }
+   183→
+   184→    // 5. Batch updates with bounded concurrency
+   185→    if (toUpdate.length > 0) {
+   186→      const updateResults = await boundedMap(toUpdate, async (course) => {
+   187→        const existingId = existingMap.get(course.id)!;
+   188→        try {
+   189→          await db.course.update({
+   190→            where: { id: existingId },
+   191→            data: {
+   192→              name: course.title ?? undefined,
+   193→              lessonCount: course.lessonCount || undefined,
+   194→              externalExperienceId: course.experienceId || undefined,
+   195→            },
+   196→          });
+   197→          return true;
+   198→        } catch (error) {
+   199→          result.errors.push(`Course ${course.id}: ${error instanceof Error ? error.message : "unknown"}`);
+   200→          return false;
+   201→        }
+   202→      });
+   203→      result.recordsUpdated += updateResults.filter(Boolean).length;
+   204→      result.recordsSkipped += updateResults.filter((r) => !r).length;
+   205→    }
+   206→
+   207→    // 6. Commit page — persist checkpoint
+   208→    cursor = page.nextCursor;
+   209→    if (params.syncExecutionId) {
+   210→      await persistCheckpoint(
+   211→        params.organizationId,
+   212→        "courses",
+   213→        cursor,
+   214→        null,
+   215→        params.syncExecutionId,
+   216→        pagesProcessed,
+   217→      );
+   218→    }
+   219→  } while (cursor);
+   220→
+   221→  result.cursor = cursor;
+   222→
+   223→  // 7. Emit usage and audit data
+   224→  await recordAuditEvent({
+   225→    organizationId: params.organizationId,
+   226→    action: "synced",
+   227→    objectType: "course",
+   228→    objectId: "bulk",
+   229→    reason: `Synced ${result.recordsRead} courses`,
+   230→    metadata: {
+   231→      created: result.recordsCreated,
+   232→      updated: result.recordsUpdated,
+   233→      skipped: result.recordsSkipped,
+   234→      errors: result.errors.length,
+   235→    },
+   236→  });
+   237→
+   238→  return result;
+   239→}
+   240→
+   241→// ─── Product sync ────────────────────────────────────────────
+   242→
+   243→export async function syncProducts(params: SyncExecutionParams): Promise<SyncResult> {
+   244→  const result: SyncResult = {
+   245→    resource: "products",
+   246→    recordsRead: 0,
+   247→    recordsCreated: 0,
+   248→    recordsUpdated: 0,
+   249→    recordsSkipped: 0,
+   250→    errors: [],
+   251→    warnings: [],
+   252→    cursor: null,
+   253→  };
+   254→
+   255→  let cursor = params.cursor ?? null;
+   256→  if (!cursor) {
+   257→    const checkpoint = await getLatestCheckpoint(params.organizationId, "products");
+   258→    if (checkpoint?.cursor) {
+   259→      cursor = checkpoint.cursor;
+   260→    }
+   261→  }
+   262→
+   263→  let pagesProcessed = 0;
+   264→
+   265→  do {
+   266→    const page = await params.providers.products.list({
+   267→      companyId: params.companyId,
+   268→      cursor,
+   269→      pageSize: PAGE_SIZE,
+   270→    });
+   271→
+   272→    result.recordsRead += page.items.length;
+   273→    pagesProcessed++;
+   274→
+   275→    const validItems = page.items.filter((product) => {
+   276→      if (!product.id) {
+   277→        result.errors.push(`Product missing id — skipped`);
+   278→        result.recordsSkipped++;
+   279→        return false;
+   280→      }
+   281→      return true;
+   282→    });
+   283→
+   284→    if (validItems.length === 0) {
+   285→      cursor = page.nextCursor;
+   286→      continue;
+   287→    }
+   288→
+   289→    // Load existing in one query
+   290→    const externalIds = validItems.map((p) => p.id);
+   291→    const existing = await db.product.findMany({
+   292→      where: {
+   293→        organizationId: params.organizationId,
+   294→        whopProductId: { in: externalIds },
+   295→      },
+   296→      select: { id: true, whopProductId: true },
+   297→    });
+   298→    const existingMap = new Map(existing.map((e) => [e.whopProductId, e.id]));
+   299→
+   300→    const toCreate = validItems.filter((p) => !existingMap.has(p.id));
+   301→    const toUpdate = validItems.filter((p) => existingMap.has(p.id));
+   302→
+   303→    // Batch creates
+   304→    if (toCreate.length > 0) {
+   305→      try {
+   306→        await db.product.createMany({
+   307→          data: toCreate.map((product) => ({
+   308→            organizationId: params.organizationId,
+   309→            whopProductId: product.id,
+   310→            name: product.name,
+   311→            priceCents: product.priceCents,
+   312→            currency: product.currency,
+   313→            billingCycle: product.billingCycle,
+   314→          })),
+   315→          skipDuplicates: true,
+   316→        });
+   317→        result.recordsCreated += toCreate.length;
+   318→      } catch (error) {
+   319→        result.errors.push(`Product batch create: ${error instanceof Error ? error.message : "unknown"}`);
+   320→        result.recordsSkipped += toCreate.length;
+   321→      }
+   322→    }
+   323→
+   324→    // Batch updates
+   325→    if (toUpdate.length > 0) {
+   326→      const updateResults = await boundedMap(toUpdate, async (product) => {
+   327→        const existingId = existingMap.get(product.id)!;
+   328→        try {
+   329→          await db.product.update({
+   330→            where: { id: existingId },
+   331→            data: {
+   332→              name: product.name,
+   333→              priceCents: product.priceCents,
+   334→              currency: product.currency,
+   335→              billingCycle: product.billingCycle,
+   336→            },
+   337→          });
+   338→          return true;
+   339→        } catch (error) {
+   340→          result.errors.push(`Product ${product.id}: ${error instanceof Error ? error.message : "unknown"}`);
+   341→          return false;
+   342→        }
+   343→      });
+   344→      result.recordsUpdated += updateResults.filter(Boolean).length;
+   345→      result.recordsSkipped += updateResults.filter((r) => !r).length;
+   346→    }
+   347→
+   348→    // Persist checkpoint
+   349→    cursor = page.nextCursor;
+   350→    if (params.syncExecutionId) {
+   351→      await persistCheckpoint(
+   352→        params.organizationId,
+   353→        "products",
+   354→        cursor,
+   355→        null,
+   356→        params.syncExecutionId,
+   357→        pagesProcessed,
+   358→      );
+   359→    }
+   360→  } while (cursor);
+   361→
+   362→  result.cursor = cursor;
+   363→
+   364→  await recordAuditEvent({
+   365→    organizationId: params.organizationId,
+   366→    action: "synced",
+   367→    objectType: "product",
+   368→    objectId: "bulk",
+   369→    reason: `Synced ${result.recordsRead} products`,
+   370→    metadata: {
+   371→      created: result.recordsCreated,
+   372→      updated: result.recordsUpdated,
+   373→      skipped: result.recordsSkipped,
+   374→    },
+   375→  });
+   376→
+   377→  return result;
+   378→}
+   379→
+   380→// ─── Membership sync ─────────────────────────────────────────
+   381→
+   382→export async function syncMemberships(params: SyncExecutionParams): Promise<SyncResult> {
+   383→  const result: SyncResult = {
+   384→    resource: "memberships",
+   385→    recordsRead: 0,
+   386→    recordsCreated: 0,
+   387→    recordsUpdated: 0,
+   388→    recordsSkipped: 0,
+   389→    errors: [],
+   390→    warnings: [],
+   391→    cursor: null,
+   392→  };
+   393→
+   394→  let cursor = params.cursor ?? null;
+   395→  if (!cursor) {
+   396→    const checkpoint = await getLatestCheckpoint(params.organizationId, "memberships");
+   397→    if (checkpoint?.cursor) {
+   398→      cursor = checkpoint.cursor;
+   399→    }
+   400→  }
+   401→
+   402→  let pagesProcessed = 0;
+   403→
+   404→  do {
+   405→    const page = await params.providers.memberships.list({
+   406→      companyId: params.companyId,
+   407→      cursor,
+   408→      pageSize: PAGE_SIZE,
+   409→    });
+   410→
+   411→    result.recordsRead += page.items.length;
+   412→    pagesProcessed++;
+   413→
+   414→    for (const membership of page.items) {
+   415→      try {
+   416→        // Normalize the external status — replaces `membership.status as any`
+   417→        const { status: safeStatus, warning } = normalizeMembershipStatus(membership.status);
+   418→        if (warning) {
+   419→          result.warnings.push(warning);
+   420→        }
+   421→
+   422→        // Find or create the student (upsert by composite key)
+   423→        const student = await db.student.upsert({
+   424→          where: {
+   425→            organizationId_whopUserId: {
+   426→              organizationId: params.organizationId,
+   427→              whopUserId: membership.userId,
+   428→            },
+   429→          },
+   430→          create: {
+   431→            organizationId: params.organizationId,
+   432→            whopUserId: membership.userId,
+   433→          },
+   434→          update: {},
+   435→        });
+   436→
+   437→        // Find the product
+   438→        const product = await db.product.findFirst({
+   439→          where: {
+   440→            organizationId: params.organizationId,
+   441→            whopProductId: membership.productId,
+   442→          },
+   443→        });
+   444→
+   445→        if (!product) {
+   446→          result.errors.push(`Membership ${membership.id}: product ${membership.productId} not found`);
+   447→          result.recordsSkipped++;
+   448→          continue;
+   449→        }
+   450→
+   451→        // Check if membership already exists to determine create vs update
+   452→        const existingMembership = await db.membership.findUnique({
+   453→          where: { whopMembershipId: membership.id },
+   454→          select: { id: true },
+   455→        });
+   456→
+   457→        if (existingMembership) {
+   458→          // UPDATE — increment recordsUpdated, NOT recordsCreated
+   459→          await db.membership.update({
+   460→            where: { id: existingMembership.id },
+   461→            data: {
+   462→              status: safeStatus,
+   463→              renewalDate: membership.renewalDate ? new Date(membership.renewalDate) : null,
+   464→              cancelledAt: membership.cancelledAt ? new Date(membership.cancelledAt) : null,
+   465→              priceCents: membership.priceCents,
+   466→              currency: membership.currency,
+   467→              lastSyncedAt: new Date(),
+   468→            },
+   469→          });
+   470→          result.recordsUpdated++;
+   471→        } else {
+   472→          // CREATE
+   473→          await db.membership.create({
+   474→            data: {
+   475→              organizationId: params.organizationId,
+   476→              studentId: student.id,
+   477→              productId: product.id,
+   478→              whopMembershipId: membership.id,
+   479→              status: safeStatus,
+   480→              joinedAt: new Date(membership.joinedAt),
+   481→              renewalDate: membership.renewalDate ? new Date(membership.renewalDate) : null,
+   482→              cancelledAt: membership.cancelledAt ? new Date(membership.cancelledAt) : null,
+   483→              priceCents: membership.priceCents,
+   484→              currency: membership.currency,
+   485→              lastSyncedAt: new Date(),
+   486→            },
+   487→          });
+   488→          result.recordsCreated++;
+   489→        }
+   490→      } catch (error) {
+   491→        result.errors.push(`Membership ${membership.id}: ${error instanceof Error ? error.message : "unknown"}`);
+   492→        result.recordsSkipped++;
+   493→      }
+   494→    }
+   495→
+   496→    // Persist checkpoint
+   497→    cursor = page.nextCursor;
+   498→    if (params.syncExecutionId) {
+   499→      await persistCheckpoint(
+   500→        params.organizationId,
+   501→        "memberships",
+   502→        cursor,
+   503→        null,
+   504→        params.syncExecutionId,
+   505→        pagesProcessed,
+   506→      );
+   507→    }
+   508→  } while (cursor);
+   509→
+   510→  result.cursor = cursor;
+   511→
+   512→  await recordAuditEvent({
+   513→    organizationId: params.organizationId,
+   514→    action: "synced",
+   515→    objectType: "membership",
+   516→    objectId: "bulk",
+   517→    reason: `Synced ${result.recordsRead} memberships`,
+   518→    metadata: {
+   519→      created: result.recordsCreated,
+   520→      updated: result.recordsUpdated,
+   521→      skipped: result.recordsSkipped,
+   522→      warnings: result.warnings.length,
+   523→    },
+   524→  });
+   525→
+   526→  return result;
+   527→}
+   528→
+   529→// ─── Course progress sync ────────────────────────────────────
+   530→
+   531→export async function syncCourseProgress(
+   532→  params: SyncExecutionParams & { courseId: string },
+   533→): Promise<SyncResult> {
+   534→  const result: SyncResult = {
+   535→    resource: "progress",
+   536→    recordsRead: 0,
+   537→    recordsCreated: 0,
+   538→    recordsUpdated: 0,
+   539→    recordsSkipped: 0,
+   540→    errors: [],
+   541→    warnings: [],
+   542→    cursor: null,
+   543→  };
+   544→
+   545→  // Find the internal course
+   546→  const course = await db.course.findFirst({
+   547→    where: {
+   548→      organizationId: params.organizationId,
+   549→      id: params.courseId,
+   550→    },
+   551→  });
+   552→
+   553→  if (!course) {
+   554→    result.errors.push(`Course ${params.courseId} not found`);
+   555→    return result;
+   556→  }
+   557→
+   558→  let cursor = params.cursor ?? null;
+   559→  if (!cursor) {
+   560→    const checkpoint = await getLatestCheckpoint(params.organizationId, "progress");
+   561→    if (checkpoint?.cursor) {
+   562→      cursor = checkpoint.cursor;
+   563→    }
+   564→  }
+   565→
+   566→  let pagesProcessed = 0;
+   567→
+   568→  do {
+   569→    const page = await params.providers.progress.listLessonInteractions({
+   570→      companyId: params.companyId,
+   571→      courseId: course.externalCourseId,
+   572→      cursor,
+   573→      pageSize: PAGE_SIZE,
+   574→    });
+   575→
+   576→    result.recordsRead += page.items.length;
+   577→    pagesProcessed++;
+   578→
+   579→    for (const interaction of page.items) {
+   580→      try {
+   581→        // Find the student
+   582→        const student = await db.student.findFirst({
+   583→          where: {
+   584→            organizationId: params.organizationId,
+   585→            whopUserId: interaction.userId,
+   586→          },
+   587→        });
+   588→
+   589→        if (!student) {
+   590→          result.recordsSkipped++;
+   591→          continue;
+   592→        }
+   593→
+   594→        // Use the external interaction ID for idempotency
+   595→        // The unique constraint prevents duplicate counting
+   596→        try {
+   597→          await db.progressEvent.create({
+   598→            data: {
+   599→              organizationId: params.organizationId,
+   600→              studentId: student.id,
+   601→              courseId: course.id,
+   602→              externalInteractionId: interaction.id,
+   603→              lessonIndex: 0,
+   604→              lessonTitle: interaction.lessonTitle,
+   605→              action: interaction.completed ? "completed" : "started",
+   606→              occurredAt: new Date(interaction.createdAt),
+   607→            },
+   608→          });
+   609→          result.recordsCreated++;
+   610→        } catch {
+   611→          // Unique constraint violation — already recorded (idempotent)
+   612→          result.recordsSkipped++;
+   613→        }
+   614→      } catch (error) {
+   615→        result.errors.push(`Interaction ${interaction.id}: ${error instanceof Error ? error.message : "unknown"}`);
+   616→        result.recordsSkipped++;
+   617→      }
+   618→    }
+   619→
+   620→    // Persist checkpoint
+   621→    cursor = page.nextCursor;
+   622→    if (params.syncExecutionId) {
+   623→      await persistCheckpoint(
+   624→        params.organizationId,
+   625→        "progress",
+   626→        cursor,
+   627→        null,
+   628→        params.syncExecutionId,
+   629→        pagesProcessed,
+   630→      );
+   631→    }
+   632→  } while (cursor);
+   633→
+   634→  // Recalculate course states from the interaction table
+   635→  await recalculateCourseStates(params.organizationId, course.id);
+   636→
+   637→  result.cursor = cursor;
+   638→
+   639→  await recordAuditEvent({
+   640→    organizationId: params.organizationId,
+   641→    action: "synced",
+   642→    objectType: "progress",
+   643→    objectId: course.id,
+   644→    reason: `Synced ${result.recordsRead} progress events`,
+   645→    metadata: {
+   646→      created: result.recordsCreated,
+   647→      skipped: result.recordsSkipped,
+   648→    },
+   649→  });
+   650→
+   651→  return result;
+   652→}
+   653→
+   654→// ─── Reconciliation ──────────────────────────────────────────
+   655→
+   656→export interface ReconciliationResult {
+   657→  matched: number;
+   658→  membershipWithoutCourseActivity: number;
+   659→  courseActivityWithoutMembership: number;
+   660→  unmappedProduct: number;
+   661→  missingSourceFields: number;
+   662→  staleSourceRecord: number;
+   663→}
+   664→
+   665→export async function reconcile(
+   666→  organizationId: string,
+   667→  courseId: string,
+   668→  syncExecutionId?: string,
+   669→): Promise<ReconciliationResult> {
+   670→  const result: ReconciliationResult = {
+   671→    matched: 0,
+   672→    membershipWithoutCourseActivity: 0,
+   673→    courseActivityWithoutMembership: 0,
+   674→    unmappedProduct: 0,
+   675→    missingSourceFields: 0,
+   676→    staleSourceRecord: 0,
+   677→  };
+   678→
+   679→  // Create a reconciliation run record
+   680→  const run = await createReconciliationRun(organizationId, courseId, syncExecutionId);
+   681→
+   682→  // Get all memberships for this organization that map to this course
+   683→  const mappings = await db.productCourseMapping.findMany({
+   684→    where: { organizationId, courseId, isConfirmed: true },
+   685→    include: { product: { include: { memberships: true } } },
+   686→  });
+   687→
+   688→  const mappedProductIds = new Set(mappings.map((m) => m.productId));
+   689→
+   690→  // Get all students with course activity
+   691→  const courseStates = await db.studentCourseState.findMany({
+   692→    where: { organizationId, courseId },
+   693→  });
+   694→
+   695→  const studentsWithActivity = new Set(courseStates.map((s) => s.studentId));
+   696→
+   697→  // Check each membership
+   698→  for (const mapping of mappings) {
+   699→    for (const membership of mapping.product.memberships) {
+   700→      if (studentsWithActivity.has(membership.studentId)) {
+   701→        result.matched++;
+   702→      } else {
+   703→        result.membershipWithoutCourseActivity++;
+   704→      }
+   705→    }
+   706→  }
+   707→
+   708→  // Check for course activity without a mapped membership
+   709→  for (const state of courseStates) {
+   710→    const hasMembership = await db.membership.findFirst({
+   711→      where: {
+   712→        organizationId,
+   713→        studentId: state.studentId,
+   714→        productId: { in: Array.from(mappedProductIds) },
+   715→      },
+   716→    });
+   717→
+   718→    if (!hasMembership) {
+   719→      result.courseActivityWithoutMembership++;
+   720→    }
+   721→  }
+   722→
+   723→  // Complete the reconciliation run record
+   724→  await completeReconciliationRun(run.id, result);
+   725→
+   726→  return result;
+   727→}
+   728→
+   729→// ─── Candidate detection ─────────────────────────────────────
+   730→
+   731→export interface CandidateDetectionResult {
+   732→  candidatesFound: number;
+   733→  snapshotsCreated: number;
+   734→  errors: string[];
+   735→}
+   736→
+   737→export async function detectCandidates(
+   738→  organizationId: string,
+   739→  campaignId: string,
+   740→): Promise<CandidateDetectionResult> {
+   741→  const result: CandidateDetectionResult = {
+   742→    candidatesFound: 0,
+   743→    snapshotsCreated: 0,
+   744→    errors: [],
+   745→  };
+   746→
+   747→  const campaign = await db.campaign.findFirst({
+   748→    where: { id: campaignId, organizationId, type: "activation_rescue" },
+   749→    include: { organization: true, versions: { orderBy: { versionNumber: "desc" }, take: 1 } },
+   750→  });
+   751→
+   752→  if (!campaign) {
+   753→    result.errors.push("Campaign not found or not an Activation Rescue campaign");
+   754→    return result;
+   755→  }
+   756→
+   757→  const latestVersion = campaign.versions[0];
+   758→
+   759→  // Find all confirmed product-course mappings for this org
+   760→  const mappings = await db.productCourseMapping.findMany({
+   761→    where: { organizationId, isConfirmed: true },
+   762→    include: {
+   763→      product: { include: { memberships: { where: { status: { in: ["active", "trialing"] } } } } },
+   764→      course: true,
+   765→    },
+   766→  });
+   767→
+   768→  const now = new Date();
+   769→
+   770→  for (const mapping of mappings) {
+   771→    for (const membership of mapping.product.memberships) {
+   772→      // Check if the student has any course activity
+   773→      const hasActivity = await db.studentCourseState.findFirst({
+   774→        where: {
+   775→          organizationId,
+   776→          studentId: membership.studentId,
+   777→          courseId: mapping.courseId,
+   778→        },
+   779→      });
+   780→
+   781→      if (hasActivity && hasActivity.lessonsCompleted > 0) {
+   782→        continue; // Has course activity — not a candidate
+   783→      }
+   784→
+   785→      // Check activation delay
+   786→      const daysSinceJoin = (now.getTime() - membership.joinedAt.getTime()) / (1000 * 60 * 60 * 24);
+   787→      if (daysSinceJoin < mapping.activationDelayDays) {
+   788→        continue; // Too soon
+   789→      }
+   790→
+   791→      // Check suppression
+   792→      const suppressed = await db.suppression.findFirst({
+   793→        where: { organizationId, studentId: membership.studentId },
+   794→      });
+   795→      if (suppressed) continue;
+   796→
+   797→      // Check existing active intervention
+   798→      const existingIntervention = await db.intervention.findFirst({
+   799→        where: {
+   800→          organizationId,
+   801→          studentId: membership.studentId,
+   802→          campaignId,
+   803→          state: { notIn: ["dismissed", "stopped", "failed"] },
+   804→        },
+   805→      });
+   806→      if (existingIntervention) continue;
+   807→
+   808→      // Check cooldown
+   809→      const lastIntervention = await db.intervention.findFirst({
+   810→        where: { organizationId, studentId: membership.studentId, campaignId },
+   811→        orderBy: { createdAt: "desc" },
+   812→      });
+   813→
+   814→      if (lastIntervention) {
+   815→        const daysSinceLast = (now.getTime() - lastIntervention.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+   816→        if (daysSinceLast < campaign.cooldownDays) continue;
+   817→      }
+   818→
+   819→      // Check max messages
+   820→      const recentCount = await db.intervention.count({
+   821→        where: {
+   822→          organizationId,
+   823→          studentId: membership.studentId,
+   824→          campaignId,
+   825→          createdAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
+   826→          state: { in: ["notification_accepted", "delivered"] },
+   827→        },
+   828→      });
+   829→      if (recentCount >= campaign.maxMessagesPerStudent) continue;
+   830→
+   831→      // Candidate found — create eligibility snapshot
+   832→      result.candidatesFound++;
+   833→
+   834→      const evidence = {
+   835→        detectedAt: now.toISOString(),
+   836→        membershipId: membership.id,
+   837→        membershipStatus: membership.status,
+   838→        joinedAt: membership.joinedAt.toISOString(),
+   839→        daysSinceJoin: Math.floor(daysSinceJoin),
+   840→        activationDelayDays: mapping.activationDelayDays,
+   841→        courseId: mapping.courseId,
+   842→        productId: mapping.productId,
+   843→        campaignId,
+   844→        campaignVersionId: latestVersion?.id,
+   845→      };
+   846→
+   847→      try {
+   848→        await db.eligibilitySnapshot.create({
+   849→          data: {
+   850→            organizationId,
+   851→            studentId: membership.studentId,
+   852→            campaignId,
+   853→            campaignVersionId: latestVersion?.id,
+   854→            state: "eligible",
+   855→            evidenceJson: evidence as any,
+   856→            detectedAt: now,
+   857→            expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+   858→          },
+   859→        });
+   860→        result.snapshotsCreated++;
+   861→      } catch (error) {
+   862→        result.errors.push(
+   863→          `Student ${membership.studentId}: ${error instanceof Error ? error.message : "unknown"}`,
+   864→        );
+   865→      }
+   866→    }
+   867→  }
+   868→
+   869→  return result;
+   870→}
+   871→
+   872→// ─── Orchestrated sync execution ─────────────────────────────
+   873→
+   874→/**
+   875→ * Run a full sync with durable execution records and stage tracking.
+   876→ * Returns the sync execution ID for observability.
+   877→ */
+   878→export async function runFullSync(
+   879→  params: SyncExecutionParams & { resources?: string[] },
+   880→): Promise<{ executionId: string; results: SyncResult[] }> {
+   881→  const resources = params.resources ?? ["courses", "products", "memberships"];
+   882→  const results: SyncResult[] = [];
+   883→
+   884→  // Create the execution record
+   885→  const execution = await createSyncExecution({
+   886→    orgId: params.organizationId,
+   887→    trigger: params.requestedBy ? "manual" : "scheduled",
+   888→    requestedBy: params.requestedBy,
+   889→    jobId: params.syncExecutionId,
+   890→  });
+   891→
+   892→  try {
+   893→    for (const resource of resources) {
+   894→      const stage = await createSyncStage(execution.id, resource);
+   895→
+   896→      let syncResult: SyncResult;
+   897→      switch (resource) {
+   898→        case "courses":
+   899→          syncResult = await syncCourses({ ...params, syncExecutionId: execution.id });
+   900→          break;
+   901→        case "products":
+   902→          syncResult = await syncProducts({ ...params, syncExecutionId: execution.id });
+   903→          break;
+   904→        case "memberships":
+   905→          syncResult = await syncMemberships({ ...params, syncExecutionId: execution.id });
+   906→          break;
+   907→        default:
+   908→          await completeSyncStage(stage.id, {
+   909→            pagesProcessed: 0, recordsRead: 0, recordsCreated: 0,
+   910→            recordsUpdated: 0, recordsSkipped: 0,
+   911→          }, "skipped");
+   912→          continue;
+   913→      }
+   914→
+   915→      results.push(syncResult);
+   916→
+   917→      // Complete the stage with counts
+   918→      await completeSyncStage(stage.id, {
+   919→        pagesProcessed: 0, // Pages are tracked inside the sync functions
+   920→        recordsRead: syncResult.recordsRead,
+   921→        recordsCreated: syncResult.recordsCreated,
+   922→        recordsUpdated: syncResult.recordsUpdated,
+   923→        recordsSkipped: syncResult.recordsSkipped,
+   924→      });
+   925→    }
+   926→
+   927→    await completeSyncExecution(execution.id, "completed");
+   928→  } catch (error) {
+   929→    await completeSyncExecution(
+   930→      execution.id,
+   931→      "failed",
+   932→      error instanceof Error ? error.message : "Unknown error",
+   933→    );
+   934→  }
+   935→
+   936→  return { executionId: execution.id, results };
+   937→}
+   938→
+   939→// ─── Helpers ─────────────────────────────────────────────────
+   940→
+   941→async function recalculateCourseStates(organizationId: string, courseId: string): Promise<void> {
+   942→  const course = await db.course.findUnique({ where: { id: courseId } });
+   943→  if (!course) return;
+   944→
+   945→  // Get all students with progress events for this course
+   946→  const students = await db.progressEvent.findMany({
+   947→    where: { organizationId, courseId },
+   948→    select: { studentId: true },
+   949→    distinct: ["studentId"],
+   950→  });
+   951→
+   952→  for (const { studentId } of students) {
+   953→    const completedCount = await db.progressEvent.count({
+   954→      where: {
+   955→        organizationId,
+   956→        studentId,
+   957→        courseId,
+   958→        action: "completed",
+   959→      },
+   960→    });
+   961→
+   962→    const firstEvent = await db.progressEvent.findFirst({
+   963→      where: { organizationId, studentId, courseId },
+   964→      orderBy: { occurredAt: "asc" },
+   965→    });
+   966→
+   967→    const lastEvent = await db.progressEvent.findFirst({
+   968→      where: { organizationId, studentId, courseId },
+   969→      orderBy: { occurredAt: "desc" },
+   970→    });
+   971→
+   972→    const progressPercent = course.lessonCount > 0
+   973→      ? Math.round((completedCount / course.lessonCount) * 100)
+   974→      : 0;
+   975→
+   976→    await db.studentCourseState.upsert({
+   977→      where: { studentId_courseId: { studentId, courseId } },
+   978→      create: {
+   979→        organizationId,
+   980→        studentId,
+   981→        courseId,
+   982→        progressPercent,
+   983→        lessonsCompleted: completedCount,
+   984→        totalLessons: course.lessonCount,
+   985→        firstActivityAt: firstEvent?.occurredAt ?? new Date(),
+   986→        lastActivityAt: lastEvent?.occurredAt ?? new Date(),
+   987→      },
+   988→      update: {
+   989→        lessonsCompleted: completedCount,
+   990→        progressPercent,
+   991→        lastActivityAt: lastEvent?.occurredAt ?? undefined,
+   992→      },
+   993→    });
+   994→  }
+   995→}
+   996→
