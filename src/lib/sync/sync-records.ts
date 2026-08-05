@@ -195,6 +195,7 @@ export async function completeReconciliationRun(
     unmappedProduct: number;
     missingSourceFields: number;
     staleSourceRecord: number;
+    totalEvaluated?: number;
   },
   state: "completed" | "failed" = "completed",
 ) {
@@ -203,7 +204,20 @@ export async function completeReconciliationRun(
     data: {
       state,
       completedAt: new Date(),
-      ...summary,
+      matched: summary.matched,
+      membershipWithoutCourseActivity: summary.membershipWithoutCourseActivity,
+      courseActivityWithoutMembership: summary.courseActivityWithoutMembership,
+      unmappedProduct: summary.unmappedProduct,
+      missingSourceFields: summary.missingSourceFields,
+      staleSourceRecord: summary.staleSourceRecord,
+      totalEvaluated: summary.totalEvaluated ?? (
+        summary.matched +
+        summary.membershipWithoutCourseActivity +
+        summary.courseActivityWithoutMembership +
+        summary.unmappedProduct +
+        summary.missingSourceFields +
+        summary.staleSourceRecord
+      ),
     },
   });
 }

@@ -18,6 +18,11 @@ export interface PlanDefinition {
   readonly maxCourses: number;
   readonly maxCampaigns: number;
   readonly maxSeats: number;
+  readonly maxCandidatesEvaluated: number;
+  readonly maxInterventionsCreated: number;
+  readonly maxNotificationsAccepted: number;
+  readonly maxStoredEvents: number;
+  readonly maxExports: number;
   readonly priceCents: number;
 }
 
@@ -29,6 +34,11 @@ export const PLANS = {
     maxCourses: 1,
     maxCampaigns: 3,
     maxSeats: 1,
+    maxCandidatesEvaluated: 500,
+    maxInterventionsCreated: 200,
+    maxNotificationsAccepted: 200,
+    maxStoredEvents: 50_000,
+    maxExports: 5,
     priceCents: 2900,
   },
   growth: {
@@ -38,6 +48,11 @@ export const PLANS = {
     maxCourses: 10,
     maxCampaigns: 10,
     maxSeats: 5,
+    maxCandidatesEvaluated: 5_000,
+    maxInterventionsCreated: 2_000,
+    maxNotificationsAccepted: 2_000,
+    maxStoredEvents: 250_000,
+    maxExports: 25,
     priceCents: 5900,
   },
   scale: {
@@ -47,15 +62,25 @@ export const PLANS = {
     maxCourses: 50,
     maxCampaigns: 50,
     maxSeats: 15,
+    maxCandidatesEvaluated: 25_000,
+    maxInterventionsCreated: 10_000,
+    maxNotificationsAccepted: 10_000,
+    maxStoredEvents: 1_000_000,
+    maxExports: 100,
     priceCents: 11900,
   },
   internal: {
     tier: "internal",
     name: "Internal",
-    maxMonitoredMembers: 100000,
-    maxCourses: 1000,
-    maxCampaigns: 1000,
+    maxMonitoredMembers: 100_000,
+    maxCourses: 1_000,
+    maxCampaigns: 1_000,
     maxSeats: 100,
+    maxCandidatesEvaluated: 1_000_000,
+    maxInterventionsCreated: 500_000,
+    maxNotificationsAccepted: 500_000,
+    maxStoredEvents: 50_000_000,
+    maxExports: 10_000,
     priceCents: 0,
   },
   pilot: {
@@ -65,20 +90,26 @@ export const PLANS = {
     maxCourses: 5,
     maxCampaigns: 5,
     maxSeats: 3,
+    maxCandidatesEvaluated: 2_000,
+    maxInterventionsCreated: 500,
+    maxNotificationsAccepted: 500,
+    maxStoredEvents: 100_000,
+    maxExports: 10,
     priceCents: 0,
   },
 } as const satisfies Record<PlanTier, PlanDefinition>;
 
 export type PlanKey = keyof typeof PLANS;
 
-// Metrics tracked by the usage metering service. Only a subset are enforced
-// (see `enforcement.ts`). The others are tracked for analytics / future
-// billing tiers but do not block operations.
+// Metrics tracked by the usage metering service. All are now enforced
+// (see `enforcement.ts`). Each metric maps to a limit field on PlanDefinition.
 export type MetricKey =
+  | "courses"
   | "monitored_members"
+  | "active_campaigns"
+  | "team_members"
   | "candidates_evaluated"
   | "interventions_created"
   | "notifications_accepted"
   | "stored_events"
-  | "team_members"
   | "exports";
