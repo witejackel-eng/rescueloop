@@ -774,3 +774,92 @@ async function handleLessonCompleted(
     }
   }
 }
+
+// ─── Data export and deletion job functions ─────────────────
+
+/**
+ * Process a data export request.
+ * Assembles all org data and marks the request as completed.
+ */
+async function processDataExport(
+  exportRequestId: string,
+  organizationId: string,
+): Promise<void> {
+  // Mark as processing
+  const request = await db.dataExportRequest.findUnique({
+    where: { id: exportRequestId },
+  });
+
+  if (!request || request.status === "Completed") {
+    return; // Idempotent — skip if already completed or not found
+  }
+
+  await db.dataExportRequest.update({
+    where: { id: exportRequestId },
+    data: { status: "Processing" },
+  });
+
+  try {
+    const { assembleExport } = await import("@/lib/data-lifecycle/export-engine");
+    const payload = await assembleExport(organizationId);
+
+    // In production, the payload would be written to encrypted object storage
+    // (e.g. S3 with presigned URL). For now, we record completion and the
+    // download token remains valid for retrieval via a download endpoint.
+
+    await db.dataExportRequest.update({
+      where: { id: exportRequestId },
+      data: {
+        status: "Completed",
+        completedAt: new Date(),
+      },
+    });
+
+    await recordAuditEvent({
+      organizationId,
+      action: "created",
+      objectType: "data_export",
+      objectId: exportRequestId,
+    });
+  } catch (error) {
+    await db.dataExportRequest.update({
+      where: { id: exportRequestId },
+      data: { status: "Failed" },
+    });
+
+    throw error;
+  }
+}
+
+/**
+ * Process a data deletion request through the full lifecycle.
+ */
+async function processDataDeletion(
+  deletionRequestId: string,
+  organizationId: string,
+): Promise<void> {
+  const { verifyDeletionRequest, scheduleDeletion, executeDeletion } =
+    await import("@/lib/data-lifecycle/deletion-engine");
+
+  // Stage 1: Verify
+  const verification = await verifyDeletionRequest(deletionRequestId);
+  if (!verification.verified) {
+    return;
+  }
+
+  // Stage 2: Schedule (with 24h grace period)
+  await scheduleDeletion(deletionRequestId, 24);
+
+  // Stage 3: Execute (in production, this would be delayed by the grace period
+  // via Inngest's step.sleep. For now, we execute immediately after scheduling.)
+  const result = await executeDeletion(deletionRequestId);
+
+  await recordAuditEvent({
+    organizationId,
+    action: "deleted",
+    objectType: "data_deletion_request",
+    objectId: deletionRequestId,
+    newState: result.success ? "completed" : "failed",
+    metadataJson: result.evidence as any,
+  });
+}

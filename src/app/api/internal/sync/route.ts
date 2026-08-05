@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { withInternalAuth } from "@/lib/auth/internal-route-helpers";
 import { recordInternalAudit } from "@/lib/auth/internal-audit";
 import { db } from "@/lib/db";
+import {
+  checkRateLimitOrReject,
+  getClientIp,
+  RATE_LIMITS,
+  RateLimiter,
+} from "@/lib/rate-limit/rate-limiter";
 
 export async function GET(request: NextRequest) {
   return withInternalAuth(request, async () => {
@@ -36,6 +42,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // ─── Rate limiting (20 req/min per IP for internal retries) ───
+  const ip = getClientIp(request);
+  const rateLimitKey = RateLimiter.buildKey("internal-retry", ip);
+  const rateLimitRejection = await checkRateLimitOrReject(
+    rateLimitKey,
+    RATE_LIMITS.internalRetry,
+  );
+  if (rateLimitRejection) return rateLimitRejection;
+
   return withInternalAuth(request, async ({ actorId }) => {
     try {
       const body = await request.json();

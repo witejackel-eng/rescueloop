@@ -27,6 +27,11 @@ import {
   requireStudentInterventionAccess,
   authErrorToResponse,
 } from "@/lib/auth/whop-auth";
+import {
+  checkRateLimitOrReject,
+  RATE_LIMITS,
+  RateLimiter,
+} from "@/lib/rate-limit/rate-limiter";
 
 const RespondSchema = z.object({
   responseType: z.enum([
@@ -78,6 +83,24 @@ export async function POST(
   },
 ) {
   const { token } = await params;
+
+  // ─── Rate limiting (10 req/min per token hash) ──────────────
+  // We hash the token before using it as a rate-limit key.
+  // Raw student tokens are NEVER used in Redis keys.
+  const tokenHashForRateLimit = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(token),
+  ).then((buf) =>
+    Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(""),
+  );
+  const rateLimitKey = RateLimiter.buildKey("student-response", tokenHashForRateLimit);
+  const rateLimitRejection = await checkRateLimitOrReject(
+    rateLimitKey,
+    RATE_LIMITS.studentResponse,
+  );
+  if (rateLimitRejection) return rateLimitRejection;
 
   let access;
   try {
