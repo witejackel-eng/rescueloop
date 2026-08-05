@@ -207,19 +207,22 @@ model Organization {
   createdAt       DateTime           @default(now()) @db.Timestamptz
   updatedAt       DateTime           @updatedAt @db.Timestamptz
 
-  members          OrganizationMember[]
-  installations    WhopInstallation[]
-  products         Product[]
-  courses          Course[]
-  mappings         ProductCourseMapping[]
-  students         Student[]
-  campaigns        Campaign[]
-  interventions    Intervention[]
-  webhooks         WebhookReceipt[]
-  auditLogs        AuditLog[]
-  valueEvents      ValueEvent[]
-  suppressions     Suppression[]
-  deletionRequests DataDeletionRequest[]
+  members            OrganizationMember[]
+  installations      WhopInstallation[]
+  products           Product[]
+  courses            Course[]
+  mappings           ProductCourseMapping[]
+  students           Student[]
+  campaigns          Campaign[]
+  interventions      Intervention[]
+  webhooks           WebhookReceipt[]
+  auditLogs          AuditLog[]
+  valueEvents        ValueEvent[]
+  suppressions       Suppression[]
+  deletionRequests   DataDeletionRequest[]
+  syncExecutions     SyncExecution[]
+  syncCheckpoints    SyncCheckpoint[]
+  reconciliationRuns ReconciliationRun[]
 
   @@map("organizations")
 }
@@ -930,4 +933,189 @@ model UsageEvent {
 
   @@index([organizationId, metric, occurredAt])
   @@map("usage_events")
+}
+
+// ─── Private pilot applications ──────────────────────────────
+
+enum PilotReviewStatus {
+  New
+  Reviewing
+  Qualified
+  Contacted
+  Accepted
+  Rejected
+  Withdrawn
+}
+
+model PilotApplication {
+  id                       String            @id @default(cuid())
+  fullName                 String
+  businessName             String
+  whopBusinessUrl          String?
+  email                    String
+  approximatePayingMembers Int?
+  courses                  String?
+  typicalMembershipPrice   Int?
+  monthlyNewMembers        Int?
+  currentFollowUpProcess   String?
+  primaryRetentionConcern  String?
+  preferredPilotTiming     String            @default("Flexible")
+  consentToContact         Boolean           @default(false)
+  reviewStatus             PilotReviewStatus @default(New)
+  honeypot                 String?
+  reviewNotes              String?
+  reviewedAt               DateTime?         @db.Timestamptz
+  reviewedBy               String?
+  createdAt                DateTime          @default(now()) @db.Timestamptz
+  updatedAt                DateTime          @updatedAt @db.Timestamptz
+
+  @@index([reviewStatus])
+  @@index([email])
+  @@map("pilot_applications")
+}
+
+// ─── Internal audit trail ────────────────────────────────────
+// Records every action taken by internal operators for accountability.
+
+model InternalAuditLog {
+  id            String   @id @default(cuid())
+  actorId       String // internal operator identifier
+  action        String // e.g. "pilot.review", "sync.retry", "dead-letter.requeue"
+  objectType    String // "pilot_application", "outbox_event", "dead_letter", etc.
+  objectId      String
+  tenantScope   String? // organization ID if tenant-scoped, null if global
+  previousState String?
+  newState      String?
+  reason        String
+  metadataJson  Json?
+  createdAt     DateTime @default(now()) @db.Timestamptz
+
+  @@index([actorId])
+  @@index([objectType, objectId])
+  @@index([tenantScope])
+  @@map("internal_audit_logs")
+}
+
+// ─── Synchronization records ─────────────────────────────────
+
+enum SyncExecutionState {
+  pending
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum SyncStageState {
+  pending
+  running
+  completed
+  failed
+  skipped
+}
+
+enum SyncTrigger {
+  manual
+  scheduled
+  webhook
+  resumption
+}
+
+enum ReconciliationState {
+  pending
+  running
+  completed
+  failed
+}
+
+model SyncExecution {
+  id             String             @id @default(cuid())
+  organizationId String
+  provider       String             @default("whop")
+  environment    String             @default("production")
+  trigger        SyncTrigger        @default(manual)
+  requestedBy    String? // user ID or "system"
+  state          SyncExecutionState @default(pending)
+  startedAt      DateTime           @default(now()) @db.Timestamptz
+  completedAt    DateTime?          @db.Timestamptz
+  errorSummary   String?
+  jobId          String? // Inngest / external job ID
+  createdAt      DateTime           @default(now()) @db.Timestamptz
+  updatedAt      DateTime           @updatedAt @db.Timestamptz
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages          SyncStage[]
+  checkpoints     SyncCheckpoint[]
+  reconciliations ReconciliationRun[]
+
+  @@index([organizationId, state])
+  @@index([provider, state])
+  @@map("sync_executions")
+}
+
+model SyncStage {
+  id              String         @id @default(cuid())
+  syncExecutionId String
+  resourceType    String // "courses", "products", "memberships", "progress"
+  state           SyncStageState @default(pending)
+  startedAt       DateTime       @default(now()) @db.Timestamptz
+  completedAt     DateTime?      @db.Timestamptz
+  pagesProcessed  Int            @default(0)
+  recordsRead     Int            @default(0)
+  recordsCreated  Int            @default(0)
+  recordsUpdated  Int            @default(0)
+  recordsSkipped  Int            @default(0)
+  retryCount      Int            @default(0)
+  createdAt       DateTime       @default(now()) @db.Timestamptz
+  updatedAt       DateTime       @updatedAt @db.Timestamptz
+
+  syncExecution SyncExecution @relation(fields: [syncExecutionId], references: [id], onDelete: Cascade)
+
+  @@index([syncExecutionId])
+  @@index([resourceType, state])
+  @@map("sync_stages")
+}
+
+model SyncCheckpoint {
+  id                String   @id @default(cuid())
+  organizationId    String
+  syncExecutionId   String
+  resource          String // "courses", "products", "memberships", "progress"
+  cursor            String? // Provider cursor for resumption
+  sourceWatermark   String? // Provider timestamp / etag for staleness checks
+  lastCompletedPage Int      @default(0)
+  updatedAt         DateTime @updatedAt @db.Timestamptz
+  createdAt         DateTime @default(now()) @db.Timestamptz
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  syncExecution SyncExecution @relation(fields: [syncExecutionId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, resource])
+  @@index([organizationId, resource])
+  @@map("sync_checkpoints")
+}
+
+model ReconciliationRun {
+  id                              String              @id @default(cuid())
+  organizationId                  String
+  courseId                        String
+  syncExecutionId                 String?
+  matched                         Int                 @default(0)
+  membershipWithoutCourseActivity Int                 @default(0)
+  courseActivityWithoutMembership Int                 @default(0)
+  unmappedProduct                 Int                 @default(0)
+  missingSourceFields             Int                 @default(0)
+  staleSourceRecord               Int                 @default(0)
+  state                           ReconciliationState @default(pending)
+  startedAt                       DateTime            @default(now()) @db.Timestamptz
+  completedAt                     DateTime?           @db.Timestamptz
+  createdAt                       DateTime            @default(now()) @db.Timestamptz
+  updatedAt                       DateTime            @updatedAt @db.Timestamptz
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  syncExecution SyncExecution? @relation(fields: [syncExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, courseId])
+  @@index([state])
+  @@map("reconciliation_runs")
 }
