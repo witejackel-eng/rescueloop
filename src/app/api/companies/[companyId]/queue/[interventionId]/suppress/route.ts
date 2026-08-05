@@ -10,6 +10,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { recordAuditEvent } from "@/lib/audit";
+import {
+  checkRateLimitOrReject,
+  getClientIp,
+  RATE_LIMITS,
+  RateLimiter,
+} from "@/lib/rate-limit/rate-limiter";
 import { revokeStudentTokens } from "@/lib/crypto/student-access-tokens";
 import {
   requireCompanyAdmin,
@@ -37,6 +43,15 @@ export async function POST(
   } catch (error) {
     return authErrorToResponse(error);
   }
+
+  // ─── Rate limiting (20 req/min per IP for auth-sensitive) ──
+  const ip = getClientIp(req);
+  const rateLimitKey = RateLimiter.buildKey("auth-sensitive", ip);
+  const rateLimitRejection = await checkRateLimitOrReject(
+    rateLimitKey,
+    RATE_LIMITS.authSensitive,
+  );
+  if (rateLimitRejection) return rateLimitRejection;
 
   let body: z.infer<typeof SuppressSchema>;
   try {

@@ -15,6 +15,12 @@ import {
   requireCompanyAdmin,
   authErrorToResponse,
 } from "@/lib/auth/whop-auth";
+import {
+  checkRateLimitOrReject,
+  getClientIp,
+  RATE_LIMITS,
+  RateLimiter,
+} from "@/lib/rate-limit/rate-limiter";
 
 const OnboardingSchema = z.object({
   // Whop identifiers — used to upsert Product / Course rows
@@ -54,6 +60,16 @@ export async function POST(
   } catch (error) {
     return authErrorToResponse(error);
   }
+
+  // ─── Rate limiting (20 req/min per IP for auth-sensitive) ──
+  const ip = getClientIp(req);
+  const rateLimitKey = RateLimiter.buildKey("auth-sensitive", ip);
+  const rateLimitRejection = await checkRateLimitOrReject(
+    rateLimitKey,
+    RATE_LIMITS.authSensitive,
+  );
+  if (rateLimitRejection) return rateLimitRejection;
+
 
   // Parse + validate the JSON body
   let body: z.infer<typeof OnboardingSchema>;
