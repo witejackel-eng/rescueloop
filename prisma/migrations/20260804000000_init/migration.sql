@@ -58,6 +58,12 @@ CREATE TYPE "DataDeletionStatus" AS ENUM ('requested', 'processing', 'completed'
 -- CreateEnum
 CREATE TYPE "PaymentStatus" AS ENUM ('pending', 'succeeded', 'failed', 'refunded');
 
+-- CreateEnum
+CREATE TYPE "OutboxState" AS ENUM ('pending', 'dispatching', 'dispatched', 'failed', 'dead_letter');
+
+-- CreateEnum
+CREATE TYPE "PlanTier" AS ENUM ('rescue', 'growth', 'scale', 'internal', 'pilot');
+
 -- CreateTable
 CREATE TABLE "users" (
     "id" TEXT NOT NULL,
@@ -539,6 +545,112 @@ CREATE TABLE "data_deletion_requests" (
     CONSTRAINT "data_deletion_requests_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "outbox_events" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "eventType" TEXT NOT NULL,
+    "payloadJson" JSONB NOT NULL,
+    "state" "OutboxState" NOT NULL DEFAULT 'pending',
+    "idempotencyKey" TEXT NOT NULL,
+    "attemptCount" INTEGER NOT NULL DEFAULT 0,
+    "maxAttempts" INTEGER NOT NULL DEFAULT 5,
+    "lastError" TEXT,
+    "dispatchedAt" TIMESTAMPTZ,
+    "nextAttemptAt" TIMESTAMPTZ,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "outbox_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "job_executions" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "outboxEventId" TEXT,
+    "jobType" TEXT NOT NULL,
+    "runId" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "startedAt" TIMESTAMPTZ,
+    "completedAt" TIMESTAMPTZ,
+    "errorMessage" TEXT,
+    "metadataJson" JSONB,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "job_executions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "dead_letter_events" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "outboxEventId" TEXT,
+    "eventType" TEXT NOT NULL,
+    "payloadJson" JSONB NOT NULL,
+    "errorMessage" TEXT NOT NULL,
+    "attemptCount" INTEGER NOT NULL,
+    "deadLetteredAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "dead_letter_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "plans" (
+    "id" TEXT NOT NULL,
+    "tier" "PlanTier" NOT NULL,
+    "name" TEXT NOT NULL,
+    "maxMonitoredMembers" INTEGER NOT NULL,
+    "maxCourses" INTEGER NOT NULL,
+    "maxCampaigns" INTEGER NOT NULL,
+    "maxSeats" INTEGER NOT NULL,
+    "priceCents" INTEGER NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'USD',
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "plans_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "subscription_entitlements" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "planTier" "PlanTier" NOT NULL DEFAULT 'pilot',
+    "billingPeriodStart" TIMESTAMPTZ NOT NULL,
+    "billingPeriodEnd" TIMESTAMPTZ NOT NULL,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "subscription_entitlements_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "usage_counters" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "metric" TEXT NOT NULL,
+    "period" TEXT NOT NULL,
+    "count" INTEGER NOT NULL DEFAULT 0,
+    "updatedAt" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "usage_counters_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "usage_events" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "metric" TEXT NOT NULL,
+    "increment" INTEGER NOT NULL DEFAULT 1,
+    "metadataJson" JSONB,
+    "occurredAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "usage_events_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "users_whopUserId_key" ON "users"("whopUserId");
 
@@ -706,6 +818,39 @@ CREATE INDEX "attribution_evidence_valueEventId_idx" ON "attribution_evidence"("
 
 -- CreateIndex
 CREATE INDEX "data_deletion_requests_organizationId_idx" ON "data_deletion_requests"("organizationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "outbox_events_idempotencyKey_key" ON "outbox_events"("idempotencyKey");
+
+-- CreateIndex
+CREATE INDEX "outbox_events_organizationId_state_idx" ON "outbox_events"("organizationId", "state");
+
+-- CreateIndex
+CREATE INDEX "outbox_events_state_nextAttemptAt_idx" ON "outbox_events"("state", "nextAttemptAt");
+
+-- CreateIndex
+CREATE INDEX "job_executions_organizationId_status_idx" ON "job_executions"("organizationId", "status");
+
+-- CreateIndex
+CREATE INDEX "job_executions_jobType_status_idx" ON "job_executions"("jobType", "status");
+
+-- CreateIndex
+CREATE INDEX "dead_letter_events_organizationId_idx" ON "dead_letter_events"("organizationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "plans_tier_key" ON "plans"("tier");
+
+-- CreateIndex
+CREATE INDEX "subscription_entitlements_organizationId_idx" ON "subscription_entitlements"("organizationId");
+
+-- CreateIndex
+CREATE INDEX "usage_counters_organizationId_period_idx" ON "usage_counters"("organizationId", "period");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "usage_counters_organizationId_metric_period_key" ON "usage_counters"("organizationId", "metric", "period");
+
+-- CreateIndex
+CREATE INDEX "usage_events_organizationId_metric_occurredAt_idx" ON "usage_events"("organizationId", "metric", "occurredAt");
 
 -- AddForeignKey
 ALTER TABLE "organization_members" ADD CONSTRAINT "organization_members_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
