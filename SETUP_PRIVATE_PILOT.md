@@ -31,7 +31,7 @@ Request only the permissions required for Activation Rescue:
 |---|---|
 | `courses:read` | List courses for onboarding mapping |
 | `course_analytics:read` | Read course student progress and lesson interactions |
-| `notification:create` | Send Activation Rescue notifications to students |
+| `notifications:create` | Send Activation Rescue notifications to students via Whop experiences |
 | `membership:read` | Sync active memberships for eligibility |
 | `product:read` | List products for course-product mapping |
 | `payment:read` | Observe subsequent payments (for estimated attribution only) |
@@ -142,12 +142,22 @@ bunx prisma migrate deploy
 
 This creates all tables in the Neon database.
 
-## Step 10 — Re-approve permissions (if needed)
+## Step 10 — Seed plan definitions
+
+After migration, seed the plan tiers so usage enforcement works:
+
+```bash
+bun run src/lib/usage/seed-plans.ts
+```
+
+This creates the `rescue`, `pilot`, and `growth` plan tiers.
+
+## Step 11 — Re-approve permissions (if needed)
 
 If you add new permissions after the initial install, creators must
 re-approve. Whop will prompt them on their next dashboard visit.
 
-## Step 11 — Send a test webhook
+## Step 12 — Send a test webhook
 
 In the Whop developer dashboard, use the webhook testing tool to send:
 
@@ -159,7 +169,7 @@ Check the RescueLoop logs to confirm:
 - The membership/student records were created
 - The progress event was recorded
 
-## Step 12 — Create a safe test student
+## Step 13 — Create a safe test student
 
 1. Create a test product in Whop (price: $0 or $1).
 2. Create a test course with at least one lesson.
@@ -168,7 +178,7 @@ Check the RescueLoop logs to confirm:
    configured activation delay (default: 7 days — you can reduce this
    for testing).
 
-## Step 13 — Test the full workflow
+## Step 14 — Test the full workflow
 
 1. Install RescueLoop on your Whop company.
 2. Complete onboarding (select course + product, confirm mapping).
@@ -191,11 +201,27 @@ Check the RescueLoop logs to confirm:
 - All company routes verify Whop admin access via the official SDK.
   The `companyId` from the URL is never trusted alone.
 
-## Current limitations
+## Current state
 
-- The Whop SDK methods (`verifyUserToken`, `checkAccess`, `notifications.create`)
-  require real Whop credentials to function. Without credentials, routes
-  return appropriate auth errors (401/403/503).
-- No Sentry or PostHog integration is initialized yet (env vars documented
-  but SDKs not wired into the app).
-- No Playwright E2E tests are written yet (infrastructure is configured).
+- **Whop webhook ingestion:** Implemented. Standard Webhooks verification,
+  idempotent receipt storage, async processing via Inngest.
+- **Whop API calls:** Implemented for onboarding data (courses, products,
+  experiences) and notification delivery.
+- **Database:** Full Prisma schema deployed. All tables, indexes, and
+  constraints are in the migration.
+- **Sync engine:** Checkpointed, batched, resumable. Handles membership
+  and progress data with bounded queries.
+- **Attribution engine:** Three-tier (confirmed / associated / estimated)
+  with time-windowed causal analysis.
+- **Data lifecycle:** Export (JSON) and deletion (with 24h grace period)
+  are implemented.
+- **Rate limiting:** Redis-backed sliding window on API routes.
+- **PostHog / Sentry:** Scaffolded but not wired. The allowlist is
+  defined; SDK calls are commented out pending keys.
+- **E2E tests:** Playwright specs exist for marketing, private-pilot,
+  connected-workspace, demo-workflow, student-experience, internal-ops,
+  and visual regression.
+- **Integration tests:** PostgreSQL-backed tests for tenant-isolation,
+  outbox-integrity, concurrency, sync-resilience, and data-lifecycle.
+- **Contract tests:** Provider contracts verified against fixture and
+  Whop implementations.
