@@ -6,6 +6,12 @@
 
 import { getWhopClient } from "@/lib/whop/client";
 import { db } from "@/lib/db";
+import type {
+  WhopPaginatedResponse,
+  WhopCourseData,
+  WhopExperienceData,
+} from "@/lib/whop/whop-types";
+import { isWhopPaginatedResponse } from "@/lib/whop/whop-types";
 
 export interface WhopCourseOption {
   id: string;
@@ -43,6 +49,16 @@ export interface OnboardingDataResult {
   }>;
 }
 
+/** Extract paginated data from a Whop SDK response. */
+function extractPageData<T>(page: unknown): T[] {
+  if (isWhopPaginatedResponse<T>(page)) return page.data;
+  // Fallback for untyped responses
+  if (typeof page === "object" && page !== null && "data" in page) {
+    return (page as { data: T[] }).data;
+  }
+  return [];
+}
+
 /**
  * Fetch Whop courses + products + experiences for a company, plus any
  * existing RescueLoop mappings. Always returns a result — never throws.
@@ -59,15 +75,15 @@ export async function fetchOnboardingData(
   // ─── Courses from Whop ──────────────────────────────────────
   try {
     const page = await getWhopClient().courses.list({ company_id: companyId });
-    const items = (page as any).data ?? [];
-    courses = items.map((c: any): WhopCourseOption => ({
+    const items = extractPageData<WhopCourseData>(page);
+    courses = items.map((c): WhopCourseOption => ({
       id: c.id,
       title: c.title ?? "Untitled course",
       description: c.description ?? null,
       // Whop doesn't expose a flat lesson count; sum chapters → lessons
       lessonCount: Array.isArray(c.chapters)
         ? c.chapters.reduce(
-            (sum: number, ch: any) =>
+            (sum, ch) =>
               sum + (Array.isArray(ch.lessons) ? ch.lessons.length : 0),
             0,
           )
@@ -85,8 +101,8 @@ export async function fetchOnboardingData(
   if (!whopUnavailable) {
     try {
       const page = await getWhopClient().experiences.list({ company_id: companyId });
-      const items = (page as any).data ?? [];
-      experiences = items.map((e: any): WhopExperienceOption => ({
+      const items = extractPageData<WhopExperienceData>(page);
+      experiences = items.map((e): WhopExperienceOption => ({
         id: e.id,
         name: e.name ?? e.id,
         productId: e.product_id ?? e.productId ?? null,

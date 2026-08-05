@@ -9,7 +9,8 @@
 import { getPublicEnv } from "@/lib/env/server";
 
 let initialized = false;
-let posthogClient: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostHog client type not available until SDK is wired
+let posthogClient: Record<string, unknown> | null = null;
 
 interface PostHogEvent {
   event: string;
@@ -29,7 +30,7 @@ const ALLOWED_EVENTS = new Set([
   "campaign.paused",
   "campaign.archived",
   "intervention.approved",
-  "intervention.delivered",
+  "intervention.dispatched",
   "intervention.dismissed",
   "intervention.suppressed",
   "sync.completed",

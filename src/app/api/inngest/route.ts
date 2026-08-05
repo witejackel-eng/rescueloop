@@ -40,17 +40,17 @@ function getServeHandlers() {
 export async function GET(req: NextRequest) {
   const handlers = getServeHandlers();
   if (!handlers) return notConfiguredResponse();
-  return handlers.GET!(req, {} as any);
+  return handlers.GET!(req, {} as Parameters<typeof handlers.GET>[1]);
 }
 
 export async function POST(req: NextRequest) {
   const handlers = getServeHandlers();
   if (!handlers) return notConfiguredResponse();
-  return handlers.POST!(req, {} as any);
+  return handlers.POST!(req, {} as Parameters<typeof handlers.POST>[1]);
 }
 
 export async function PUT(req: NextRequest) {
   const handlers = getServeHandlers();
   if (!handlers) return notConfiguredResponse();
-  return handlers.PUT!(req, {} as any);
+  return handlers.PUT!(req, {} as Parameters<typeof handlers.PUT>[1]);
 }

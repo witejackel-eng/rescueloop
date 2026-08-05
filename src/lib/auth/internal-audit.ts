@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 
 // ─── Internal audit trail ────────────────────────────────────
 // Every action taken by internal operators must create an audit record
@@ -33,7 +34,7 @@ export async function recordInternalAudit(params: InternalAuditParams): Promise<
         previousState: params.previousState ?? null,
         newState: params.newState ?? null,
         reason: params.reason,
-        metadataJson: (params.metadata ?? {}) as any,
+        metadataJson: (params.metadata ?? {}) as Prisma.InputJsonValue,
       },
     });
   } catch (err) {

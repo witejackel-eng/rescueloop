@@ -366,7 +366,7 @@ function ProcessVisualPanel({ step, reduced }: { step: number; reduced: boolean 
       <div className="space-y-3">
         <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">EVIDENCE CHAIN</p>
         <RevealLine delay={0.1} reduced={reduced}>
-          <span className="text-[var(--dark-secondary)]">Candidate detected → Creator approved → Intervention delivered</span>
+          <span className="text-[var(--dark-secondary)]">Candidate detected → Creator approved → Intervention dispatched</span>
         </RevealLine>
         <RevealLine delay={0.3} reduced={reduced}>
           <span className="text-[var(--dark-secondary)]">Student opened → Student resumed → Lesson completed</span>

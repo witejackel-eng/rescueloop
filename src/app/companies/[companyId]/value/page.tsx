@@ -220,7 +220,7 @@ export default async function ValuePage({
       {pageEvents.length === 0 ? (
         <EmptyStateCard
           title="No value events recorded"
-          description="Value events appear as interventions are delivered and student activity is observed."
+          description="Value events appear as interventions are dispatched and student activity is observed."
           icon={DollarSign}
         />
       ) : (

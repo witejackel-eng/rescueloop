@@ -230,7 +230,7 @@ export async function POST(
     // 5. Update the intervention outcome + (for stop_reminders) the state.
     // "responded" is an OutcomeState, not an InterventionState — so for
     // non-opt-out responses we leave the intervention state at its current
-    // delivery state (notification_accepted / delivered) and only update
+    // delivery state (notification_accepted / delivered) — only update
     // outcomeState. For stop_reminders we move to "stopped".
     const updated = await tx.intervention.update({
       where: { id: intervention.id },

@@ -42,6 +42,7 @@
 
 import "server-only";
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import type { ProviderBundle } from "@/providers/contracts";
 import { recordAuditEvent } from "@/lib/audit";
 import { normalizeMembershipStatus } from "./normalize-membership-status";
@@ -1129,8 +1130,8 @@ export async function reconcile(
         membershipId: o.membershipId,
         courseId: o.courseId,
         mappingId: o.mappingId,
-        classification: o.classification as any,
-        evidenceJson: o.evidenceJson as any,
+        classification: o.classification as Prisma.InputJsonValue,
+        evidenceJson: o.evidenceJson as Prisma.InputJsonValue,
       })),
     });
     result.pagesProcessed++;
@@ -1545,7 +1546,7 @@ export async function detectCandidates(
             campaignVersionId: latestVersion.id,
             idempotencyKey,
             state: "eligible",
-            evidenceJson: evidence as any,
+            evidenceJson: evidence as Prisma.InputJsonValue,
             detectedAt: now,
             eligibilityWindowStart,
             expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),

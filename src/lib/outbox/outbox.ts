@@ -14,6 +14,7 @@
 
 import "server-only";
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import { sendInngestEvent, type JobDispatchResult } from "@/server/jobs/client";
 
 export interface OutboxDispatchResult {
@@ -50,7 +51,7 @@ export async function createOutboxEvent(
     data: {
       organizationId: params.organizationId,
       eventType: params.eventType,
-      payloadJson: params.payload as any,
+      payloadJson: params.payload as Prisma.InputJsonValue,
       idempotencyKey: params.idempotencyKey,
       state: "pending",
     },
@@ -151,7 +152,7 @@ export async function dispatchOutboxEvent(eventId: string): Promise<OutboxDispat
           organizationId: event.organizationId,
           outboxEventId: eventId,
           eventType: event.eventType,
-          payloadJson: event.payloadJson as any,
+          payloadJson: event.payloadJson as Prisma.InputJsonValue,
           errorMessage: result.errorCode,
           attemptCount,
         },
@@ -176,7 +177,7 @@ export async function dispatchOutboxEvent(eventId: string): Promise<OutboxDispat
           organizationId: event.organizationId,
           outboxEventId: eventId,
           eventType: event.eventType,
-          payloadJson: event.payloadJson as any,
+          payloadJson: event.payloadJson as Prisma.InputJsonValue,
           errorMessage: result.errorCode,
           attemptCount,
         },

@@ -115,7 +115,7 @@ export function RecoverySignalField({ className }: { className?: string }) {
       "Blocker reported: unclear setup",
       "Member activated after 39 days",
       "Progress 38% → 42%",
-      "Mid-course rescue delivered",
+      "Mid-course rescue dispatched",
     ];
 
     function render(now: number) {

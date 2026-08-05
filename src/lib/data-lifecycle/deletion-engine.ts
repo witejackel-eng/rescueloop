@@ -12,6 +12,7 @@
 
 import "server-only";
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 
 // ─── Deletion stage handlers ────────────────────────────────
 
@@ -188,7 +189,7 @@ export async function executeDeletion(
     // Step 7: Redact webhook payloads (preserve event metadata for audit)
     const redactedPayloads = await db.webhookReceipt.updateMany({
       where: { organizationId },
-      data: { payloadJson: {} as any },
+      data: { payloadJson: {} as Prisma.InputJsonValue },
     });
     evidence.redactedPayloads = redactedPayloads.count;
 
