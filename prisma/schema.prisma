@@ -325,9 +325,10 @@ model ProductCourseMapping {
   createdAt           DateTime @default(now()) @db.Timestamptz
   updatedAt           DateTime @updatedAt @db.Timestamptz
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  course       Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product       Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  course        Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  campaignLinks Campaign[] // Campaigns that use this mapping as their confirmed mapping
 
   @@unique([productId, courseId])
   @@index([organizationId])
@@ -349,6 +350,7 @@ model Student {
   memberships      Membership[]
   enrollments      Enrollment[]
   studentStates    StudentCourseState[]
+  progressEvents   ProgressEvent[]
   interventions    Intervention[]
   responses        StudentResponse[]
   blockerResponses BlockerResponse[]
@@ -426,24 +428,33 @@ model StudentCourseState {
 }
 
 model ProgressEvent {
-  id                    String   @id @default(cuid())
+  id                    String    @id @default(cuid())
   organizationId        String
   studentId             String
   courseId              String
   externalInteractionId String? // Whop's course_lesson_interaction ID — unique per student+lesson
+  lessonId              String? // External lesson ID for precise dedup
   lessonIndex           Int
   lessonTitle           String?
   action                String // "completed", "started", "stalled"
-  occurredAt            DateTime @db.Timestamptz
+  payloadHash           String? // SHA-256 of interaction payload for dedup
+  sourceTimestamp       DateTime? @db.Timestamptz // When the event occurred at the source
+  receivedAt            DateTime  @default(now()) @db.Timestamptz // When we received it
+  sourceVersion         String? // Provider version / etag for staleness checks
+  occurredAt            DateTime  @db.Timestamptz
   webhookReceiptId      String?
-  createdAt             DateTime @default(now()) @db.Timestamptz
+  createdAt             DateTime  @default(now()) @db.Timestamptz
 
-  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   // Prevent the same Whop lesson interaction from being counted twice
   @@unique([organizationId, studentId, externalInteractionId])
+  // Payload hash dedup: prevents identical content re-ingestion
+  @@unique([organizationId, payloadHash])
   @@index([organizationId, studentId, courseId])
   @@index([occurredAt])
+  @@index([sourceTimestamp])
   @@map("progress_events")
 }
 
@@ -490,6 +501,7 @@ model Campaign {
   status                 CampaignStatus @default(active)
   approvalMode           ApprovalMode   @default(manual)
   maxMessagesPerStudent  Int            @default(2)
+  maxMessagesPerOrg      Int            @default(100) // Org-wide message limit per period
   cooldownDays           Int            @default(14)
   quietHoursStart        String         @default("20:00")
   quietHoursEnd          String         @default("08:00")
@@ -497,12 +509,14 @@ model Campaign {
   stopAfterProgress      Boolean        @default(true)
   stopAfterMembershipEnd Boolean        @default(true)
   messageTemplate        String
+  confirmedMappingId     String? // Explicit campaign-to-mapping relationship
   createdAt              DateTime       @default(now()) @db.Timestamptz
   updatedAt              DateTime       @updatedAt @db.Timestamptz
 
-  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  versions      CampaignVersion[]
-  interventions Intervention[]
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  confirmedMapping ProductCourseMapping? @relation(fields: [confirmedMappingId], references: [id])
+  versions         CampaignVersion[]
+  interventions    Intervention[]
 
   @@index([organizationId])
   @@map("campaigns")
@@ -535,18 +549,23 @@ model CampaignRule {
 }
 
 model EligibilitySnapshot {
-  id                String           @id @default(cuid())
-  organizationId    String
-  studentId         String
-  campaignId        String
-  campaignVersionId String
-  state             EligibilityState @default(pending_evaluation)
-  evidenceJson      Json // versioned evidence at detection time
-  detectedAt        DateTime         @default(now()) @db.Timestamptz
-  expiresAt         DateTime?        @db.Timestamptz
+  id                     String           @id @default(cuid())
+  organizationId         String
+  studentId              String
+  campaignId             String
+  campaignVersionId      String
+  idempotencyKey         String           @unique // Prevents duplicate snapshots on re-run
+  state                  EligibilityState @default(pending_evaluation)
+  evidenceJson           Json // versioned evidence at detection time
+  detectedAt             DateTime         @default(now()) @db.Timestamptz
+  eligibilityWindowStart DateTime?        @db.Timestamptz // Start of the eligibility evaluation window
+  expiresAt              DateTime?        @db.Timestamptz
+  createdAt              DateTime         @default(now()) @db.Timestamptz
 
   interventions Intervention[]
 
+  // One immutable snapshot per (student + campaign version + eligibility window)
+  @@unique([studentId, campaignVersionId, eligibilityWindowStart])
   @@index([organizationId, studentId])
   @@index([campaignId, state])
   @@map("eligibility_snapshots")
@@ -881,17 +900,22 @@ enum PlanTier {
 }
 
 model Plan {
-  id                  String   @id @default(cuid())
-  tier                PlanTier @unique
-  name                String
-  maxMonitoredMembers Int
-  maxCourses          Int
-  maxCampaigns        Int
-  maxSeats            Int
-  priceCents          Int
-  currency            String   @default("USD")
-  createdAt           DateTime @default(now()) @db.Timestamptz
-  updatedAt           DateTime @updatedAt @db.Timestamptz
+  id                       String   @id @default(cuid())
+  tier                     PlanTier @unique
+  name                     String
+  maxMonitoredMembers      Int
+  maxCourses               Int
+  maxCampaigns             Int
+  maxSeats                 Int
+  maxCandidatesEvaluated   Int
+  maxInterventionsCreated  Int
+  maxNotificationsAccepted Int
+  maxStoredEvents          Int
+  maxExports               Int
+  priceCents               Int
+  currency                 String   @default("USD")
+  createdAt                DateTime @default(now()) @db.Timestamptz
+  updatedAt                DateTime @updatedAt @db.Timestamptz
 
   @@map("plans")
 }
@@ -927,12 +951,51 @@ model UsageEvent {
   organizationId String
   metric         String
   increment      Int      @default(1)
+  idempotencyKey String?  @unique
   metadataJson   Json?
   occurredAt     DateTime @default(now()) @db.Timestamptz
   createdAt      DateTime @default(now()) @db.Timestamptz
 
   @@index([organizationId, metric, occurredAt])
   @@map("usage_events")
+}
+
+enum ReservationStatus {
+  reserved
+  committed
+  released
+}
+
+model UsageReservation {
+  id             String            @id @default(cuid())
+  organizationId String
+  metric         String
+  period         String
+  idempotencyKey String            @unique
+  status         ReservationStatus @default(reserved)
+  createdAt      DateTime          @default(now()) @db.Timestamptz
+  updatedAt      DateTime          @updatedAt @db.Timestamptz
+
+  @@index([organizationId, metric, period])
+  @@index([status])
+  @@map("usage_reservations")
+}
+
+model PlanOverride {
+  id             String   @id @default(cuid())
+  organizationId String
+  metric         String
+  overrideLimit  Int
+  reason         String
+  appliedBy      String
+  approvedBy     String
+  startsAt       DateTime @db.Timestamptz
+  expiresAt      DateTime @db.Timestamptz
+  createdAt      DateTime @default(now()) @db.Timestamptz
+
+  @@index([organizationId, metric])
+  @@index([expiresAt])
+  @@map("plan_overrides")
 }
 
 // ─── Private pilot applications ──────────────────────────────
@@ -955,14 +1018,14 @@ model PilotApplication {
   email                    String
   approximatePayingMembers Int?
   courses                  String?
-  typicalMembershipPrice   Int?
+  typicalMembershipPrice   Float?
   monthlyNewMembers        Int?
   currentFollowUpProcess   String?
   primaryRetentionConcern  String?
-  preferredPilotTiming     String            @default("Flexible")
-  consentToContact         Boolean           @default(false)
+  preferredPilotTiming     String
+  consentToContact         Boolean
   reviewStatus             PilotReviewStatus @default(New)
-  honeypot                 String?
+  honeypot                 String?           @map("hp")
   reviewNotes              String?
   reviewedAt               DateTime?         @db.Timestamptz
   reviewedBy               String?
@@ -1095,6 +1158,44 @@ model SyncCheckpoint {
   @@map("sync_checkpoints")
 }
 
+enum ReconciliationOutcomeClassification {
+  matched
+  membership_without_course_activity
+  course_activity_without_membership
+  unmapped_product
+  missing_source_fields
+  stale_source_record
+}
+
+enum ReconciliationResolutionState {
+  pending
+  resolved
+  ignored
+  escalated
+}
+
+model ReconciliationOutcome {
+  id                  String                              @id @default(cuid())
+  reconciliationRunId String
+  organizationId      String
+  studentId           String
+  membershipId        String?
+  courseId            String
+  mappingId           String?
+  classification      ReconciliationOutcomeClassification
+  resolutionState     ReconciliationResolutionState       @default(pending)
+  evidenceJson        Json?
+  resolvedAt          DateTime?                           @db.Timestamptz
+  createdAt           DateTime                            @default(now()) @db.Timestamptz
+
+  reconciliationRun ReconciliationRun @relation(fields: [reconciliationRunId], references: [id], onDelete: Cascade)
+
+  @@index([reconciliationRunId])
+  @@index([organizationId, classification])
+  @@index([studentId])
+  @@map("reconciliation_outcomes")
+}
+
 model ReconciliationRun {
   id                              String              @id @default(cuid())
   organizationId                  String
@@ -1106,14 +1207,16 @@ model ReconciliationRun {
   unmappedProduct                 Int                 @default(0)
   missingSourceFields             Int                 @default(0)
   staleSourceRecord               Int                 @default(0)
+  totalEvaluated                  Int                 @default(0)
   state                           ReconciliationState @default(pending)
   startedAt                       DateTime            @default(now()) @db.Timestamptz
   completedAt                     DateTime?           @db.Timestamptz
   createdAt                       DateTime            @default(now()) @db.Timestamptz
   updatedAt                       DateTime            @updatedAt @db.Timestamptz
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  syncExecution SyncExecution? @relation(fields: [syncExecutionId], references: [id], onDelete: SetNull)
+  organization  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  syncExecution SyncExecution?          @relation(fields: [syncExecutionId], references: [id], onDelete: SetNull)
+  outcomes      ReconciliationOutcome[]
 
   @@index([organizationId, courseId])
   @@index([state])
