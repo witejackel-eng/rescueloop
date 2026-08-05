@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
       const result = counters.map((c) => {
         const org = orgMap.get(c.organizationId);
-        const plan = planMap.get((org?.planTier as any) ?? "rescue");
+        const plan = planMap.get((org?.planTier as string) ?? "rescue");
         // Simple limit inference based on metric
         let limit: number | null = null;
         if (c.metric === "monitored_members" && plan) {

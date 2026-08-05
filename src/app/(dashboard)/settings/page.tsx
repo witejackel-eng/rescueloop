@@ -349,7 +349,7 @@ export default function SettingsPage() {
               title="Automation"
               description="Modes, quiet hours, and safety controls"
             >
-              <Row label="Automation mode" description="Controls how interventions are delivered">
+              <Row label="Automation mode" description="Controls how interventions are dispatched">
                 <SegmentedControl
                   ariaLabel="Automation mode"
                   size="sm"

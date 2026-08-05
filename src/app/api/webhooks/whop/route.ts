@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { getWhopClient, isWhopReady } from "@/lib/whop/client";
 import { sendInngestEvent } from "@/server/jobs/client";
 import { ConfigurationError } from "@/lib/env/server";
+import type { Prisma } from "@prisma/client";
 import { createHash } from "crypto";
 
 export const runtime = "nodejs";
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
       eventType,
       payloadHash,
       status: "received",
-      payloadJson: event as any,
+      payloadJson: event as unknown as Prisma.InputJsonValue,
     },
   });
 

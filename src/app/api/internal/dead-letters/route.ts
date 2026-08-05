@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withInternalAuth } from "@/lib/auth/internal-route-helpers";
 import { recordInternalAudit } from "@/lib/auth/internal-audit";
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 
 export async function GET(request: NextRequest) {
   return withInternalAuth(request, async () => {
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
         data: {
           organizationId: deadLetter.organizationId,
           eventType: deadLetter.eventType,
-          payloadJson: deadLetter.payloadJson as any,
+          payloadJson: deadLetter.payloadJson as Prisma.InputJsonValue,
           state: "pending",
           idempotencyKey: `requeue-${deadLetter.id}-${Date.now()}`,
         },

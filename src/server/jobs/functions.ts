@@ -17,6 +17,12 @@ import {
   classifyActivationProgressOutcome,
   createObservedPaymentValueEvent,
 } from "@/lib/attribution/engine";
+import type { Prisma } from "@prisma/client";
+import type {
+  WhopMembershipEvent,
+  WhopPaymentEvent,
+  WhopLessonInteractionEvent,
+} from "@/lib/whop/whop-types";
 
 // ─── Job function definitions (lazy) ─────────────────────────
 
@@ -61,7 +67,7 @@ export function getJobFunctions(): any[] {
     }
 
     // The payload is the verified event object from whopsdk.webhooks.unwrap()
-    const eventPayload = receipt.payloadJson as any;
+    const eventPayload = receipt.payloadJson as Record<string, unknown>;
 
     try {
       // Step 2: Process based on event type (using official Whop event names)
@@ -454,11 +460,11 @@ function checkQuietHours(start: string, end: string, now: Date): boolean {
 
 async function handleMembershipActivated(
   organizationId: string,
-  event: any,
+  event: WhopMembershipEvent,
   webhookReceiptId: string,
 ) {
   const membership = event.data;
-  const whopUserId = (membership as any).user?.id ?? (membership as any).member?.id;
+  const whopUserId = membership.user?.id ?? membership.member?.id;
 
   if (!whopUserId) return;
 
@@ -476,7 +482,7 @@ async function handleMembershipActivated(
 
   // Find the product
   const product = await db.product.findFirst({
-    where: { whopProductId: (membership as any).product?.id ?? "" },
+    where: { whopProductId: membership.product?.id ?? "" },
   });
 
   if (!product) return;
@@ -491,8 +497,8 @@ async function handleMembershipActivated(
       whopMembershipId: membership.id,
       status: "active",
       joinedAt: new Date(membership.created_at),
-      renewalDate: (membership as any).renewal_period_end_date ? new Date((membership as any).renewal_period_end_date) : null,
-      priceCents: (membership as any).plan?.price ?? 0,
+      renewalDate: membership.renewal_period_end_date ? new Date(membership.renewal_period_end_date) : null,
+      priceCents: membership.plan?.price ?? 0,
       lastSyncedAt: new Date(),
     },
     update: {
@@ -515,7 +521,7 @@ async function handleMembershipActivated(
 
 async function handleMembershipDeactivated(
   organizationId: string,
-  event: any,
+  event: WhopMembershipEvent,
   webhookReceiptId: string,
 ) {
   const membership = event.data;
@@ -560,11 +566,11 @@ async function handleMembershipDeactivated(
 
 async function handlePaymentSucceeded(
   organizationId: string,
-  event: any,
+  event: WhopPaymentEvent,
   webhookReceiptId: string,
 ) {
   const payment = event.data;
-  const whopMembershipId = (payment as any).membership?.id;
+  const whopMembershipId = payment.membership?.id;
 
   if (!whopMembershipId) return;
 
@@ -582,7 +588,7 @@ async function handlePaymentSucceeded(
       membershipId: membership.id,
       whopPaymentId: payment.id,
       status: "succeeded",
-      amountCents: (payment as any).amount ?? 0,
+      amountCents: payment.amount ?? 0,
       occurredAt: new Date(event.timestamp),
       webhookReceiptId,
     },
@@ -615,7 +621,7 @@ async function handlePaymentSucceeded(
       interventionId: intervention.id,
       studentId: membership.studentId,
       paymentEventId: payment.id, // Unique — prevents duplicate attribution
-      amountCents: (payment as any).amount ?? 0,
+      amountCents: payment.amount ?? 0,
       courseActivityOccurred: !!progressEvent,
       paymentSucceededAt: new Date(event.timestamp),
       interventionDeliveredAt: intervention.sentAt,
@@ -625,13 +631,13 @@ async function handlePaymentSucceeded(
 
 async function handleLessonCompleted(
   organizationId: string,
-  event: any,
+  event: WhopLessonInteractionEvent,
   webhookReceiptId: string,
 ) {
   const interaction = event.data;
-  const whopUserId = (interaction as any).user?.id;
-  const courseId = (interaction as any).course?.id;
-  const lessonId = (interaction as any).lesson?.id;
+  const whopUserId = interaction.user?.id;
+  const courseId = interaction.course?.id;
+  const lessonId = interaction.lesson?.id;
   const interactionId = interaction.id; // Whop's unique interaction ID
 
   if (!whopUserId || !courseId) return;
@@ -658,7 +664,7 @@ async function handleLessonCompleted(
         courseId: course.id,
         externalInteractionId: interactionId,
         lessonIndex: 0, // Whop doesn't provide an index; we use the interaction ID for uniqueness
-        lessonTitle: (interaction as any).lesson?.title ?? null,
+        lessonTitle: interaction.lesson?.title ?? null,
         action: "completed",
         occurredAt: new Date(event.timestamp),
         webhookReceiptId,
@@ -860,6 +866,6 @@ async function processDataDeletion(
     objectType: "data_deletion_request",
     objectId: deletionRequestId,
     newState: result.success ? "completed" : "failed",
-    metadataJson: result.evidence as any,
+    metadataJson: result.evidence as Prisma.InputJsonValue,
   });
 }

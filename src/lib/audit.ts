@@ -3,6 +3,7 @@
 
 import { db } from "@/lib/db";
 import type { AuditAction } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 export async function recordAuditEvent(params: {
   organizationId: string;
@@ -27,7 +28,7 @@ export async function recordAuditEvent(params: {
       previousState: params.previousState,
       newState: params.newState,
       reason: params.reason,
-      metadataJson: (params.metadata ?? {}) as any,
+      metadataJson: (params.metadata ?? {}) as Prisma.InputJsonValue,
     },
   });
 }

@@ -98,7 +98,7 @@ export const KPIS = {
 export const RECOVERY_FUNNEL = [
   { stage: "Detected", count: 118, label: "Members matching a risk signal" },
   { stage: "Eligible", count: 96, label: "Passed cooldown & safety checks" },
-  { stage: "Contacted", count: 78, label: "Intervention delivered" },
+  { stage: "Contacted", count: 78, label: "Intervention dispatched" },
   { stage: "Responded", count: 43, label: "Student replied or returned" },
   { stage: "Resumed", count: 31, label: "Completed a lesson after contact" },
   { stage: "Retained", count: 7, label: "Still active after 14 days" },
@@ -1123,7 +1123,7 @@ export const ACTIVITY_FEED: ActivityEvent[] = [
     timestamp: "10 hours ago",
     type: "intervention_sent",
     studentName: "Emma Thompson",
-    detail: "Mid-Course Rescue delivered — case study attached",
+    detail: "Mid-Course Rescue dispatched — case study attached",
   },
 ];
 
