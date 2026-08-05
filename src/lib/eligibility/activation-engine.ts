@@ -1,8 +1,29 @@
 "server-only";
 // Activation Rescue eligibility engine.
 // Determines which students are eligible for an Activation Rescue intervention
-// based on: active membership, no course activity, configured delay, cooldown,
-// opt-out, suppression, organisation pause, and campaign status.
+// based on the full 17-check eligibility criteria from Phase 12.
+//
+// Checks:
+//  1. Organisation active
+//  2. Organisation not paused
+//  3. Installation active
+//  4. Campaign active
+//  5. Campaign is Activation Rescue
+//  6. Manual approval enabled
+//  7. Campaign version exists
+//  8. Confirmed mapping belongs to campaign
+//  9. Membership belongs to mapped product
+// 10. Membership active or trialing
+// 11. Membership not ending
+// 12. Activation delay elapsed
+// 13. Course activity absent
+// 14. No course-, campaign- or organisation-level suppression
+// 15. No existing equivalent active intervention
+// 16. Campaign cooldown clear
+// 17. Organisation-wide message limit clear
+// 18. Campaign message limit clear
+// 19. Plan allows monitored member
+// 20. Source data sufficiently fresh
 
 import { db } from "@/lib/db";
 import type { EligibilityState } from "@prisma/client";
@@ -19,20 +40,13 @@ export interface EligibilityResult {
   evidence: Record<string, unknown>;
 }
 
+const SOURCE_FRESHNESS_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 /**
  * Check whether a student is eligible for Activation Rescue.
  *
- * A member is eligible only when:
- * 1. Their membership is active or trialing
- * 2. Their product grants access to the mapped course
- * 3. They have no recorded course interaction
- * 4. The configured waiting period has elapsed since purchase
- * 5. They have not opted out (suppressed)
- * 6. They are not suppressed
- * 7. Their membership is not ending
- * 8. They do not have another active intervention
- * 9. The campaign cooldown has elapsed
- * 10. The organisation is not globally paused
+ * Phase 12: All 17+ checks are explicitly verified.
+ * Operates only on the campaign's confirmed mapping.
  */
 export async function checkActivationEligibility(params: {
   studentId: string;
@@ -57,7 +71,9 @@ export async function checkActivationEligibility(params: {
         take: 1,
       },
       suppressions: true,
-      organization: true,
+      organization: {
+        include: { installations: true },
+      },
     },
   });
 
@@ -69,54 +85,124 @@ export async function checkActivationEligibility(params: {
     };
   }
 
-  // 10. Organisation not paused
-  const orgNotPaused = !student.organization.isPaused && student.organization.status === "active";
+  // 1. Organisation active
+  const orgActive = student.organization.status === "active";
   checks.push({
     condition: "organization_active",
-    passed: orgNotPaused,
-    detail: orgNotPaused ? "Organization is active" : "Organization is paused or suspended",
+    passed: orgActive,
+    detail: orgActive ? "Organization is active" : `Organization status: ${student.organization.status}`,
   });
 
-  // 1 & 7. Membership active/trialing and not ending
-  const activeMembership = student.memberships.find(
-    (m) => m.status === "active" || m.status === "trialing",
-  );
+  // 2. Organisation not paused
+  const orgNotPaused = !student.organization.isPaused;
+  checks.push({
+    condition: "organization_not_paused",
+    passed: orgNotPaused,
+    detail: orgNotPaused ? "Organization is not paused" : "Organization is paused",
+  });
+
+  // 3. Installation active
+  const hasActiveInstallation = student.organization.installations.some((i) => i.status === "active");
+  checks.push({
+    condition: "installation_active",
+    passed: hasActiveInstallation,
+    detail: hasActiveInstallation ? "Active installation found" : "No active installation",
+  });
+
+  // 4. Campaign active
+  const campaign = await db.campaign.findUnique({
+    where: { id: params.campaignId },
+    include: {
+      versions: { orderBy: { versionNumber: "desc" }, take: 1 },
+      confirmedMapping: true,
+    },
+  });
+
+  const campaignActive = campaign?.status === "active";
+  checks.push({
+    condition: "campaign_active",
+    passed: campaignActive,
+    detail: campaignActive ? "Campaign is active" : `Campaign status: ${campaign?.status ?? "not found"}`,
+  });
+
+  // 5. Campaign is Activation Rescue
+  const campaignIsActivationRescue = campaign?.type === "activation_rescue";
+  checks.push({
+    condition: "campaign_is_activation_rescue",
+    passed: campaignIsActivationRescue,
+    detail: campaignIsActivationRescue ? "Campaign is Activation Rescue" : `Campaign type: ${campaign?.type ?? "not found"}`,
+  });
+
+  // 6. Manual approval enabled
+  const manualApproval = campaign?.approvalMode === "manual";
+  checks.push({
+    condition: "manual_approval_enabled",
+    passed: manualApproval,
+    detail: manualApproval ? "Manual approval enabled" : `Approval mode: ${campaign?.approvalMode ?? "not found"}`,
+  });
+
+  // 7. Campaign version exists
+  const latestVersion = campaign?.versions[0];
+  const campaignVersionExists = !!latestVersion;
+  checks.push({
+    condition: "campaign_version_exists",
+    passed: campaignVersionExists,
+    detail: campaignVersionExists ? `Version ${latestVersion!.versionNumber} exists` : "No campaign version",
+  });
+
+  // 8. Confirmed mapping belongs to campaign
+  const confirmedMappingBelongsToCampaign = !!campaign?.confirmedMapping;
+  checks.push({
+    condition: "confirmed_mapping_belongs_to_campaign",
+    passed: confirmedMappingBelongsToCampaign,
+    detail: confirmedMappingBelongsToCampaign
+      ? "Confirmed mapping exists for campaign"
+      : "No confirmed mapping for campaign",
+  });
+
+  // 9. Membership belongs to mapped product
+  const mapping = campaign?.confirmedMapping ??
+    student.memberships
+      .flatMap((m) => m.product.mappings)
+      .find((m) => m.courseId === params.courseId && m.isConfirmed) ?? null;
+
+  const mappedProductId = mapping?.productId ?? campaign?.confirmedMapping?.productId;
+  const activeMembership = student.memberships.find((m) => {
+    if (m.status !== "active" && m.status !== "trialing") return false;
+    if (mappedProductId && m.productId !== mappedProductId) return false;
+    return true;
+  });
+
+  const membershipBelongsToMappedProduct = !!activeMembership && (!mappedProductId || activeMembership.productId === mappedProductId);
+  checks.push({
+    condition: "membership_belongs_to_mapped_product",
+    passed: membershipBelongsToMappedProduct,
+    detail: membershipBelongsToMappedProduct
+      ? `Membership product matches mapped product`
+      : "No membership for mapped product",
+  });
+
+  // 10. Membership active or trialing
   const membershipActive = !!activeMembership;
   checks.push({
-    condition: "membership_active",
+    condition: "membership_active_or_trialing",
     passed: membershipActive,
     detail: membershipActive
       ? `Membership status: ${activeMembership!.status}`
       : "No active membership",
   });
 
-  // 2. Product grants access to mapped course
-  const productMapsToCourse = activeMembership?.product.mappings.some(
-    (m) => m.courseId === params.courseId && m.isConfirmed,
-  ) ?? false;
+  // 11. Membership not ending
+  const membershipNotEnding = !activeMembership?.renewalDate || activeMembership.renewalDate > now;
   checks.push({
-    condition: "product_course_mapping",
-    passed: productMapsToCourse,
-    detail: productMapsToCourse
-      ? "Product maps to this course"
-      : "Product does not map to this course",
+    condition: "membership_not_ending",
+    passed: membershipNotEnding,
+    detail: membershipNotEnding
+      ? "Membership not ending"
+      : "Membership renewal date has passed",
   });
 
-  // 3. No recorded course interaction
-  const courseState = student.studentStates[0];
-  const noCourseActivity = !courseState || courseState.lessonsCompleted === 0;
-  checks.push({
-    condition: "no_course_activity",
-    passed: noCourseActivity,
-    detail: noCourseActivity
-      ? "No course activity recorded"
-      : `Course progress: ${courseState!.progressPercent}% (${courseState!.lessonsCompleted} lessons)`,
-  });
-
-  // 4. Configured waiting period has elapsed
-  const mapping = activeMembership?.product.mappings.find(
-    (m) => m.courseId === params.courseId,
-  );
+  // 12. Activation delay elapsed
   const delayDays = mapping?.activationDelayDays ?? 7;
   const joinedAt = activeMembership?.joinedAt ?? new Date(0);
   const daysSinceJoin = Math.floor((now.getTime() - joinedAt.getTime()) / (1000 * 60 * 60 * 24));
@@ -129,23 +215,26 @@ export async function checkActivationEligibility(params: {
       : `${daysSinceJoin} days since purchase (need ${delayDays} days)`,
   });
 
-  // 5. Not opted out
-  const notOptedOut = student.suppressions.length === 0;
+  // 13. Course activity absent
+  const courseState = student.studentStates[0];
+  const noCourseActivity = !courseState || courseState.lessonsCompleted === 0;
   checks.push({
-    condition: "not_opted_out",
-    passed: notOptedOut,
-    detail: notOptedOut ? "No opt-out recorded" : "Student has opted out",
+    condition: "course_activity_absent",
+    passed: noCourseActivity,
+    detail: noCourseActivity
+      ? "No course activity recorded"
+      : `Course progress: ${courseState!.progressPercent}% (${courseState!.lessonsCompleted} lessons)`,
   });
 
-  // 6. Not suppressed (same as 5 for now, but could be separate)
-  const notSuppressed = notOptedOut;
+  // 14. No course-, campaign- or organisation-level suppression
+  const notSuppressed = student.suppressions.length === 0;
   checks.push({
     condition: "not_suppressed",
     passed: notSuppressed,
-    detail: notSuppressed ? "Not suppressed" : "Student is suppressed",
+    detail: notSuppressed ? "No suppression recorded" : "Student is suppressed",
   });
 
-  // 8. No active intervention for this campaign
+  // 15. No existing equivalent active intervention
   const hasActiveIntervention = student.interventions.some(
     (iv) =>
       iv.state !== "dismissed" &&
@@ -160,21 +249,99 @@ export async function checkActivationEligibility(params: {
       : `Active intervention: ${student.interventions[0]?.state}`,
   });
 
-  // 9. Campaign cooldown has elapsed
-  const campaign = await db.campaign.findUnique({
-    where: { id: params.campaignId },
-  });
+  // 16. Campaign cooldown clear
   const cooldownDays = campaign?.cooldownDays ?? 14;
   const lastIntervention = student.interventions[0];
   const cooldownElapsed = !lastIntervention
     ? true
     : (now.getTime() - lastIntervention.createdAt.getTime()) / (1000 * 60 * 60 * 24) >= cooldownDays;
   checks.push({
-    condition: "campaign_cooldown_elapsed",
+    condition: "campaign_cooldown_clear",
     passed: cooldownElapsed,
     detail: cooldownElapsed
       ? "Cooldown elapsed"
       : `Within ${cooldownDays}-day cooldown`,
+  });
+
+  // 17. Organisation-wide message limit clear
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const orgMessageCount = campaign
+    ? await db.intervention.count({
+        where: {
+          organizationId: student.organizationId,
+          createdAt: { gte: thirtyDaysAgo },
+          state: { in: ["notification_accepted", "delivered"] },
+        },
+      })
+    : 0;
+  const maxMessagesPerOrg = campaign?.maxMessagesPerOrg ?? 100;
+  const orgLimitClear = orgMessageCount < maxMessagesPerOrg;
+  checks.push({
+    condition: "org_message_limit_clear",
+    passed: orgLimitClear,
+    detail: orgLimitClear
+      ? `Org messages: ${orgMessageCount}/${maxMessagesPerOrg}`
+      : `Org message limit reached: ${orgMessageCount}/${maxMessagesPerOrg}`,
+  });
+
+  // 18. Campaign message limit clear
+  const campaignMessageCount = campaign
+    ? await db.intervention.count({
+        where: {
+          organizationId: student.organizationId,
+          campaignId: params.campaignId,
+          createdAt: { gte: thirtyDaysAgo },
+          state: { in: ["notification_accepted", "delivered"] },
+        },
+      })
+    : 0;
+  const maxMessagesPerCampaign = campaign?.maxMessagesPerStudent ?? 2;
+  const campaignLimitClear = campaignMessageCount < maxMessagesPerCampaign;
+  checks.push({
+    condition: "campaign_message_limit_clear",
+    passed: campaignLimitClear,
+    detail: campaignLimitClear
+      ? `Campaign messages: ${campaignMessageCount}/${maxMessagesPerCampaign}`
+      : `Campaign message limit reached: ${campaignMessageCount}/${maxMessagesPerCampaign}`,
+  });
+
+  // 19. Plan allows monitored member
+  const entitlement = await db.subscriptionEntitlement.findFirst({
+    where: { organizationId: student.organizationId },
+  });
+  const plan = entitlement
+    ? await db.plan.findUnique({ where: { tier: entitlement.planTier } })
+    : null;
+  const maxMonitoredMembers = plan?.maxMonitoredMembers ?? Infinity;
+  const currentMonitoredMembers = await db.membership.count({
+    where: {
+      organizationId: student.organizationId,
+      status: { in: ["active", "trialing"] },
+    },
+  });
+  const planAllows = currentMonitoredMembers < maxMonitoredMembers;
+  checks.push({
+    condition: "plan_allows_monitored_member",
+    passed: planAllows,
+    detail: planAllows
+      ? `Monitored: ${currentMonitoredMembers}/${maxMonitoredMembers}`
+      : `Plan limit reached: ${currentMonitoredMembers}/${maxMonitoredMembers}`,
+  });
+
+  // 20. Source data sufficiently fresh
+  const latestCheckpoint = await db.syncCheckpoint.findFirst({
+    where: { organizationId: student.organizationId, resource: "memberships" },
+    orderBy: { updatedAt: "desc" },
+  });
+  const sourceDataFresh = latestCheckpoint
+    ? (now.getTime() - latestCheckpoint.updatedAt.getTime()) < SOURCE_FRESHNESS_MAX_AGE_MS
+    : false;
+  checks.push({
+    condition: "source_data_fresh",
+    passed: sourceDataFresh,
+    detail: sourceDataFresh
+      ? "Source data is fresh"
+      : "Source data is stale (>24h since last sync)",
   });
 
   // Determine overall state
@@ -194,8 +361,19 @@ export async function checkActivationEligibility(params: {
       delayDays,
       cooldownDays,
       organizationPaused: student.organization.isPaused,
-      optedOut: !notOptedOut,
+      organizationStatus: student.organization.status,
+      installationActive: hasActiveInstallation,
+      notSuppressed,
       hasActiveIntervention,
+      campaignActive,
+      campaignIsActivationRescue,
+      manualApproval,
+      campaignVersionExists,
+      confirmedMappingBelongsToCampaign,
+      orgLimitClear,
+      campaignLimitClear,
+      planAllows,
+      sourceDataFresh,
     },
   };
 }
@@ -203,6 +381,8 @@ export async function checkActivationEligibility(params: {
 /**
  * Find all eligible students for an Activation Rescue campaign.
  * Returns eligibility snapshots that can be used to create interventions.
+ *
+ * Phase 12: Operates only on the campaign's confirmed mapping.
  */
 export async function findEligibleStudentsForCampaign(params: {
   campaignId: string;
@@ -222,8 +402,10 @@ export async function findEligibleStudentsForCampaign(params: {
             },
           },
           courses: true,
+          installations: true,
         },
       },
+      confirmedMapping: true,
     },
   });
 
@@ -233,18 +415,33 @@ export async function findEligibleStudentsForCampaign(params: {
 
   const results: EligibilityResult[] = [];
 
-  for (const course of campaign.organization.courses) {
-    for (const student of campaign.organization.students) {
-      const result = await checkActivationEligibility({
-        studentId: student.id,
-        courseId: course.id,
-        campaignId: params.campaignId,
-        now: params.now,
-      });
+  // Phase 12: Use only the campaign's confirmed mapping
+  const mapping = campaign.confirmedMapping;
+  if (!mapping) {
+    return []; // No confirmed mapping — no candidates possible
+  }
 
-      if (result.state === "eligible") {
-        results.push(result);
-      }
+  const courseId = mapping.courseId;
+
+  // Only evaluate students who have a membership for the mapped product
+  const eligibleStudents = campaign.organization.students.filter((student) =>
+    student.memberships.some(
+      (m) =>
+        m.productId === mapping.productId &&
+        (m.status === "active" || m.status === "trialing"),
+    ),
+  );
+
+  for (const student of eligibleStudents) {
+    const result = await checkActivationEligibility({
+      studentId: student.id,
+      courseId,
+      campaignId: params.campaignId,
+      now: params.now,
+    });
+
+    if (result.state === "eligible") {
+      results.push(result);
     }
   }
 

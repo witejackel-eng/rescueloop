@@ -9,51 +9,42 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ─── Mock the database ─────────────────────────────────────────
+// ─── Hoisted mock objects so they're available when vi.mock runs ─
 
-const mockSubscriptionEntitlement = {
-  findFirst: vi.fn(),
-};
+const { mockDb } = vi.hoisted(() => {
+  const mockDb = {
+    subscriptionEntitlement: {
+      findFirst: vi.fn(),
+    },
+    usageCounter: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
+    usageReservation: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    usageEvent: {
+      create: vi.fn(),
+    },
+    planOverride: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    $transaction: vi.fn(),
+  };
 
-const mockUsageCounter = {
-  findUnique: vi.fn(),
-  upsert: vi.fn(),
-  update: vi.fn(),
-};
+  // $transaction passes through the same mock objects
+  mockDb.$transaction.mockImplementation((fn: any) => fn(mockDb));
 
-const mockUsageReservation = {
-  create: vi.fn(),
-  findUnique: vi.fn(),
-  update: vi.fn(),
-};
-
-const mockUsageEvent = {
-  create: vi.fn(),
-};
-
-const mockPlanOverride = {
-  findFirst: vi.fn(),
-  create: vi.fn(),
-  updateMany: vi.fn(),
-};
+  return { mockDb };
+});
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    subscriptionEntitlement: mockSubscriptionEntitlement,
-    usageCounter: mockUsageCounter,
-    usageReservation: mockUsageReservation,
-    usageEvent: mockUsageEvent,
-    planOverride: mockPlanOverride,
-    $transaction: vi.fn((fn: any) =>
-      fn({
-        subscriptionEntitlement: mockSubscriptionEntitlement,
-        usageCounter: mockUsageCounter,
-        usageReservation: mockUsageReservation,
-        usageEvent: mockUsageEvent,
-        planOverride: mockPlanOverride,
-      }),
-    ),
-  },
+  db: mockDb,
 }));
 
 // ─── Mock metering ─────────────────────────────────────────────
@@ -86,13 +77,13 @@ import { getUsageCount, getCurrentPeriod } from "@/lib/usage/metering";
 const ORG_ID = "org_test_123";
 
 function setupPilotPlan() {
-  mockSubscriptionEntitlement.findFirst.mockResolvedValue({
+  (db.subscriptionEntitlement.findFirst as any).mockResolvedValue({
     planTier: "pilot",
   });
 }
 
 function setupNoOverride() {
-  mockPlanOverride.findFirst.mockResolvedValue(null);
+  (db.planOverride.findFirst as any).mockResolvedValue(null);
 }
 
 // ─── Tests ─────────────────────────────────────────────────────
@@ -102,6 +93,8 @@ describe("Plan enforcement", () => {
     vi.clearAllMocks();
     setupPilotPlan();
     setupNoOverride();
+    // Restore the $transaction implementation after clearAllMocks
+    (db.$transaction as any).mockImplementation((fn: any) => fn(db));
   });
 
   // ─── Each metric enforcement ────────────────────────────────
@@ -183,42 +176,36 @@ describe("Plan enforcement", () => {
 
   describe("reserveUsage — atomic check-and-increment", () => {
     it("reserves a slot when under limit", async () => {
-      (getUsageCount as any).mockResolvedValue(2);
-      mockUsageCounter.findUnique.mockResolvedValue({ count: 2, id: "ctr_1" });
-      mockUsageCounter.upsert.mockResolvedValue({ count: 3 });
-      mockUsageReservation.create.mockResolvedValue({ id: "res_1" });
+      (db.usageCounter.findUnique as any).mockResolvedValue({ count: 2, id: "ctr_1" });
+      (db.usageCounter.upsert as any).mockResolvedValue({ count: 3 });
+      (db.usageReservation.create as any).mockResolvedValue({ id: "res_1" });
 
       const result = await reserveUsage(ORG_ID, "courses", "op_abc");
 
       expect(result.reservationId).toBe("res_1");
       expect(result.reservedCount).toBe(3);
       expect(result.idempotencyKey).toContain("op_abc");
-      expect(mockUsageCounter.upsert).toHaveBeenCalled();
-      expect(mockUsageReservation.create).toHaveBeenCalled();
+      expect(db.usageCounter.upsert).toHaveBeenCalled();
+      expect(db.usageReservation.create).toHaveBeenCalled();
     });
 
     it("throws when at limit (concurrent request blocked)", async () => {
       const limit = PLANS.pilot.maxCourses;
-      mockUsageCounter.findUnique.mockResolvedValue({ count: limit, id: "ctr_1" });
+      (db.usageCounter.findUnique as any).mockResolvedValue({ count: limit, id: "ctr_1" });
 
       await expect(
         reserveUsage(ORG_ID, "courses", "op_def"),
       ).rejects.toThrow(PlanLimitExceededError);
 
       // Counter must NOT have been incremented
-      expect(mockUsageCounter.upsert).not.toHaveBeenCalled();
+      expect(db.usageCounter.upsert).not.toHaveBeenCalled();
     });
 
-    it("throws when counter is null (0 count) but limit is 0", async () => {
-      // Edge case: limit of 0 means no usage allowed at all
-      mockSubscriptionEntitlement.findFirst.mockResolvedValue({
-        planTier: "rescue",
-      });
-      // rescue has maxCourses=1, so test with a metric where 0 makes sense
-      // Instead, test by setting counter to 0 and limit being exceeded
-      mockUsageCounter.findUnique.mockResolvedValue(null); // no counter = 0 usage
+    it("reserves when counter is null (first use)", async () => {
+      (db.usageCounter.findUnique as any).mockResolvedValue(null);
+      (db.usageCounter.upsert as any).mockResolvedValue({ count: 1 });
+      (db.usageReservation.create as any).mockResolvedValue({ id: "res_new" });
 
-      // For rescue, maxCourses=1, so count 0 < 1 should be allowed
       const result = await reserveUsage(ORG_ID, "courses", "op_ghi");
       expect(result.reservedCount).toBe(1);
     });
@@ -251,18 +238,18 @@ describe("Plan enforcement", () => {
 
   describe("commitReservation", () => {
     it("marks reservation as committed and records usage event", async () => {
-      mockUsageReservation.update.mockResolvedValue({ status: "committed" });
-      mockUsageEvent.create.mockResolvedValue({ id: "evt_1" });
+      (db.usageReservation.update as any).mockResolvedValue({ status: "committed" });
+      (db.usageEvent.create as any).mockResolvedValue({ id: "evt_1" });
 
       await commitReservation("res_1", ORG_ID, "courses", { source: "test" });
 
-      expect(mockUsageReservation.update).toHaveBeenCalledWith(
+      expect(db.usageReservation.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "res_1" },
           data: { status: "committed" },
         }),
       );
-      expect(mockUsageEvent.create).toHaveBeenCalled();
+      expect(db.usageEvent.create).toHaveBeenCalled();
     });
   });
 
@@ -270,19 +257,19 @@ describe("Plan enforcement", () => {
 
   describe("releaseReservation", () => {
     it("decrements counter and marks reservation as released", async () => {
-      mockUsageReservation.findUnique.mockResolvedValue({ status: "reserved" });
-      mockUsageReservation.update.mockResolvedValue({ status: "released" });
-      mockUsageCounter.update.mockResolvedValue({ count: 2 });
+      (db.usageReservation.findUnique as any).mockResolvedValue({ status: "reserved" });
+      (db.usageReservation.update as any).mockResolvedValue({ status: "released" });
+      (db.usageCounter.update as any).mockResolvedValue({ count: 2 });
 
       await releaseReservation("res_1", ORG_ID, "courses");
 
-      expect(mockUsageReservation.update).toHaveBeenCalledWith(
+      expect(db.usageReservation.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "res_1" },
           data: { status: "released" },
         }),
       );
-      expect(mockUsageCounter.update).toHaveBeenCalledWith(
+      expect(db.usageCounter.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: { count: { decrement: 1 } },
         }),
@@ -290,21 +277,21 @@ describe("Plan enforcement", () => {
     });
 
     it("is idempotent if reservation already committed", async () => {
-      mockUsageReservation.findUnique.mockResolvedValue({ status: "committed" });
+      (db.usageReservation.findUnique as any).mockResolvedValue({ status: "committed" });
 
       await releaseReservation("res_1", ORG_ID, "courses");
 
       // Should NOT decrement counter
-      expect(mockUsageCounter.update).not.toHaveBeenCalled();
-      expect(mockUsageReservation.update).not.toHaveBeenCalled();
+      expect(db.usageCounter.update).not.toHaveBeenCalled();
+      expect(db.usageReservation.update).not.toHaveBeenCalled();
     });
 
     it("is idempotent if reservation does not exist", async () => {
-      mockUsageReservation.findUnique.mockResolvedValue(null);
+      (db.usageReservation.findUnique as any).mockResolvedValue(null);
 
       await releaseReservation("res_1", ORG_ID, "courses");
 
-      expect(mockUsageCounter.update).not.toHaveBeenCalled();
+      expect(db.usageCounter.update).not.toHaveBeenCalled();
     });
   });
 
@@ -312,21 +299,21 @@ describe("Plan enforcement", () => {
 
   describe("plan overrides", () => {
     it("getActiveOverride returns null when no override exists", async () => {
-      mockPlanOverride.findFirst.mockResolvedValue(null);
+      (db.planOverride.findFirst as any).mockResolvedValue(null);
 
       const result = await getActiveOverride(ORG_ID, "courses");
       expect(result).toBeNull();
     });
 
     it("getActiveOverride returns override limit when active", async () => {
-      mockPlanOverride.findFirst.mockResolvedValue({ overrideLimit: 100 });
+      (db.planOverride.findFirst as any).mockResolvedValue({ overrideLimit: 100 });
 
       const result = await getActiveOverride(ORG_ID, "courses");
       expect(result).toBe(100);
     });
 
     it("checkLimit uses override limit when it is higher", async () => {
-      mockPlanOverride.findFirst.mockResolvedValue({ overrideLimit: 100 });
+      (db.planOverride.findFirst as any).mockResolvedValue({ overrideLimit: 100 });
       (getUsageCount as any).mockResolvedValue(10);
 
       const result = await checkLimit(ORG_ID, "courses");
@@ -336,7 +323,7 @@ describe("Plan enforcement", () => {
     });
 
     it("checkLimit ignores override when base limit is higher", async () => {
-      mockPlanOverride.findFirst.mockResolvedValue({ overrideLimit: 2 });
+      (db.planOverride.findFirst as any).mockResolvedValue({ overrideLimit: 2 });
       (getUsageCount as any).mockResolvedValue(1);
 
       const result = await checkLimit(ORG_ID, "courses");
@@ -345,8 +332,8 @@ describe("Plan enforcement", () => {
     });
 
     it("applyPlanOverride creates override and audit event", async () => {
-      mockPlanOverride.create.mockResolvedValue({ id: "ovr_1" });
-      mockUsageEvent.create.mockResolvedValue({ id: "evt_1" });
+      (db.planOverride.create as any).mockResolvedValue({ id: "ovr_1" });
+      (db.usageEvent.create as any).mockResolvedValue({ id: "evt_1" });
 
       const now = new Date();
       const overrideId = await applyPlanOverride({
@@ -361,7 +348,7 @@ describe("Plan enforcement", () => {
       });
 
       expect(overrideId).toBe("ovr_1");
-      expect(mockPlanOverride.create).toHaveBeenCalledWith(
+      expect(db.planOverride.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             organizationId: ORG_ID,
@@ -374,15 +361,15 @@ describe("Plan enforcement", () => {
         }),
       );
       // Audit event should be recorded
-      expect(mockUsageEvent.create).toHaveBeenCalled();
+      expect(db.usageEvent.create).toHaveBeenCalled();
     });
 
     it("revokeExpiredOverrides updates expired overrides", async () => {
-      mockPlanOverride.updateMany.mockResolvedValue({ count: 3 });
+      (db.planOverride.updateMany as any).mockResolvedValue({ count: 3 });
 
       const count = await revokeExpiredOverrides(ORG_ID);
       expect(count).toBe(3);
-      expect(mockPlanOverride.updateMany).toHaveBeenCalledWith(
+      expect(db.planOverride.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             organizationId: ORG_ID,
@@ -396,7 +383,7 @@ describe("Plan enforcement", () => {
 
   describe("getOrganizationPlan", () => {
     it("defaults to pilot when no entitlement exists", async () => {
-      mockSubscriptionEntitlement.findFirst.mockResolvedValue(null);
+      (db.subscriptionEntitlement.findFirst as any).mockResolvedValue(null);
       (getUsageCount as any).mockResolvedValue(0);
 
       const result = await checkLimit(ORG_ID, "courses");
