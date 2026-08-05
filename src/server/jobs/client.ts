@@ -15,6 +15,15 @@ import "server-only";
 import { Inngest } from "inngest";
 import { getInngestEnv, isInngestConfigured, ConfigurationError } from "@/lib/env/server";
 
+// ─── Typed dispatch result ────────────────────────────────────
+// Replaces the silent-void contract so the outbox can make
+// truthful state transitions.
+
+export type JobDispatchResult =
+  | { state: "accepted"; externalEventId: string }
+  | { state: "unconfigured"; retryable: false }
+  | { state: "failed"; retryable: boolean; errorCode: string };
+
 let cachedClient: Inngest | null = null;
 
 /**
@@ -44,17 +53,62 @@ export function isInngestReady(): boolean {
 }
 
 /**
- * Send an event to Inngest. Returns silently if Inngest is not configured
- * (for graceful degradation in environments without job processing).
+ * Send an event to Inngest. Returns a typed JobDispatchResult so callers
+ * (especially the outbox) can make truthful state transitions.
+ *
+ * - "accepted"    → Inngest accepted the event (returns the Inngest event ID)
+ * - "unconfigured" → Inngest env vars are missing; not retryable
+ * - "failed"      → Inngest rejected or network error; retryable depends on error
  */
-export async function sendInngestEvent(name: string, data: Record<string, unknown>): Promise<void> {
+export async function sendInngestEvent(
+  name: string,
+  data: Record<string, unknown>,
+): Promise<JobDispatchResult> {
   if (!isInngestConfigured()) {
-    // Graceful degradation — the event is not sent, but no error is thrown.
-    // This allows webhook ingestion to acknowledge even without a job provider.
-    return;
+    // Graceful degradation — the event is not sent, but we report it so the
+    // outbox never falsely marks the event as dispatched.
+    return { state: "unconfigured", retryable: false };
   }
-  const client = getInngestClient();
-  await client.send({ name, data });
+
+  try {
+    const client = getInngestClient();
+    const result = await client.send({ name, data });
+    // Inngest send() returns an array of { id: string } for each event
+    const externalEventId =
+      Array.isArray(result) && result.length > 0
+        ? result[0].id
+        : typeof result === "object" && result !== null && "id" in result
+          ? (result as { id: string }).id
+          : `inngest-${Date.now()}`;
+    return { state: "accepted", externalEventId };
+  } catch (error) {
+    const errorCode =
+      error instanceof Error ? error.message : String(error);
+
+    // Network / rate-limit errors are retryable; auth / schema errors are not.
+    const retryable = isRetryableError(error);
+
+    return { state: "failed", retryable, errorCode };
+  }
+}
+
+/**
+ * Heuristic to decide if an Inngest send failure is worth retrying.
+ */
+function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return true; // unknown → assume retryable
+  const msg = error.message.toLowerCase();
+  // Non-retryable: auth, key, forbidden, schema, validation
+  if (
+    msg.includes("unauthorized") ||
+    msg.includes("forbidden") ||
+    msg.includes("invalid api key") ||
+    msg.includes("schema") ||
+    msg.includes("validation")
+  ) {
+    return false;
+  }
+  return true;
 }
 
 // Event names (these don't require initialization — safe to export at module level)
