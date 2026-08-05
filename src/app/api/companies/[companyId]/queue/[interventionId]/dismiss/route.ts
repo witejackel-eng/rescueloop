@@ -11,6 +11,12 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { recordAuditEvent } from "@/lib/audit";
 import {
+  checkRateLimitOrReject,
+  getClientIp,
+  RATE_LIMITS,
+  RateLimiter,
+} from "@/lib/rate-limit/rate-limiter";
+import {
   requireCompanyAdmin,
   authErrorToResponse,
 } from "@/lib/auth/whop-auth";
@@ -35,6 +41,15 @@ export async function POST(
   } catch (error) {
     return authErrorToResponse(error);
   }
+
+  // ─── Rate limiting (20 req/min per IP for auth-sensitive) ──
+  const ip = getClientIp(req);
+  const rateLimitKey = RateLimiter.buildKey("auth-sensitive", ip);
+  const rateLimitRejection = await checkRateLimitOrReject(
+    rateLimitKey,
+    RATE_LIMITS.authSensitive,
+  );
+  if (rateLimitRejection) return rateLimitRejection;
 
   // Optional JSON body (reason)
   let reason: string | undefined;

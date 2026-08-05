@@ -11,6 +11,12 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { recordAuditEvent } from "@/lib/audit";
+import {
+  checkRateLimitOrReject,
+  getClientIp,
+  RATE_LIMITS,
+  RateLimiter,
+} from "@/lib/rate-limit/rate-limiter";
 import { getInngestClient, EVENTS } from "@/server/jobs/client";
 import {
   requireCompanyAdmin,
@@ -18,7 +24,7 @@ import {
 } from "@/lib/auth/whop-auth";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   {
     params,
   }: {
@@ -33,6 +39,15 @@ export async function POST(
   } catch (error) {
     return authErrorToResponse(error);
   }
+
+  // ─── Rate limiting (20 req/min per IP for auth-sensitive) ──
+  const ip = getClientIp(req);
+  const rateLimitKey = RateLimiter.buildKey("auth-sensitive", ip);
+  const rateLimitRejection = await checkRateLimitOrReject(
+    rateLimitKey,
+    RATE_LIMITS.authSensitive,
+  );
+  if (rateLimitRejection) return rateLimitRejection;
 
   // Load the intervention, scoped to the admin's organization
   const intervention = await db.intervention.findUnique({
