@@ -58,11 +58,11 @@ export function initSentry(): void {
     replaysOnErrorSampleRate: 1.0,
 
     beforeSend(event) {
-      return redactSentryEvent(event);
+      return redactSentryEvent(event) as typeof event;
     },
 
     beforeSendTransaction(event) {
-      return redactSentryEvent(event);
+      return redactSentryEvent(event) as typeof event;
     },
   });
 
@@ -72,7 +72,7 @@ export function initSentry(): void {
 /**
  * Redact sensitive fields from a Sentry event.
  */
-function redactSentryEvent(event: Sentry.Event): Sentry.Event | null {
+function redactSentryEvent(event: Sentry.Event): Sentry.Event {
   // Redact request headers
   if (event.request?.headers) {
     for (const key of Object.keys(event.request.headers)) {

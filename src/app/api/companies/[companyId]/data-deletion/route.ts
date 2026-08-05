@@ -16,6 +16,11 @@ import {
   authErrorToResponse,
 } from "@/lib/auth/whop-auth";
 import { sendInngestEvent } from "@/server/jobs/client";
+import {
+  checkRateLimitOrReject,
+  RATE_LIMITS,
+  RateLimiter,
+} from "@/lib/rate-limit/rate-limiter";
 
 const DeletionRequestSchema = z.object({
   reason: z.string().max(1000).optional(),
@@ -35,6 +40,14 @@ export async function POST(
   } catch (error) {
     return authErrorToResponse(error);
   }
+
+  // ─── Rate limiting (5 req/min per org for plan mutations) ──
+  const deletionRateLimitKey = RateLimiter.buildKey("plan-mutation", ctx.organizationId);
+  const deletionRateLimitRejection = await checkRateLimitOrReject(
+    deletionRateLimitKey,
+    RATE_LIMITS.planMutation,
+  );
+  if (deletionRateLimitRejection) return deletionRateLimitRejection;
 
   let body: z.infer<typeof DeletionRequestSchema>;
   try {

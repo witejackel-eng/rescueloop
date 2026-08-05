@@ -14,6 +14,11 @@ import {
   authErrorToResponse,
 } from "@/lib/auth/whop-auth";
 import { sendInngestEvent } from "@/server/jobs/client";
+import {
+  checkRateLimitOrReject,
+  RATE_LIMITS,
+  RateLimiter,
+} from "@/lib/rate-limit/rate-limiter";
 
 /**
  * Generate a cryptographically random download token.
@@ -36,6 +41,14 @@ export async function POST(
   } catch (error) {
     return authErrorToResponse(error);
   }
+
+  // ─── Rate limiting (3 req/min per org) ─────────────────────
+  const exportRateLimitKey = RateLimiter.buildKey("data-export", ctx.organizationId);
+  const exportRateLimitRejection = await checkRateLimitOrReject(
+    exportRateLimitKey,
+    RATE_LIMITS.dataExport,
+  );
+  if (exportRateLimitRejection) return exportRateLimitRejection;
 
   // Check for an existing in-progress export
   const existing = await db.dataExportRequest.findFirst({
