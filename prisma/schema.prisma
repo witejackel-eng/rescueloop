@@ -1,32 +1,222 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum SyncRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum RiskType {
+  NEVER_STARTED
+  INACTIVE
+  CANCELLATION_PENDING
+}
+
+enum RiskState {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+model CompanyInstallation {
+  id                String        @id @default(cuid())
+  whopCompanyId     String        @unique
+  whopAppId         String
+  companyName       String?
+  lastSyncStartedAt DateTime?
+  lastSyncedAt      DateTime?
+  lastSyncError     String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  courses        WhopCourse[]
+  members        WhopMember[]
+  memberships    WhopMembership[]
+  enrollments    CourseEnrollment[]
+  syncRuns       SyncRun[]
+  riskDetections RiskDetection[]
+
+  @@index([lastSyncedAt])
+}
+
+model WhopCourse {
+  id                  String   @id @default(cuid())
+  companyId           String
+  whopCourseId        String   @unique
+  title               String
+  description         String?
+  tagline             String?
+  coverImageUrl       String?
+  certificateEnabled  Boolean  @default(false)
+  lessonsInOrder      Boolean  @default(false)
+  lessonCount         Int      @default(0)
+  studentCount        Int      @default(0)
+  isArchived          Boolean  @default(false)
+  whopCreatedAt       DateTime?
+  whopUpdatedAt       DateTime?
+  lastSyncedAt        DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  company     CompanyInstallation @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lessons     WhopLesson[]
+  enrollments CourseEnrollment[]
+  risks       RiskDetection[]
+
+  @@index([companyId, isArchived])
+}
+
+model WhopLesson {
+  id             String   @id @default(cuid())
+  courseId       String
+  whopLessonId   String   @unique
+  title          String
+  order          Float?
+  lessonType     String?
+  content        String?
+  thumbnailUrl   String?
+  unlockAfterDays Int?
+  whopCreatedAt  DateTime?
+  lastSyncedAt   DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  course WhopCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, order])
+}
+
+model WhopMember {
+  id             String   @id @default(cuid())
+  companyId      String
+  whopUserId     String
+  whopMemberId   String?
+  email          String?
+  name           String?
+  username       String?
+  profilePicUrl  String?
+  joinedAt       DateTime?
+  lastActivityAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company     CompanyInstallation @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  memberships WhopMembership[]
+  enrollments CourseEnrollment[]
+  risks       RiskDetection[]
+
+  @@unique([companyId, whopUserId])
+  @@unique([companyId, whopMemberId])
+  @@index([companyId, lastActivityAt])
+}
+
+model WhopMembership {
+  id                      String   @id @default(cuid())
+  companyId               String
+  memberId                String
+  whopMembershipId        String   @unique
+  status                  String
+  cancelAtPeriodEnd       Boolean  @default(false)
+  canceledAt              DateTime?
+  cancellationReason      String?
+  productId               String?
+  productTitle            String?
+  planId                  String?
+  formattedRenewalPrice   String?
+  initialPricePaid        String?
+  currency                String?
+  renewalPeriodStart      DateTime?
+  renewalPeriodEnd        DateTime?
+  manageUrl               String?
+  paymentCollectionPaused Boolean  @default(false)
+  joinedAt                DateTime?
+  whopCreatedAt           DateTime?
+  whopUpdatedAt           DateTime?
+  lastSyncedAt            DateTime @default(now())
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  company CompanyInstallation @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  member  WhopMember           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
+  @@index([memberId, renewalPeriodEnd])
+}
+
+model CourseEnrollment {
+  id                      String   @id @default(cuid())
+  companyId               String
+  courseId                String
+  memberId                String
+  whopCourseStudentId     String   @unique
+  completionRate          Float    @default(0)
+  completedLessons        Int      @default(0)
+  totalLessons            Int      @default(0)
+  firstInteractionAt      DateTime?
+  lastInteractionAt       DateTime?
+  lastSyncedAt            DateTime @default(now())
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  company CompanyInstallation @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  course  WhopCourse           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  member  WhopMember           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  risks   RiskDetection[]
+
+  @@unique([courseId, memberId])
+  @@index([companyId, lastInteractionAt])
+  @@index([courseId, completionRate])
+}
+
+model SyncRun {
+  id              String        @id @default(cuid())
+  companyId       String
+  status          SyncRunStatus @default(RUNNING)
+  startedAt       DateTime      @default(now())
+  finishedAt      DateTime?
+  coursesSynced   Int           @default(0)
+  lessonsSynced   Int           @default(0)
+  membersSynced   Int           @default(0)
+  membershipsSynced Int         @default(0)
+  enrollmentsSynced Int         @default(0)
+  risksOpened     Int           @default(0)
+  error           String?
+  createdAt       DateTime      @default(now())
+
+  company CompanyInstallation @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, startedAt])
+}
+
+model RiskDetection {
+  id           String    @id @default(cuid())
+  fingerprint  String    @unique
+  companyId    String
+  memberId     String
+  courseId     String?
+  enrollmentId String?
+  type         RiskType
+  state        RiskState @default(OPEN)
+  score        Int       @default(50)
+  reason       String
+  evidence     Json
+  detectedAt   DateTime  @default(now())
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company    CompanyInstallation @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  member     WhopMember           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  course     WhopCourse?          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrollment CourseEnrollment?    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, state, type])
+  @@index([memberId, detectedAt])
 }
