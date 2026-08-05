@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "test:contracts": "vitest run src/tests/contracts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
