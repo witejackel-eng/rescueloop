@@ -257,6 +257,15 @@ jobs:
           DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/rescueloop_test"
           RESCUELOOP_INTERNAL_TOKEN: "ci-fixture-internal-token-padding-32"
 
+      - name: Upload WP-01 brand evidence screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescueloop-wp01-brand-evidence
+          path: test-results/brand-evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
       - name: Upload test artifacts (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
