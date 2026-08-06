@@ -3,56 +3,56 @@ import { test, expect } from '@playwright/test';
 /**
  * Internal ops E2E tests.
  *
- * Covers: unauthorized → 401, valid auth → dashboard,
- * pilot review, job retry.
+ * The /internal/* routes use a client-side InternalAuthGate that:
+ * - Renders a login form (Card with "Internal Operations" title) when unauthenticated
+ * - The page returns HTTP 200 (Next.js renders the client component)
+ * - Auth is handled client-side via sessionStorage + fetch to /api/internal/auth
  *
- * The /internal/* routes require the internal API key.
+ * The correct E2E assertion is: unauthenticated → login form visible (200).
  */
 
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY ?? 'test-internal-key';
+const INTERNAL_API_KEY = process.env.RESCUELOOP_INTERNAL_TOKEN ?? 'ci-fixture-internal-token-padding-32';
 
 test.describe('Internal Ops', () => {
-  test('unauthenticated request to /internal returns 401 or redirect', async ({ page }) => {
+  test('unauthenticated request to /internal shows login gate', async ({ page }) => {
     const response = await page.goto('/internal');
-    // Should either get 401 or be redirected to a login/error page
-    if (response) {
-      const status = response.status();
-      expect([401, 403, 302, 307]).toContain(status);
-    }
+    // Next.js returns 200; the client-side auth gate shows the login form
+    expect(response?.status()).toBe(200);
+    // The auth gate renders a Card with "Internal Operations" title
+    const authGate = page.locator('text=Internal Operations').first();
+    await expect(authGate).toBeVisible({ timeout: 10_000 });
   });
 
   test('authenticated request loads internal dashboard', async ({ page }) => {
-    // Set auth cookie / header for internal routes
-    await page.context().addCookies([
-      { name: 'internal-auth', value: INTERNAL_API_KEY, domain: 'localhost', path: '/' },
-    ]);
+    // Pre-set the sessionStorage token so the auth gate lets us through
     await page.goto('/internal');
-    const dashboard = page.locator('main, [data-testid="internal-dashboard"]').first();
-    // May still fail if key is wrong in CI — use soft assertion
-    await expect(dashboard).toBeVisible().catch(() => {
-      test.skip();
-    });
+    await page.evaluate((token) => {
+      sessionStorage.setItem('rl_internal_token', token);
+    }, INTERNAL_API_KEY);
+    // Reload so the auth gate reads the token
+    await page.reload();
+    // The internal dashboard should be visible (main content area)
+    const dashboard = page.locator('main').first();
+    await expect(dashboard).toBeVisible({ timeout: 15_000 });
   });
 
   test('pilot review page loads', async ({ page }) => {
-    await page.context().addCookies([
-      { name: 'internal-auth', value: INTERNAL_API_KEY, domain: 'localhost', path: '/' },
-    ]);
+    await page.goto('/internal');
+    await page.evaluate((token) => {
+      sessionStorage.setItem('rl_internal_token', token);
+    }, INTERNAL_API_KEY);
     await page.goto('/internal/pilots');
-    const content = page.locator('main, [data-testid="pilots-list"]').first();
-    await expect(content).toBeVisible().catch(() => {
-      test.skip();
-    });
+    const content = page.locator('main').first();
+    await expect(content).toBeVisible({ timeout: 15_000 });
   });
 
   test('job retry page loads', async ({ page }) => {
-    await page.context().addCookies([
-      { name: 'internal-auth', value: INTERNAL_API_KEY, domain: 'localhost', path: '/' },
-    ]);
+    await page.goto('/internal');
+    await page.evaluate((token) => {
+      sessionStorage.setItem('rl_internal_token', token);
+    }, INTERNAL_API_KEY);
     await page.goto('/internal/jobs');
-    const content = page.locator('main, [data-testid="jobs-list"]').first();
-    await expect(content).toBeVisible().catch(() => {
-      test.skip();
-    });
+    const content = page.locator('main').first();
+    await expect(content).toBeVisible({ timeout: 15_000 });
   });
 });

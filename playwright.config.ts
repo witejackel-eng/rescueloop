@@ -8,15 +8,17 @@ import { defineConfig, devices } from '@playwright/test';
  * - Retry flaky tests twice
  * - 30s test timeout, 5s expect timeout
  * - Screenshots on failure only, trace on first retry, video on failure
- * - Dev server started via `bun run dev`, reused if already running
+ * - In CI: starts standalone server via `node .next/standalone/server.js`
+ *   (next start does NOT work with output: standalone)
  */
+
 export default defineConfig({
   testDir: './src/tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: 2,
+  retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: process.env.CI ? [['html'], ['list']] : 'html',
   timeout: 30_000,
 
   expect: {
@@ -38,9 +40,15 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: process.env.CI ? 'bun run start' : 'bun run dev',
+    command: process.env.CI
+      ? 'node .next/standalone/server.js'
+      : 'bun run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {
+      PORT: '3000',
+      HOSTNAME: '0.0.0.0',
+    },
   },
 });

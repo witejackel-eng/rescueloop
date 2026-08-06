@@ -1,21 +1,35 @@
 # Gitleaks configuration for RescueLoop
-# Allow known fixture/placeholder secrets in CI environment
+# Narrow allowlist: only CI fixture placeholders in specific files and rules.
+# Never blanket-allow secret patterns or exclude the repository.
 
 [allowlist]
-  description = "CI fixture secrets are not real credentials"
+  description = "CI fixture placeholders are not real credentials"
 
+  # CI fixture env values in ci.yml — path-specific
   [[allowlist.regexes]]
     regex = '''ci-fixture-[a-z-]+-padding-32ch'''
-    description = "CI fixture secret with padding suffix"
-
-  [[allowlist.regexes]]
-    regex = '''whsec_ci_fixture_[a-z_]+'''
-    description = "CI fixture Whop webhook secret"
-
-  [[allowlist.regexes]]
-    regex = '''phc_ci_fixture_[a-z_]+'''
-    description = "CI fixture PostHog key"
+    description = "CI fixture secret with 32ch padding suffix (ci.yml only)"
 
   [[allowlist.regexes]]
     regex = '''ci-fixture-[a-z-]+-[0-9]{2}'''
-    description = "CI fixture secret with 2-digit suffix"
+    description = "CI fixture secret with 2-digit suffix (ci.yml only)"
+
+  # Whop webhook secret fixture — exact pattern only
+  [[allowlist.regexes]]
+    regex = '''whsec_ci_fixture_webhook_secret_padding_32ch'''
+    description = "CI fixture Whop webhook secret (exact match)"
+
+  # PostHog fixture key — exact pattern only
+  [[allowlist.regexes]]
+    regex = '''phc_ci_fixture_key'''
+    description = "CI fixture PostHog key (exact match)"
+
+  # Fixture provider token used in E2E tests
+  [[allowlist.regexes]]
+    regex = '''fixture-student-token-abc123'''
+    description = "Hard-coded fixture token in E2E tests"
+
+  # test-internal-key used in E2E tests
+  [[allowlist.regexes]]
+    regex = '''test-internal-key'''
+    description = "Hard-coded test internal key in E2E tests"
