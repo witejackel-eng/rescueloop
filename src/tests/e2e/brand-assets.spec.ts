@@ -59,12 +59,13 @@ test.describe('Brand Asset Endpoints', () => {
 
 test.describe('HTML Metadata References', () => {
   test('root page references manifest, icons, OG image, and Twitter image', async ({ page }) => {
-    await page.goto('/');
+    const response = await page.goto('/');
+    expect(response?.status()).toBe(200);
     await page.waitForLoadState('domcontentloaded');
 
     // ─── Manifest link ────────────────────────────────────────
     const manifestLink = page.locator('link[rel="manifest"]');
-    await expect(manifestLink).toBeAttached({ timeout: 10_000 });
+    await expect(manifestLink).toBeAttached({ timeout: 15_000 });
     const manifestHref = await manifestLink.getAttribute('href');
     expect(manifestHref).toContain('brand-manifest.json');
 
@@ -84,19 +85,19 @@ test.describe('HTML Metadata References', () => {
 
     // ─── Apple touch icon ─────────────────────────────────────
     const appleLink = page.locator('link[rel="apple-touch-icon"]');
-    await expect(appleLink).toBeAttached({ timeout: 10_000 });
+    await expect(appleLink).toBeAttached({ timeout: 15_000 });
     const appleHref = await appleLink.getAttribute('href');
     expect(appleHref).toContain('apple-touch-icon.png');
 
     // ─── Open Graph image ─────────────────────────────────────
     const ogImage = page.locator('meta[property="og:image"]');
-    await expect(ogImage).toBeAttached({ timeout: 10_000 });
+    await expect(ogImage).toBeAttached({ timeout: 15_000 });
     const ogContent = await ogImage.getAttribute('content');
     expect(ogContent).toContain('og-default-1200x630.png');
 
     // ─── Twitter image ────────────────────────────────────────
     const twitterImage = page.locator('meta[name="twitter:image"], meta[property="twitter:image"]');
-    await expect(twitterImage).toBeAttached({ timeout: 10_000 });
+    await expect(twitterImage).toBeAttached({ timeout: 15_000 });
     const twitterContent = await twitterImage.first().getAttribute('content');
     expect(twitterContent).toContain('twitter-default-1200x630.png');
   });

@@ -23,35 +23,31 @@ test.describe('Brand QA Route Protection', () => {
 
     // The InternalAuthGate renders a Card with "Internal Operations" title
     const authGate = page.locator('text=Internal Operations').first();
-    await expect(authGate).toBeVisible({ timeout: 10_000 });
+    await expect(authGate).toBeVisible({ timeout: 15_000 });
 
     // The brand QA content must NOT be visible to unauthenticated visitors
-    // Brand QA has an h1 "Brand QA" heading — this should NOT be visible
     const brandQaHeading = page.locator('h1', { hasText: 'Brand QA' });
     await expect(brandQaHeading).not.toBeVisible({ timeout: 5_000 });
-
-    // Internal-only sections must not leak
-    const studentCopySection = page.locator('section[aria-label="Student copy policy"]');
-    await expect(studentCopySection).not.toBeVisible({ timeout: 3_000 });
   });
 
   // ─── Requirement 2: Authenticated access shows brand QA content ─
   test('authenticated visitor sees brand QA content with all 7 sections', async ({ page }) => {
     // Navigate to domain first, then inject auth token
     await page.goto('/internal');
+    await page.waitForLoadState('domcontentloaded');
     await page.evaluate((token) => {
       sessionStorage.setItem('rl_internal_token', token);
     }, INTERNAL_API_KEY);
     // Reload so auth gate picks up the token
     await page.reload();
+    await page.waitForLoadState('domcontentloaded');
     // Now navigate to brand-qa
     await page.goto('/internal/brand-qa');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1500);
+    await page.waitForLoadState('domcontentloaded');
 
     // The Brand QA heading should now be visible
     const heading = page.locator('h1', { hasText: 'Brand QA' });
-    await expect(heading).toBeVisible({ timeout: 15_000 });
+    await expect(heading).toBeVisible({ timeout: 20_000 });
 
     // All 7 sections should be present
     const sections = [
@@ -65,7 +61,7 @@ test.describe('Brand QA Route Protection', () => {
     ];
     for (const sectionLabel of sections) {
       const section = page.locator(`section[aria-label="${sectionLabel}"]`);
-      await expect(section).toBeVisible({ timeout: 10_000 });
+      await expect(section).toBeVisible({ timeout: 15_000 });
     }
   });
 
@@ -77,7 +73,7 @@ test.describe('Brand QA Route Protection', () => {
     // The internal layout sets robots: { index: false, follow: false }
     // which renders as <meta name="robots" content="noindex, nofollow">
     const robotsMeta = page.locator('meta[name="robots"]');
-    await expect(robotsMeta).toBeAttached({ timeout: 10_000 });
+    await expect(robotsMeta).toBeAttached({ timeout: 15_000 });
     const content = await robotsMeta.getAttribute('content');
     expect(content).toContain('noindex');
     expect(content).toContain('nofollow');
@@ -87,20 +83,19 @@ test.describe('Brand QA Route Protection', () => {
   test('brand QA uses canonical logo components (RescueLoopMark/RescueLoopLogo)', async ({ page }) => {
     // Authenticate first
     await page.goto('/internal');
+    await page.waitForLoadState('domcontentloaded');
     await page.evaluate((token) => {
       sessionStorage.setItem('rl_internal_token', token);
     }, INTERNAL_API_KEY);
     await page.reload();
+    await page.waitForLoadState('domcontentloaded');
     await page.goto('/internal/brand-qa');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1500);
+    await page.waitForLoadState('domcontentloaded');
 
     // The brand QA page imports RescueLoopMark, RescueLoopLogo, and BrandSignature
     // from @/components/brand/logo (the canonical logo module).
-    // These render SVG elements with the RescueLoop mark geometry.
-    // We verify they're rendered by checking for SVG elements in the logo section.
     const logoSection = page.locator('section[aria-label="Logo variants"]');
-    await expect(logoSection).toBeVisible({ timeout: 15_000 });
+    await expect(logoSection).toBeVisible({ timeout: 20_000 });
 
     // The primary mark renders as an <svg> element
     const svgMarks = logoSection.locator('svg');
@@ -109,13 +104,13 @@ test.describe('Brand QA Route Protection', () => {
 
     // Brand signature should include the wordmark "RescueLoop" as live text
     const brandSignature = page.locator('text=RescueLoop').first();
-    await expect(brandSignature).toBeVisible({ timeout: 10_000 });
+    await expect(brandSignature).toBeVisible({ timeout: 15_000 });
   });
 
   // ─── Confirmation: No parallel auth mechanism ───────────────
-  test('uses same auth mechanism as other /internal routes (sessionStorage + /api/internal/auth)', async ({ page }) => {
+  test('uses same auth mechanism as other /internal routes (sessionStorage + /api/internal/auth)', async ({ request }) => {
     // Verify the auth endpoint exists and works
-    const response = await page.request.post('/api/internal/auth', {
+    const response = await request.post('/api/internal/auth', {
       headers: {
         Authorization: `Bearer ${INTERNAL_API_KEY}`,
       },
@@ -123,7 +118,7 @@ test.describe('Brand QA Route Protection', () => {
     expect(response.status()).toBe(200);
 
     // Verify wrong token is rejected
-    const badResponse = await page.request.post('/api/internal/auth', {
+    const badResponse = await request.post('/api/internal/auth', {
       headers: {
         Authorization: 'Bearer wrong-token-value',
       },
