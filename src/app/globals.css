@@ -63,6 +63,12 @@
 
   --rl-ring: rgba(17, 17, 15, 0.40);
 
+  /* Safe area insets for mobile devices (notches, home indicators) */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+
   /* Legacy compat for shadcn components that reference these */
   --background: var(--canvas);
   --foreground: var(--ink-primary);
@@ -195,5 +201,20 @@
   }
   .noise-overlay::before {
     display: none;
+  }
+}
+
+/* Minimum touch target utility (44×44 per WCAG mobile guidance) */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Offscreen motion pause: animations on elements outside the viewport
+   are paused to save CPU (part of motion contract — pause offscreen/hidden) */
+@layer base {
+  .motion-pause-offscreen {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 500px;
   }
 }
