@@ -13,7 +13,7 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 
 ## WP-00: CI Pipeline Strict Green
 
-**Status:** 🔄 IN PROGRESS (commit 3 remediation)
+**Status:** ✅ COMPLETE
 
 **Objective:** Fix all CI failures on `integration/rescueloop-v1`; remove all false-green patterns; ensure lint, typecheck, unit, contract, integration, E2E, security, and production build genuinely fail on errors.
 
@@ -71,11 +71,79 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 
 ---
 
-## WP-01: (Not started — blocked until full CI green)
+## WP-01: Brand Foundation
 
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETE
 
-**Prerequisite:** WP-00 CI pipeline must be fully green on GitHub Actions.
+**Objective:** Establish one recognizable, production-safe RescueLoop identity across all surfaces.
+
+**Base commit:** edd6b4b (WP-00 final fix)
+
+### Canonical Closing Signal Identity
+
+- Implemented `RescueLoopMark` with variant prop: primary, mono, reversed, micro
+- Implemented `RescueLoopLogo` with context prop: marketing, workspace, student, internal
+- Implemented `BrandSignature` for quiet student-safe identity
+- All components support decorative mode (aria-hidden) and meaningful mode (aria-label)
+- Wordmark is live text — no SVG text element, no font binaries
+- No motion/animation in WP-01
+
+### Canonical Asset Directory
+
+- Created `public/brand/` with 15 assets:
+  - 5 SVGs: mark-primary, mark-mono, mark-reversed, mark-micro, favicon
+  - 10 PNGs: favicon-{16,32,48}, apple-touch-icon, icon-{192,512}, whop-app-icon-512, social-avatar-512, og-default-1200x630, twitter-default-1200x630
+- Asset manifest documenting dimensions, backgrounds, purposes, size budgets
+
+### Brand Contract and Tokens
+
+- `src/brand/contract.ts` — typed brand name, promises, pillars, canonical/reserved/forbidden terms
+- `src/brand/tokens.ts` — typed CSS variable references, hex values, fonts, spacing, radius
+- `src/brand/copy.ts` — source-controlled copy dictionary with canonical product vocabulary
+- `src/brand/metadata.ts` — environment-safe metadataBase, index policies, manifest generator
+
+### Metadata and OS Surfaces
+
+- Root layout: title template "%s — RescueLoop", environment-safe metadataBase
+- OG image 1200x630 with alt text, Twitter image with alt text
+- Favicon: 16/32/48 PNG + SVG, Apple touch icon 180x180
+- Web manifest at `/brand-manifest.json`
+- Noindex on dashboard, student, internal route groups
+- Canonical metadata on public pages (marketing, legal, private-pilot)
+
+### Route-Group Application
+
+- Marketing: full lockup with context="marketing"
+- Demo/workspace: compact mark in nav rail + DEMO label
+- Student: BrandSignature with quiet muted identity
+- Internal: canonical mark + Internal badge
+- Legal: compact mark in header breadcrumb
+
+### Copy and Naming
+
+- Canonical copy dictionary used (no "revenue-recovery" in marketing footer)
+- Student-rescue page has BrandSignature, no forbidden terms
+
+### Brand QA Route
+
+- `/internal/brand-qa` — protected, noindex
+- 7 sections: logo variants, backgrounds, typography, semantic colors, student copy policy, route contexts, asset previews
+
+### Automated Brand Gates
+
+- 42 brand gate tests in `src/brand/brand-gates.test.ts`:
+  - Required assets exist (15)
+  - SVGs have viewBox (5)
+  - SVG under 8 KB (5)
+  - Favicon PNGs under 50 KB (4)
+  - 512 icons under 250 KB (2)
+  - OG/Twitter under 500 KB (2)
+  - No duplicate logo module (1)
+  - No old mark geometry (2)
+  - No "Rescue Loop" variant (1)
+  - Student-rescue no forbidden terms (1)
+  - Manifest validates (1)
+  - Logo accessibility (3)
 
 ---
 

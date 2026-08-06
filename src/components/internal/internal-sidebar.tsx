@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { RescueLoopMark } from "@/components/brand/logo";
 import {
   LayoutDashboard,
   Building2,
@@ -34,8 +35,9 @@ export function InternalSidebar() {
   return (
     <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 border-r bg-muted/30">
       <div className="flex h-14 items-center gap-2 border-b px-4">
-        <ShieldCheck className="h-5 w-5 text-primary" />
-        <span className="font-semibold text-sm">RescueLoop Internal</span>
+        <RescueLoopMark size={20} decorative />
+        <span className="font-semibold text-sm">RescueLoop</span>
+        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider bg-amber-100 text-amber-800">Internal</span>
       </div>
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         <ul className="space-y-1">

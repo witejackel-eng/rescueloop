@@ -112,7 +112,7 @@ export function FloatingNav() {
           {/* ── Brand (never shrinks) ── */}
           <motion.div animate={{ scale: scrolled ? 0.92 : 1 }} transition={springLayout} className="shrink-0">
             <Link href="/" aria-label="RescueLoop home">
-              <RescueLoopLogo markSize={scrolled ? 20 : 24} />
+              <RescueLoopLogo context="marketing" compact={scrolled} />
             </Link>
           </motion.div>
 

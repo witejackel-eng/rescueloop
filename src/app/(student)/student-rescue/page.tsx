@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { COURSE } from "@/lib/mock-data";
+import { BrandSignature } from "@/components/brand/logo";
 
 const STUDENT_FIRST_NAME = "Maya";
 const PROGRESS_PERCENT = 38;
@@ -143,6 +144,11 @@ export default function StudentRescuePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Quiet brand signature — student-safe */}
+      <div className="mt-2 flex justify-center">
+        <BrandSignature context="student" />
+      </div>
 
       {/* Encouragement */}
       <motion.p
