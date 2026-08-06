@@ -114,8 +114,8 @@ jobs:
       - name: Prisma generate
         run: bunx prisma generate
 
-      - name: Migrate deploy
-        run: bunx prisma migrate deploy
+      - name: Push schema to test database
+        run: bunx prisma db push --accept-data-loss
 
       - name: Run integration tests
         run: bun run test:integration
@@ -217,8 +217,8 @@ jobs:
       - name: Prisma generate
         run: bunx prisma generate
 
-      - name: Migrate deploy
-        run: bunx prisma migrate deploy
+      - name: Push schema to test database
+        run: bunx prisma db push --accept-data-loss
 
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
