@@ -154,7 +154,7 @@ export default async function AuditPage({
       ) : (
         <div className="mt-4 flex flex-col gap-2">
           {pageEvents.map((event) => (
-            <AuditRow key={event.idFid} event={event} />
+            <AuditRow key={event.id} event={event} />
           ))}
         </div>
       )}
@@ -374,7 +374,6 @@ function fmtDateTime(d: Date): string {
   });
 }
 
-E
 // ─── Auth error helper ───────────────────────────────────────
 
 function AuthErrorCardFor(error: unknown) {

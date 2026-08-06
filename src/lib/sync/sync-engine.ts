@@ -42,7 +42,7 @@
 
 import "server-only";
 import { db } from "@/lib/db";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, ReconciliationOutcomeClassification } from "@prisma/client";
 import type { ProviderBundle } from "@/providers/contracts";
 import { recordAuditEvent } from "@/lib/audit";
 import { normalizeMembershipStatus } from "./normalize-membership-status";
@@ -1130,7 +1130,7 @@ export async function reconcile(
         membershipId: o.membershipId,
         courseId: o.courseId,
         mappingId: o.mappingId,
-        classification: o.classification as Prisma.InputJsonValue,
+        classification: o.classification as ReconciliationOutcomeClassification,
         evidenceJson: o.evidenceJson as Prisma.InputJsonValue,
       })),
     });
@@ -1612,7 +1612,7 @@ export async function runFullSync(
           await completeSyncStage(stage.id, {
             pagesProcessed: 0, recordsRead: 0, recordsCreated: 0,
             recordsUpdated: 0, recordsSkipped: 0,
-          }, "skipped");
+          }, "completed");
           continue;
       }
 

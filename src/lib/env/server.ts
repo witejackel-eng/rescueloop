@@ -67,6 +67,9 @@ const whopSchema = z.object({
   WHOP_API_KEY: z.string().trim().min(1),
   WHOP_WEBHOOK_SECRET: z.string().trim().min(1),
   NEXT_PUBLIC_WHOP_APP_ID: z.string().trim().min(1),
+  // Default company ID for API calls and connection testing (optional —
+  // individual routes get companyId from URL params or webhook payloads).
+  WHOP_COMPANY_ID: z.string().trim().min(1).optional(),
 });
 
 export type WhopEnv = z.infer<typeof whopSchema>;

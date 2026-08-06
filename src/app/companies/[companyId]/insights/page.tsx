@@ -113,7 +113,7 @@ export default async function InsightsPage({
       _count: true,
     }),
     db.blockerResponse.groupBy({
-      by: ["blockerType"],
+      by: ["blocker"],
       where: { organizationId },
       _count: true,
     }),
@@ -359,9 +359,9 @@ export default async function InsightsPage({
             <CardContent>
               <div className="flex flex-wrap gap-3">
                 {blockerCounts.map((r) => (
-                  <div key={r.blockerType} className="flex items-center gap-2">
+                  <div key={r.blocker} className="flex items-center gap-2">
                     <Badge variant="outline" className="font-mono text-[11px] uppercase">
-                      {r.blockerType.replace(/_/g, " ")}
+                      {r.blocker.replace(/_/g, " ")}
                     </Badge>
                     <span className="font-mono tabular-nums text-[14px] text-[var(--ink-primary)]">
                       {r._count}

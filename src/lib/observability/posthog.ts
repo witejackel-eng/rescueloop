@@ -9,7 +9,6 @@
 import { getPublicEnv } from "@/lib/env/server";
 
 let initialized = false;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostHog client type not available until SDK is wired
 let posthogClient: Record<string, unknown> | null = null;
 
 interface PostHogEvent {

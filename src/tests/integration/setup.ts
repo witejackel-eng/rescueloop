@@ -5,6 +5,7 @@
 // 2. Provides a shared PrismaClient for tests
 // 3. Cleans all tenant-scoped test data after each test
 
+import { afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 
 // Skip integration tests when no database is configured

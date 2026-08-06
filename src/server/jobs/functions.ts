@@ -73,19 +73,19 @@ export function getJobFunctions(): any[] {
       // Step 2: Process based on event type (using official Whop event names)
       if (receipt.eventType === "membership.activated") {
         await step.run("handle-membership-activated", async () => {
-          await handleMembershipActivated(receipt.organizationId, eventPayload, receiptId);
+          await handleMembershipActivated(receipt.organizationId, eventPayload as unknown as WhopMembershipEvent, receiptId);
         });
       } else if (receipt.eventType === "membership.deactivated") {
         await step.run("handle-membership-deactivated", async () => {
-          await handleMembershipDeactivated(receipt.organizationId, eventPayload, receiptId);
+          await handleMembershipDeactivated(receipt.organizationId, eventPayload as unknown as WhopMembershipEvent, receiptId);
         });
       } else if (receipt.eventType === "payment.succeeded") {
         await step.run("handle-payment-succeeded", async () => {
-          await handlePaymentSucceeded(receipt.organizationId, eventPayload, receiptId);
+          await handlePaymentSucceeded(receipt.organizationId, eventPayload as unknown as WhopPaymentEvent, receiptId);
         });
       } else if (receipt.eventType === "course_lesson_interaction.completed") {
         await step.run("handle-lesson-completed", async () => {
-          await handleLessonCompleted(receipt.organizationId, eventPayload, receiptId);
+          await handleLessonCompleted(receipt.organizationId, eventPayload as unknown as WhopLessonInteractionEvent, receiptId);
         });
       } else {
         // Unknown event type — acknowledge but don't process
@@ -866,6 +866,6 @@ async function processDataDeletion(
     objectType: "data_deletion_request",
     objectId: deletionRequestId,
     newState: result.success ? "completed" : "failed",
-    metadataJson: result.evidence as Prisma.InputJsonValue,
+    metadata: result.evidence as Record<string, unknown>,
   });
 }

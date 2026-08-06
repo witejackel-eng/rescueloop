@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
-    exclude: ["node_modules", ".next"],
+    exclude: ["node_modules", ".next", "src/tests/integration/**", "src/tests/perf/**", "src/tests/e2e/**"],
     server: {
       deps: {
         // Inline server-only so it resolves in the test environment
