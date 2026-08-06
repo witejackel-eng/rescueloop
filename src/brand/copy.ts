@@ -8,10 +8,11 @@
 export const copy = {
   eyebrow: "Activation rescue for Whop creators",
   hero: "Close the loop before they leave.",
-  support: "RescueLoop finds paying members who never started, prepares respectful outreach for your approval, and shows what changed after you reached out.",
-  primaryCTA: "Install on Whop",
-  secondaryCTA: "Explore the interactive demo",
+  support: "Find who needs help. Approve the right message. See what changed.",
+  primaryCTA: "Explore the interactive demo",
+  secondaryCTA: "See the student experience",
   trustLine: "Nothing sends without your approval.",
+  disclosure: "Interactive demonstration. No messages are sent and no customer data is connected.",
 
   features: {
     signals: "Know who needs attention before they disappear.",

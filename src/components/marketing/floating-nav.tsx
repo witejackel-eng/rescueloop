@@ -9,8 +9,8 @@ import { RescueLoopLogo } from "@/components/brand/logo";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { springLayout } from "@/design-system/motion";
 
-// All navigation links. At xl+ all are shown; at lg the secondary links
-// move into the mobile overflow menu; below lg the full mobile menu is used.
+// All navigation links. At full+ all are shown; at compact the secondary links
+// move into the overflow menu; below compact the full mobile menu is used.
 const PRIMARY_LINKS = [
   { label: "Product", href: "#product" },
   { label: "How it works", href: "#process" },
@@ -26,11 +26,11 @@ const SECONDARY_LINKS = [
 const ALL_LINKS = [...PRIMARY_LINKS, ...SECONDARY_LINKS];
 
 // Breakpoints:
-// xl (1280px+): full desktop nav with all links + CTA
-// lg (1024-1279px): compact desktop nav (primary links only) + CTA, secondary in overflow
-// below lg: mobile menu
-const DESKTOP_FULL = "xl"; // 1280px+
-const DESKTOP_COMPACT = "lg"; // 1024px+
+// full (1366px+): full desktop nav with all links + CTA
+// compact (1180–1365px): compact desktop nav (primary links only) + CTA, secondary in overflow
+// below compact: mobile menu
+const DESKTOP_FULL = "full"; // 1366px+
+const DESKTOP_COMPACT = "compact"; // 1180px+
 
 export function FloatingNav() {
   const [scrolled, setScrolled] = useState(false);
@@ -116,9 +116,9 @@ export function FloatingNav() {
             </Link>
           </motion.div>
 
-          {/* ── Desktop navigation (xl: all links, lg: primary only) ── */}
+          {/* ── Desktop navigation (full: all links, compact: primary only) ── */}
           <nav
-            className="hidden items-center justify-center lg:flex"
+            className="hidden items-center justify-center compact:flex"
             aria-label="Marketing navigation"
             style={{ gap: "clamp(1rem, 2vw, 1.75rem)" }}
           >
@@ -133,20 +133,20 @@ export function FloatingNav() {
               </a>
             ))}
 
-            {/* Secondary links — visible at xl, collapsed into overflow at lg */}
+            {/* Secondary links — visible at full, collapsed into overflow at compact */}
             {SECONDARY_LINKS.map((link) => (
               <a
                 key={link.href}
                 href={link.href}
-                className="group relative hidden whitespace-nowrap text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] xl:inline-block"
+                className="group relative hidden whitespace-nowrap text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] full:inline-block"
               >
                 {link.label}
                 <span className="absolute -bottom-1 left-0 h-px w-0 bg-[var(--ink-primary)] transition-all duration-300 group-hover:w-full" />
               </a>
             ))}
 
-            {/* Overflow trigger — lg only (1024-1279px) */}
-            <div className="relative hidden lg:block xl:hidden">
+            {/* Overflow trigger — compact only (1180–1365px) */}
+            <div className="relative hidden compact:block full:hidden">
               <button
                 ref={overflowTriggerRef}
                 onClick={() => setOverflowOpen((v) => !v)}
@@ -186,17 +186,17 @@ export function FloatingNav() {
           <div className="flex shrink-0 items-center gap-2">
             <Link
               href="/overview"
-              className="hidden items-center gap-1.5 whitespace-nowrap rounded-[8px] bg-[var(--ink-primary)] px-3.5 py-2 text-[13px] font-medium text-white transition-transform press lg:inline-flex"
+              className="hidden items-center gap-1.5 whitespace-nowrap rounded-[8px] bg-[var(--ink-primary)] px-3.5 py-2 text-[13px] font-medium text-white transition-transform press compact:inline-flex"
             >
               Explore demo
               <ArrowRight className="size-3.5" />
             </Link>
 
-            {/* Mobile menu trigger — below lg */}
+            {/* Mobile menu trigger — below compact (1180px) */}
             <button
               ref={mobileTriggerRef}
               onClick={() => setMobileOpen(true)}
-              className="flex size-9 items-center justify-center rounded-[8px] border border-[var(--hairline)] text-[var(--ink-primary)] lg:hidden"
+              className="flex size-9 items-center justify-center rounded-[8px] border border-[var(--hairline)] text-[var(--ink-primary)] compact:hidden"
               aria-label="Open menu"
               aria-expanded={mobileOpen}
               aria-controls="mobile-menu"
@@ -216,7 +216,7 @@ export function FloatingNav() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[60] bg-[var(--canvas)] lg:hidden"
+            className="fixed inset-0 z-[60] bg-[var(--canvas)] compact:hidden"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"

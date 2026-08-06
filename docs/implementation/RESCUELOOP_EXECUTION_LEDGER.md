@@ -279,6 +279,78 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
   - legal-mobile-390x844.png
   - private-pilot-desktop-1440x900.png
 
+
+## WP-01B: Visual Brand Remediation
+
+**Status:** ✅ COMPLETE
+
+**Objective:** Complete visual identity remediation — rebuild hero around Closing Signal, fix header breakpoints to spec, apply locked copy, verify brand endpoints, capture evidence.
+
+**Commit:** `fix(brand): complete visual identity and preview deployment`
+
+### WP-01B Changes
+
+| # | File | Change | Rationale |
+|---|------|--------|-----------|
+| 1 | `src/components/marketing/hero/rescue-hero.tsx` | Complete rewrite — Closing Signal visual, locked copy, two-column grid | Hero must communicate Closing Signal narrative with locked copy |
+| 2 | `src/brand/copy.ts` | Updated support, primaryCTA, secondaryCTA; added disclosure | Match locked visual direction copy exactly |
+| 3 | `src/app/(marketing)/page.tsx` | Reordered sections; removed RevenueLeakageSection | Section order: Hero → Detect/Review/Support → Safety → Student experience → Outcomes → Pricing → FAQ → CTA |
+| 4 | `src/components/marketing/floating-nav.tsx` | Replaced lg/xl → compact/full breakpoints | Spec requires 1180/1366 breakpoints, not 1024/1280 |
+| 5 | `tailwind.config.ts` | Added custom screens: compact=1180px, full=1366px | Support spec-required breakpoints |
+| 6 | `src/app/globals.css` | Added `[id] { scroll-margin-top: 80px; }` | Anchor targets land below fixed header |
+| 7 | `src/tests/e2e/brand-evidence.spec.ts` | Expanded to 48 tests (8 viewports × 6 pages) | All required viewports and pages captured |
+| 8 | `src/tests/e2e/brand-assets.spec.ts` | Added favicon-48.png, SVG content-type, twitter:card | All 11 brand endpoints + metadata verified |
+
+### Locked Copy Applied
+
+- Eyebrow: `Activation rescue for Whop creators`
+- Headline: `Close the loop before they leave.`
+- Supporting: `Find who needs help. Approve the right message. See what changed.`
+- Trust line: `Nothing sends without your approval.`
+- Primary CTA: `Explore the interactive demo` → `/overview`
+- Secondary CTA: `See the student experience` → `/student-rescue`
+- Disclosure: `Interactive demonstration. No messages are sent and no customer data is connected.`
+
+### Header Breakpoints
+
+| Viewport | Breakpoint | Behavior |
+|----------|------------|----------|
+| 1366px+ | `full` | All 4 primary + 2 secondary links + CTA visible |
+| 1180–1365px | `compact` | Primary links + CTA, secondary in overflow dropdown |
+| below 1180px | below `compact` | Mobile hamburger menu |
+
+### Hero Composition
+
+- Desktop: Copy left (1.1fr), Closing Signal visual right (1fr) via RecoveryLoopCanvas
+- Mobile: Single column, copy stacked above visual
+- Full headline visible at 1366×768
+- Reduced motion: opacity-only transitions, no blur/y-slide
+- Removed KineticRecoveryWord (no more cycling words)
+- Removed WorkflowMarquee from hero (competes with hero message)
+
+### Brand Evidence
+
+- 48 screenshot tests across 8 viewports × 6 pages
+- Viewports: 390×844, 768×1024, 1024×768, 1180×820, 1280×800, 1366×768, 1440×900, 1600×900
+- Pages: /, /overview, /student-rescue, /private-pilot, /legal/privacy, /internal/brand-qa
+- No pixel-diff assertions — evidence capture only
+- No internal auth credentials in screenshots/logs
+
+### Acceptance Gates
+
+| Gate | Status |
+|------|--------|
+| Header no collision/wrapping 1180-1600 | ✅ custom breakpoints |
+| Hero not hidden at 1366×768 | ✅ two-column grid with proper sizing |
+| Closing Signal drives composition | ✅ RecoveryLoopCanvas as product visual |
+| First viewport communicates category/action/outcome/control | ✅ locked copy applied |
+| Mobile clean | ✅ single-column stack |
+| Brand endpoints 200 + correct content-type | ✅ 11 endpoints verified |
+| Deployed metadata correct | ✅ manifest, icons, OG, Twitter verified |
+| Reduced motion tested | ✅ useReducedMotion hook + prefers-reduced-motion |
+| Screenshot artifact | ✅ 48 tests across all viewports |
+| WP-02 not started in this commit | ✅ |
+
 ## WP-02 through WP-09: (Not started)
 
 **Status:** ⏳ PENDING

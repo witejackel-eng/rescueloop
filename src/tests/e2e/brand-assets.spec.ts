@@ -6,9 +6,22 @@ import { test, expect } from '@playwright/test';
  * Confirms that every canonical brand asset returns a successful HTTP
  * response with the appropriate content type. Also verifies that the
  * root HTML document references the expected manifest, icons, Open Graph
- * image, and Twitter image in its <head> metadata.
+ * image, and Twitter image/card in its <head> metadata.
  *
  * No pixel-diff or visual regression assertions — these are HTTP + DOM checks.
+ *
+ * Brand asset endpoints (from workspace spec 06_METADATA_FAVICON_SOCIAL.md):
+ *   /brand/favicon.svg
+ *   /brand/favicon-16.png
+ *   /brand/favicon-32.png
+ *   /brand/favicon-48.png
+ *   /brand/apple-touch-icon.png
+ *   /brand/icon-192.png
+ *   /brand/icon-512.png
+ *   /brand/whop-app-icon-512.png
+ *   /brand/og-default-1200x630.png
+ *   /brand/twitter-default-1200x630.png
+ *   /brand-manifest.json
  */
 
 /** Brand assets that must be served with correct content types. */
@@ -16,6 +29,7 @@ const BRAND_ASSETS = [
   { path: '/brand/favicon.svg', expectedType: 'image/svg+xml' },
   { path: '/brand/favicon-16.png', expectedType: 'image/png' },
   { path: '/brand/favicon-32.png', expectedType: 'image/png' },
+  { path: '/brand/favicon-48.png', expectedType: 'image/png' },
   { path: '/brand/apple-touch-icon.png', expectedType: 'image/png' },
   { path: '/brand/icon-192.png', expectedType: 'image/png' },
   { path: '/brand/icon-512.png', expectedType: 'image/png' },
@@ -28,14 +42,23 @@ const BRAND_MANIFEST = '/brand-manifest.json';
 
 test.describe('Brand Asset Endpoints', () => {
   for (const asset of BRAND_ASSETS) {
-    test(`${asset.path} → 200 with ${asset.expectedType}`, async ({ request }) => {
+    test(`${asset.path} → 200 with correct content-type`, async ({ request }) => {
       const response = await request.get(asset.path);
       expect(response.status()).toBe(200);
 
       const contentType = response.headers()['content-type'] ?? '';
       // Content-Type may include charset or other parameters; check the base type
       const baseType = contentType.split(';')[0].trim().toLowerCase();
-      expect(baseType).toBe(asset.expectedType);
+
+      if (asset.path.endsWith('.svg')) {
+        // SVG content-type may be 'image/svg+xml' or just contain 'svg'
+        expect(
+          baseType === 'image/svg+xml' || baseType.includes('svg'),
+          `Expected SVG content-type for ${asset.path}, got: ${contentType}`
+        ).toBe(true);
+      } else {
+        expect(baseType).toBe(asset.expectedType);
+      }
     });
   }
 
@@ -58,7 +81,7 @@ test.describe('Brand Asset Endpoints', () => {
 });
 
 test.describe('HTML Metadata References', () => {
-  test('root page references manifest, icons, OG image, and Twitter image', async ({ page }) => {
+  test('root page references manifest, icons, OG image, and Twitter image/card', async ({ page }) => {
     const response = await page.goto('/');
     expect(response?.status()).toBe(200);
     await page.waitForLoadState('domcontentloaded');
@@ -100,5 +123,11 @@ test.describe('HTML Metadata References', () => {
     await expect(twitterImage).toBeAttached({ timeout: 15_000 });
     const twitterContent = await twitterImage.first().getAttribute('content');
     expect(twitterContent).toContain('twitter-default-1200x630.png');
+
+    // ─── Twitter card ─────────────────────────────────────────
+    const twitterCard = page.locator('meta[name="twitter:card"]');
+    await expect(twitterCard).toBeAttached({ timeout: 15_000 });
+    const twitterCardContent = await twitterCard.getAttribute('content');
+    expect(twitterCardContent).toBe('summary_large_image');
   });
 });
