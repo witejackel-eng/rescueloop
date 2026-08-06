@@ -296,65 +296,16 @@ jobs:
         run: gitleaks detect --source . --verbose --no-git
 
       # ── Dependency audit (genuinely blocking) ──
-      # Runs bun audit and parses the output correctly.
-      # Bun audit prints vulnerability details on separate lines, not inline.
-      # We fail on any CRITICAL or HIGH severity in direct dependencies.
-      # Transitive-only vulnerabilities are reported as warnings.
+      # Uses the TypeScript audit parser (scripts/audit-parser.ts) instead of
+      # the fragile shell while-read state machine. The parser correctly handles
+      # Bun's audit output format regardless of line ordering within sections.
+      # Exit 1 = direct critical/high vulnerability found (blocking).
+      # Exit 0 = no direct critical/high (transitive-only reported as warnings).
+      - name: Audit parser tests
+        run: bun vitest run scripts/audit-parser.test.ts
+
       - name: Dependency audit
-        run: |
-          set +e  # capture exit code without failing the step
-          bun audit 2>&1 | tee /tmp/audit-output.txt
-          AUDIT_EXIT=$?
-          set -e
-
-          echo "--- Audit exit code: $AUDIT_EXIT ---"
-          echo "--- Full audit output ---"
-          cat /tmp/audit-output.txt
-          echo "--- End audit output ---"
-
-          # Parse the audit output for critical/high direct dependency vulns.
-          # Bun audit output format:
-          #   <severity> [advisory-id] <package@version>
-          #     (direct dependency)
-          # or multi-line where "(direct dependency)" appears on a separate line.
-          # We scan for severity keywords followed within 5 lines by "(direct dependency)".
-
-          BLOCKING=false
-          SEEN_SEVERITY=""
-
-          while IFS= read -r line; do
-            # Check if this line mentions a critical or high severity
-            if echo "$line" | grep -qiE '^\s*(critical|high)\b'; then
-              SEEN_SEVERITY=$(echo "$line" | grep -oiE '^\s*(critical|high)\b' | head -1 | xargs)
-              echo "Found $SEEN_SEVERITY severity: $line"
-            fi
-
-            # Check if this line indicates a direct dependency
-            if echo "$line" | grep -qi 'direct dependency'; then
-              if [ -n "$SEEN_SEVERITY" ]; then
-                echo "::error::$SEEN_SEVERITY vulnerability in direct dependency detected"
-                BLOCKING=true
-              fi
-              SEEN_SEVERITY=""
-            fi
-
-            # Reset severity tracker on blank lines (section boundary)
-            if [ -z "$(echo "$line" | tr -d '[:space:]')" ]; then
-              SEEN_SEVERITY=""
-            fi
-          done < /tmp/audit-output.txt
-
-          if [ "$BLOCKING" = "true" ]; then
-            echo "::error::Failing: critical or high vulnerability in direct dependency"
-            exit 1
-          fi
-
-          # If bun audit found any vulnerabilities (exit 1), report summary
-          if [ "$AUDIT_EXIT" -ne 0 ]; then
-            echo "::warning::bun audit found vulnerabilities — all are transitive-only (no direct critical/high)"
-          fi
-
-          echo "Dependency audit passed: no critical or high vulnerabilities in direct dependencies"
+        run: bun audit 2>&1 | bun run scripts/audit-parser.ts
 
       # ── "as any" cast check (fails on production source) ──
       - name: Check for "as any" casts in production code
