@@ -23,6 +23,21 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 /**
+ * Derive a valid metadataBase URL from environment variables.
+ * Handles empty strings, undefined, and missing values gracefully.
+ * Vercel sets VERCEL_URL automatically during builds.
+ */
+function resolveMetadataBase(): URL {
+  const appUrl = process.env.APP_URL;
+  if (appUrl && appUrl.length > 0) return new URL(appUrl);
+
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl && vercelUrl.length > 0) return new URL(`https://${vercelUrl}`);
+
+  return new URL("http://localhost:3000");
+}
+
+/**
  * Root metadata — environment-safe, complete, no private data.
  *
  * - Title template: "%s — RescueLoop" for route-specific titles
@@ -38,9 +53,7 @@ export const metadata: Metadata = {
   },
   description:
     "Find paying members who never started, approve respectful outreach, and see what changed.",
-  metadataBase: new URL(
-    process.env.APP_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-  ),
+  metadataBase: resolveMetadataBase(),
   openGraph: {
     title: "RescueLoop — Activation rescue for Whop creators",
     description:
