@@ -4,15 +4,14 @@ import { test, expect } from '@playwright/test';
  * Demo workflow E2E tests.
  *
  * In fixture mode, the dashboard renders with demo data.
- * Each test asserts route-specific elements, workspace shell presence,
- * and no error overlay — not merely HTTP 200 + visible body.
+ * Each test asserts route-specific elements and workspace shell —
+ * not merely HTTP 200 + visible body.
  */
 
-/** Assert the workspace shell is present after hydration. */
+/** Assert the workspace shell navigation is in the DOM after hydration. */
 async function assertWorkspaceShell(page: import('@playwright/test').Page) {
   const desktopNav = page.locator('nav[aria-label="Workspace navigation"]');
-  const mobileNav = page.locator('nav[aria-label="Mobile navigation"]');
-  await expect(desktopNav.or(mobileNav)).toBeAttached({ timeout: 15_000 });
+  await expect(desktopNav).toBeAttached({ timeout: 15_000 });
 }
 
 /** Assert no Next.js error overlay or application error page is rendered. */

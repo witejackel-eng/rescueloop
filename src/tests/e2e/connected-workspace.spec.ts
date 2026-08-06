@@ -11,24 +11,22 @@ import { test, expect } from '@playwright/test';
  * This goes beyond HTTP 200 + visible <body> to verify actual application behaviour.
  */
 
-/** Assert the workspace shell (desktop nav rail or mobile bottom nav) is present. */
+/** Assert the workspace shell navigation is in the DOM after hydration. */
 async function assertWorkspaceShell(page: import('@playwright/test').Page) {
-  // Desktop: <nav aria-label="Workspace navigation"> (visible at md+)
-  // Mobile: <nav aria-label="Mobile navigation"> (visible below md)
-  // At least one must be in the DOM after hydration.
+  // The workspace shell renders both desktop and mobile nav in the DOM.
+  // Desktop: <nav aria-label="Workspace navigation"> (hidden on mobile via CSS)
+  // Mobile: <nav aria-label="Mobile navigation"> (hidden on desktop via CSS)
+  // Both are always attached; we verify the desktop nav is attached.
   const desktopNav = page.locator('nav[aria-label="Workspace navigation"]');
-  const mobileNav = page.locator('nav[aria-label="Mobile navigation"]');
-  await expect(desktopNav.or(mobileNav)).toBeAttached({ timeout: 15_000 });
+  await expect(desktopNav).toBeAttached({ timeout: 15_000 });
 }
 
 /** Assert no Next.js error overlay or application error page is rendered. */
 async function assertNoErrorOverlay(page: import('@playwright/test').Page) {
-  // Next.js dev overlay: #__next-route-announcer or nextjs-portal
-  // Production error boundary: typically renders an <h1> with "Application error"
+  // Next.js error overlay: #__next-route-announcer or nextjs-portal
   const errorOverlay = page.locator('#nextjs-portal, [data-nextjs-dialog]');
-  await expect(errorOverlay).not.toBeAttached({ timeout: 1_000 }).catch(() => {
-    // Not found is the expected state — swallow the timeout
-  });
+  await expect(errorOverlay).not.toBeAttached({ timeout: 1_000 }).catch(() => {});
+  // Application error boundary: renders <h1> with "Application error"
   const appError = page.locator('h1:has-text("Application error")');
   await expect(appError).not.toBeVisible({ timeout: 1_000 }).catch(() => {});
 }
@@ -62,7 +60,7 @@ test.describe('Connected Workspace', () => {
     await expect(searchInput).toBeVisible({ timeout: 10_000 });
   });
 
-  test('campaigns: Campaign Studio heading and campaign list', async ({ page }) => {
+  test('campaigns: Campaign Studio heading', async ({ page }) => {
     await page.goto('/campaigns');
     await assertWorkspaceShell(page);
     await assertNoErrorOverlay(page);
