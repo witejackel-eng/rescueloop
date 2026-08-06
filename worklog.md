@@ -160,3 +160,42 @@ Created a reliable Node/TypeScript audit parser (`scripts/audit-parser.ts`) to r
 - `bun vitest run scripts/audit-parser.test.ts` — 38/38 tests pass
 - `bun vitest run` — 279/279 tests pass (full suite, no regressions)
 - CLI tested with piped input: blocking output → exit 1, passing output → exit 0
+
+---
+
+## WP-00 Final Fixes: CI audit parser, E2E assertions, Neon doc
+**Date:** 2026-08-06
+**Status:** Completed
+
+### Summary
+Three remaining WP-00 issues fixed:
+
+1. **CI workflow** — Replaced the fragile shell `while read` state machine in the "Dependency audit" step with two steps: (a) run audit parser tests, (b) pipe `bun audit` output through `scripts/audit-parser.ts`
+2. **E2E tests** — Removed all `.catch(() => {})` assertion swallowing from `connected-workspace.spec.ts` and `demo-workflow.spec.ts`; rewrote `student-experience.spec.ts` with route-specific assertions for valid/expired/invalid token states
+3. **Neon migration baseline** — Created `docs/operations/NEON_MIGRATION_BASELINE.md` with the complete safe baselining procedure
+
+### Files Modified
+
+1. **`.github/workflows/ci.yml`** — Removed 60-line shell state machine; replaced with 2-step TypeScript parser pipeline:
+   - `bun vitest run scripts/audit-parser.test.ts` (parser tests gate)
+   - `bun audit 2>&1 | bun run scripts/audit-parser.ts` (audit + parse)
+
+2. **`src/tests/e2e/connected-workspace.spec.ts`** — Removed `.catch(() => {})` from both `assertNoErrorOverlay` assertions (error overlay and app error checks)
+
+3. **`src/tests/e2e/demo-workflow.spec.ts`** — Same: removed `.catch(() => {})` from both `assertNoErrorOverlay` assertions
+
+4. **`src/tests/e2e/student-experience.spec.ts`** — Complete rewrite:
+   - valid token: asserts greeting heading "Hi", progress section, "Continue course" button
+   - expired token: asserts expired/invalid-link message OR absence of rescue interface
+   - invalid token: asserts invalid/not-found message OR absence of rescue interface
+   - No `.catch(() => {})` on any genuine assertion
+
+5. **`docs/operations/NEON_MIGRATION_BASELINE.md`** — NEW: Complete Neon migration baselining document with:
+   - Backup procedures (Neon branching + pg_dump)
+   - Schema comparison workflow
+   - Init migration verification on staging
+   - Safe baselining via `prisma migrate resolve --applied`
+   - Schema drift detection
+   - Rollback steps
+   - Stop conditions and prohibited commands
+   - Owner action required checklist
