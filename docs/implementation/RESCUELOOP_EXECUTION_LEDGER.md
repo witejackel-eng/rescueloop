@@ -234,6 +234,51 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 
 ---
 
+
+### WP-01 Closure Commits
+
+| SHA | Message |
+|-----|---------|
+| `d42a87d` | WP-01: closure pass — brand evidence, asset verification, brand-qa protection, execution ledger |
+| `5b222a0` | fix(e2e): correct brand evidence paths and CI robustness |
+| `c76f000` | fix(vercel): specify Node.js >=20.9.0 for Vercel builds |
+| `822465b` | fix(build): make metadataBase resilient to empty-string env vars |
+
+### WP-01 Closure Evidence
+
+| Check | Result |
+|-------|--------|
+| Brand evidence screenshots | Uploaded as `rescueloop-wp01-brand-evidence` artifact (ID: 8970731773, 2.36MB) |
+| Brand asset endpoint checks | All 10 assets + manifest return 200 with correct content-type |
+| HTML metadata references | manifest, icons, OG image, Twitter image all present |
+| `/internal/brand-qa` protection | Unauthenticated → login gate; noindex/nofollow; canonical logo module |
+| Vercel preview deployment | Vercel project Node.js version requires dashboard configuration (see tracked debt) |
+| CI 7/7 green | All jobs pass on verified repository owner identity |
+
+### Test Counts (Final CI Run 31108531043)
+
+| Suite | Count |
+|-------|-------|
+| Unit | 321 passed |
+| Contract | 67 passed |
+| Integration | 54 passed (5 files) |
+| E2E | 54 passed (30 original + 11 brand-assets + 8 brand-evidence + 5 brand-qa-protection) |
+
+### Screenshot Artifact
+
+- **Name:** `rescueloop-wp01-brand-evidence`
+- **ID:** 8970731773
+- **Size:** 2,364,776 bytes
+- **Files:**
+  - marketing-mobile-390x844.png
+  - marketing-desktop-1440x900.png
+  - workspace-mobile-390x844.png
+  - workspace-desktop-1440x900.png
+  - student-rescue-mobile-390x844.png
+  - internal-brand-qa-desktop-1440x900.png
+  - legal-mobile-390x844.png
+  - private-pilot-desktop-1440x900.png
+
 ## WP-02 through WP-09: (Not started)
 
 **Status:** ⏳ PENDING
@@ -247,6 +292,7 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 | Visual regression baselines | WP-00 | Later WP | OS-specific; Linux baselines not yet committed (see `docs/implementation/VISUAL_REGRESSION_LEDGER.md`) |
 | Whop iframe verification | WP-01 | Later WP | Whop embedded app iframe context not yet tested end-to-end |
 | Fixture-mode student token limitation | WP-01 | Later WP | Fixture mode does not validate student tokens; expired/invalid token tests assert render-without-error only. Real token validation middleware tests deferred to a later work package with production auth. |
+| Vercel Preview Node.js version | WP-01 | Dashboard config | Vercel project must set Node.js version to 22.x in Project Settings → General → Node.js Version. Code-side fixes applied (.nvmrc, engines.node, resilient metadataBase) but the Vercel dashboard override takes precedence. Production deployments succeed; preview deployments fail until this is configured. |
 
 ---
 
