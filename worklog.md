@@ -116,3 +116,47 @@ Ported Whop/Neon connection patterns from `origin/agent/whop-clean-start` withou
 ### Verification
 - `bun run typecheck` — passes (0 errors)
 - `bun run lint` — passes (0 errors)
+
+---
+
+## Task 2: Create Node/TypeScript dependency-audit parser
+**Date:** 2026-08-06
+**Status:** Completed
+
+### Summary
+Created a reliable Node/TypeScript audit parser (`scripts/audit-parser.ts`) to replace the fragile shell state machine in CI. The old shell parser assumed severity lines appear BEFORE the "(direct dependency)" marker, but Bun's actual output has "(direct dependency)" BEFORE severity lines — causing direct critical/high vulnerabilities to pass undetected.
+
+### Files Created
+
+1. **`scripts/audit-parser.ts`** — Standalone TypeScript audit parser
+   - Reads `bun audit` output from stdin or file path argument
+   - Parses complete package sections (separated by blank lines)
+   - For each section: extracts package name, direct/indirect status, severities, advisory titles, URLs
+   - Classifies: BLOCKING (direct + critical/high), REPORTED (transitive + critical/high), PASSING
+   - Exit codes: 0 = passing, 1 = blocking
+   - Outputs: human-readable summary (stdout), GitHub Actions annotations `::error::`/`::warning::` (stdout), JSON summary (stderr)
+   - Handles all edge cases: marker before/after severity, multiple severities, no severity, empty/malformed input
+   - No external dependencies — Node built-ins only
+   - Works as both imported module and CLI script
+
+2. **`scripts/audit-parser.test.ts`** — Comprehensive Vitest test suite (38 tests)
+   - `splitSections` — blank line splitting, trimming, empty input
+   - `parseSection` — direct critical, direct high, transitive critical, direct moderate, marker before severity, marker after severity, multiple severities, no severity, malformed input
+   - `parseAuditOutput` — integration tests for all classification paths
+   - `formatSummary` — output formatting for clean/blocking/mixed
+   - `formatAnnotations` — GitHub Actions `::error::` and `::warning::` emission
+   - `formatJsonSummary` — machine-parseable JSON output
+   - Edge cases: transitive high, direct low/info, real-world exact format from task description
+
+3. **`vitest.config.ts`** — Updated `include` to also cover `scripts/**/*.test.ts`
+
+### Key Design Decisions
+- Parser processes sections as a whole (not line-by-line state machine) — eliminates the ordering bug entirely
+- Each section is parsed independently, then classified based on `isDirect + severities`
+- The "(direct dependency)" marker and severity lines are detected independently within a section — order doesn't matter
+- CLI auto-detects direct execution (works with both `bun` and `ts-node`)
+
+### Verification
+- `bun vitest run scripts/audit-parser.test.ts` — 38/38 tests pass
+- `bun vitest run` — 279/279 tests pass (full suite, no regressions)
+- CLI tested with piped input: blocking output → exit 1, passing output → exit 0
