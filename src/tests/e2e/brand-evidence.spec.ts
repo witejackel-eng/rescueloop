@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import path from 'path';
 
 /**
  * WP-01 Brand Evidence Suite.
@@ -20,18 +21,20 @@ const DESKTOP = { width: 1440, height: 900 };
 
 const INTERNAL_API_KEY = process.env.RESCUELOOP_INTERNAL_TOKEN ?? 'ci-fixture-internal-token-padding-32';
 
-const EVIDENCE_DIR = 'brand-evidence';
+// Screenshots go to test-results/brand-evidence/ which is the default
+// Playwright output directory + our subdirectory
+const EVIDENCE_DIR = path.join('test-results', 'brand-evidence');
 
 test.describe('Brand Evidence — WP-01', () => {
   // ─── Marketing Homepage ─────────────────────────────────────
   test('marketing homepage — mobile 390x844', async ({ page }) => {
     await page.setViewportSize(MOBILE);
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     // Wait for client-side hydration
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
     await page.screenshot({
-      path: `${EVIDENCE_DIR}/marketing-mobile-390x844.png`,
+      path: path.join(EVIDENCE_DIR, 'marketing-mobile-390x844.png'),
       fullPage: true,
     });
   });
@@ -39,10 +42,10 @@ test.describe('Brand Evidence — WP-01', () => {
   test('marketing homepage — desktop 1440x900', async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1500);
     await page.screenshot({
-      path: `${EVIDENCE_DIR}/marketing-desktop-1440x900.png`,
+      path: path.join(EVIDENCE_DIR, 'marketing-desktop-1440x900.png'),
       fullPage: true,
     });
   });
@@ -51,10 +54,10 @@ test.describe('Brand Evidence — WP-01', () => {
   test('demo workspace — mobile 390x844', async ({ page }) => {
     await page.setViewportSize(MOBILE);
     await page.goto('/overview');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1500);
     await page.screenshot({
-      path: `${EVIDENCE_DIR}/workspace-mobile-390x844.png`,
+      path: path.join(EVIDENCE_DIR, 'workspace-mobile-390x844.png'),
       fullPage: true,
     });
   });
@@ -62,10 +65,10 @@ test.describe('Brand Evidence — WP-01', () => {
   test('demo workspace — desktop 1440x900', async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await page.goto('/overview');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1500);
     await page.screenshot({
-      path: `${EVIDENCE_DIR}/workspace-desktop-1440x900.png`,
+      path: path.join(EVIDENCE_DIR, 'workspace-desktop-1440x900.png'),
       fullPage: true,
     });
   });
@@ -74,10 +77,10 @@ test.describe('Brand Evidence — WP-01', () => {
   test('student rescue experience — mobile 390x844', async ({ page }) => {
     await page.setViewportSize(MOBILE);
     await page.goto('/student-rescue?token=fixture-student-token-abc123');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1500);
     await page.screenshot({
-      path: `${EVIDENCE_DIR}/student-rescue-mobile-390x844.png`,
+      path: path.join(EVIDENCE_DIR, 'student-rescue-mobile-390x844.png'),
       fullPage: true,
     });
   });
@@ -90,11 +93,16 @@ test.describe('Brand Evidence — WP-01', () => {
     await page.evaluate((token) => {
       sessionStorage.setItem('rl_internal_token', token);
     }, INTERNAL_API_KEY);
+    // Reload so the auth gate reads the token
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1000);
+    // Now navigate to brand-qa
     await page.goto('/internal/brand-qa');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1500);
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(2000);
     await page.screenshot({
-      path: `${EVIDENCE_DIR}/internal-brand-qa-desktop-1440x900.png`,
+      path: path.join(EVIDENCE_DIR, 'internal-brand-qa-desktop-1440x900.png'),
       fullPage: true,
     });
   });
@@ -103,10 +111,10 @@ test.describe('Brand Evidence — WP-01', () => {
   test('legal page — mobile 390x844', async ({ page }) => {
     await page.setViewportSize(MOBILE);
     await page.goto('/legal/privacy');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1500);
     await page.screenshot({
-      path: `${EVIDENCE_DIR}/legal-mobile-390x844.png`,
+      path: path.join(EVIDENCE_DIR, 'legal-mobile-390x844.png'),
       fullPage: true,
     });
   });
@@ -115,10 +123,10 @@ test.describe('Brand Evidence — WP-01', () => {
   test('private-pilot page — desktop 1440x900', async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await page.goto('/private-pilot');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1500);
     await page.screenshot({
-      path: `${EVIDENCE_DIR}/private-pilot-desktop-1440x900.png`,
+      path: path.join(EVIDENCE_DIR, 'private-pilot-desktop-1440x900.png'),
       fullPage: true,
     });
   });
