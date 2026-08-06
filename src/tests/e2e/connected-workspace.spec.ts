@@ -25,10 +25,10 @@ async function assertWorkspaceShell(page: import('@playwright/test').Page) {
 async function assertNoErrorOverlay(page: import('@playwright/test').Page) {
   // Next.js error overlay: #__next-route-announcer or nextjs-portal
   const errorOverlay = page.locator('#nextjs-portal, [data-nextjs-dialog]');
-  await expect(errorOverlay).not.toBeAttached({ timeout: 1_000 }).catch(() => {});
+  await expect(errorOverlay).not.toBeAttached({ timeout: 1_000 });
   // Application error boundary: renders <h1> with "Application error"
   const appError = page.locator('h1:has-text("Application error")');
-  await expect(appError).not.toBeVisible({ timeout: 1_000 }).catch(() => {});
+  await expect(appError).not.toBeVisible({ timeout: 1_000 });
 }
 
 test.describe('Connected Workspace', () => {

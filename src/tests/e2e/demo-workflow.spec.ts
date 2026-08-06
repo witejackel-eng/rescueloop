@@ -17,9 +17,9 @@ async function assertWorkspaceShell(page: import('@playwright/test').Page) {
 /** Assert no Next.js error overlay or application error page is rendered. */
 async function assertNoErrorOverlay(page: import('@playwright/test').Page) {
   const errorOverlay = page.locator('#nextjs-portal, [data-nextjs-dialog]');
-  await expect(errorOverlay).not.toBeAttached({ timeout: 1_000 }).catch(() => {});
+  await expect(errorOverlay).not.toBeAttached({ timeout: 1_000 });
   const appError = page.locator('h1:has-text("Application error")');
-  await expect(appError).not.toBeVisible({ timeout: 1_000 }).catch(() => {});
+  await expect(appError).not.toBeVisible({ timeout: 1_000 });
 }
 
 test.describe('Demo Workflow', () => {
