@@ -39,10 +39,9 @@ export function MarketingFooter() {
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr] lg:gap-10">
           {/* Brand */}
           <div className="flex flex-col gap-4">
-            <RescueLoopLogo />
+            <RescueLoopLogo context="marketing" />
             <p className="max-w-[34ch] text-[13px] leading-relaxed text-[var(--ink-secondary)]">
-              A student-success and revenue-recovery operating system for Whop
-              course creators. Detect, intervene, attribute.
+              Activation rescue for Whop course creators. Find who needs help, approve the right message, see what changed.
             </p>
             <div className="inline-flex w-fit items-center gap-2 rounded-[4px] border border-[var(--hairline)] bg-[var(--surface)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--ink-muted)]">
               <span className="size-1.5 rounded-full bg-[var(--recovery-green)]" />

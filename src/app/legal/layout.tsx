@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { RescueLoopMark } from "@/components/brand/logo";
 
 export const metadata: Metadata = {
   title: "Legal — RescueLoop",
@@ -19,8 +20,9 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-[var(--canvas)]">
       <header className="border-b border-[var(--hairline)] bg-[var(--surface)]">
         <div className="mx-auto flex h-14 max-w-[860px] items-center gap-4 px-4">
-          <Link href="/" className="flex items-center gap-1.5 text-[13px] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]">
-            <ArrowLeft className="size-4" />
+          <Link href="/" className="flex items-center gap-1.5 text-[13px] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]" aria-label="RescueLoop home">
+            <RescueLoopMark size={16} decorative />
+            <ArrowLeft className="size-3" />
             RescueLoop
           </Link>
           <span className="text-[var(--ink-muted)]">/</span>
