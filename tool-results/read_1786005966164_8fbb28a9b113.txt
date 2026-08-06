@@ -1,0 +1,734 @@
+     1→"use client";
+     2→
+     3→import { useState } from "react";
+     4→import { toast } from "sonner";
+     5→import {
+     6→  Download,
+     7→  Pause,
+     8→  Play,
+     9→  RefreshCw,
+    10→  Trash2,
+    11→  Unplug,
+    12→} from "lucide-react";
+    13→
+    14→import { cn } from "@/lib/utils";
+    15→import { useDemoStore } from "@/features/demo-engine/demo-store";
+    16→import {
+    17→  COMPANY,
+    18→  COURSE,
+    19→  COURSES_FOR_SELECTION,
+    20→  KPIS,
+    21→  LAST_SYNC,
+    22→  NEXT_SYNC,
+    23→  PRODUCT,
+    24→} from "@/lib/mock-data";
+    25→import type { AutomationState } from "@/lib/types";
+    26→import {
+    27→  SegmentedControl,
+    28→} from "@/components/interaction/segmented-control";
+    29→import { Button } from "@/components/ui/button";
+    30→import { Input } from "@/components/ui/input";
+    31→import { Switch } from "@/components/ui/switch";
+    32→import {
+    33→  Select,
+    34→  SelectContent,
+    35→  SelectItem,
+    36→  SelectTrigger,
+    37→  SelectValue,
+    38→} from "@/components/ui/select";
+    39→import {
+    40→  AlertDialog,
+    41→  AlertDialogAction,
+    42→  AlertDialogCancel,
+    43→  AlertDialogContent,
+    44→  AlertDialogDescription,
+    45→  AlertDialogFooter,
+    46→  AlertDialogHeader,
+    47→  AlertDialogTitle,
+    48→  AlertDialogTrigger,
+    49→} from "@/components/ui/alert-dialog";
+    50→import {
+    51→  SettingsNav,
+    52→  type SettingsSectionId,
+    53→} from "@/components/rescueloop/settings/settings-nav";
+    54→import {
+    55→  GroupedList,
+    56→  Row,
+    57→  ValueLabel,
+    58→} from "@/components/rescueloop/settings/grouped-list";
+    59→
+    60→// ── Constants ────────────────────────────────────────────────
+    61→
+    62→const TIMEZONES = [
+    63→  { value: "America/New_York", label: "America/New_York (EST)" },
+    64→  { value: "America/Chicago", label: "America/Chicago (CST)" },
+    65→  { value: "America/Denver", label: "America/Denver (MST)" },
+    66→  { value: "America/Los_Angeles", label: "America/Los_Angeles (PST)" },
+    67→  { value: "Europe/London", label: "Europe/London (GMT)" },
+    68→  { value: "Europe/Berlin", label: "Europe/Berlin (CET)" },
+    69→  { value: "Asia/Tokyo", label: "Asia/Tokyo (JST)" },
+    70→  { value: "Australia/Sydney", label: "Australia/Sydney (AEDT)" },
+    71→  { value: "UTC", label: "UTC" },
+    72→];
+    73→
+    74→const RETENTION_OPTIONS = [
+    75→  { value: "90", label: "90 days" },
+    76→  { value: "180", label: "180 days" },
+    77→  { value: "365", label: "1 year" },
+    78→  { value: "indefinite", label: "Indefinite" },
+    79→];
+    80→
+    81→const PLAN_INTERVENTION_LIMIT = 100;
+    82→
+    83→interface NotificationToggle {
+    84→  id: string;
+    85→  label: string;
+    86→  description: string;
+    87→  defaultOn: boolean;
+    88→}
+    89→
+    90→const NOTIFICATION_TOGGLES: NotificationToggle[] = [
+    91→  {
+    92→    id: "help_requests",
+    93→    label: "Help requests",
+    94→    description: "When a student submits a direct help request.",
+    95→    defaultOn: true,
+    96→  },
+    97→  {
+    98→    id: "cancellation_detections",
+    99→    label: "Cancellation detections",
+   100→    description: "When a cancellation signal is detected for a member.",
+   101→    defaultOn: true,
+   102→  },
+   103→  {
+   104→    id: "recoveries",
+   105→    label: "Recoveries",
+   106→    description: "When a student returns or completes a lesson after intervention.",
+   107→    defaultOn: true,
+   108→  },
+   109→  {
+   110→    id: "friction_findings",
+   111→    label: "Friction findings",
+   112→    description: "When a new lesson-level friction finding is detected.",
+   113→    defaultOn: true,
+   114→  },
+   115→  {
+   116→    id: "campaign_pauses",
+   117→    label: "Campaign pauses",
+   118→    description: "When a campaign is paused automatically due to a safety rule.",
+   119→    defaultOn: false,
+   120→  },
+   121→  {
+   122→    id: "sync_problems",
+   123→    label: "Sync problems",
+   124→    description: "When the Whop membership sync encounters errors.",
+   125→    defaultOn: true,
+   126→  },
+   127→  {
+   128→    id: "plan_limits",
+   129→    label: "Plan limits",
+   130→    description: "When you approach the monthly intervention limit.",
+   131→    defaultOn: true,
+   132→  },
+   133→  {
+   134→    id: "weekly_summary",
+   135→    label: "Weekly summary",
+   136→    description: "A Monday-morning digest of the prior week.",
+   137→    defaultOn: true,
+   138→  },
+   139→  {
+   140→    id: "daily_digest",
+   141→    label: "Daily digest",
+   142→    description: "A brief daily digest at 9:00 AM local time.",
+   143→    defaultOn: false,
+   144→  },
+   145→];
+   146→
+   147→const AUTOMATION_MODE_SEGMENTS: { value: AutomationState; label: string }[] = [
+   148→  { value: "audit_only", label: "Audit only" },
+   149→  { value: "manual_approval", label: "Manual approval" },
+   150→  { value: "automatic", label: "Automatic" },
+   151→];
+   152→
+   153→// ── Page ─────────────────────────────────────────────────────
+   154→
+   155→export default function SettingsPage() {
+   156→  const automationState = useDemoStore((s) => s.automationState);
+   157→  const setAutomationState = useDemoStore((s) => s.setAutomationState);
+   158→  const pauseAutomation = useDemoStore((s) => s.pauseAutomation);
+   159→  const resumeAutomation = useDemoStore((s) => s.resumeAutomation);
+   160→
+   161→  const [active, setActive] = useState<SettingsSectionId>("workspace");
+   162→
+   163→  // Workspace
+   164→  const [companyName, setCompanyName] = useState(COMPANY.name);
+   165→  const [defaultCourse, setDefaultCourse] = useState(COURSE.id);
+   166→  const [timezone, setTimezone] = useState("America/New_York");
+   167→  const [notifEmail, setNotifEmail] = useState("creator@creatorgrowthlab.com");
+   168→
+   169→  // Automation
+   170→  const [quietStart, setQuietStart] = useState("20:00");
+   171→  const [quietEnd, setQuietEnd] = useState("08:00");
+   172→  const [cooldownDays, setCooldownDays] = useState(14);
+   173→  const [maxMessages, setMaxMessages] = useState(3);
+   174→
+   175→  // Notifications
+   176→  const [notifState, setNotifState] = useState<Record<string, boolean>>(() =>
+   177→    Object.fromEntries(NOTIFICATION_TOGGLES.map((t) => [t.id, t.defaultOn])),
+   178→  );
+   179→
+   180→  // Data & privacy
+   181→  const [retention, setRetention] = useState("90");
+   182→
+   183→  // Plan
+   184→  const interventionsUsed = KPIS.interventionsSent;
+   185→  const interventionsPct = Math.min(
+   186→    100,
+   187→    Math.round((interventionsUsed / PLAN_INTERVENTION_LIMIT) * 100),
+   188→  );
+   189→
+   190→  const isPaused = automationState === "paused";
+   191→
+   192→  function handleAutomationModeChange(next: AutomationState) {
+   193→    setAutomationState(next);
+   194→    toast.success(`Automation mode: ${next.replace(/_/g, " ")}`);
+   195→  }
+   196→
+   197→  function handlePauseToggle() {
+   198→    if (isPaused) {
+   199→      resumeAutomation();
+   200→      toast.success("Automation resumed");
+   201→    } else {
+   202→      pauseAutomation();
+   203→      toast.info("Automation paused — no interventions will be sent");
+   204→    }
+   205→  }
+   206→
+   207→  function handleSyncNow() {
+   208→    toast.success("Sync started — memberships refreshing from Whop");
+   209→  }
+   210→
+   211→  function handleExport(kind: "students" | "interventions" | "value") {
+   212→    toast.success(`Exported ${kind}.csv`);
+   213→  }
+   214→
+   215→  function toggleNotif(id: string, next: boolean) {
+   216→    setNotifState((prev) => ({ ...prev, [id]: next }));
+   217→  }
+   218→
+   219→  return (
+   220→    <div className="flex flex-col gap-6 pb-8">
+   221→      {/* Header */}
+   222→      <header className="flex items-baseline gap-3">
+   223→        <h1 className="font-serif text-[24px] leading-none text-[var(--ink-primary)]">
+   224→          Settings
+   225→        </h1>
+   226→      </header>
+   227→
+   228→      <div className="grid gap-6 lg:grid-cols-[200px_1fr] lg:gap-8">
+   229→        <SettingsNav active={active} onChange={setActive} />
+   230→
+   231→        <div className="flex flex-col gap-6">
+   232→          {/* Workspace */}
+   233→          {active === "workspace" && (
+   234→            <>
+   235→              <GroupedList
+   236→                title="Workspace"
+   237→                description="Identity, course, and timezone preferences"
+   238→              >
+   239→                <Row label="Company name" description="Displayed across RescueLoop">
+   240→                  <Input
+   241→                    value={companyName}
+   242→                    onChange={(e) => setCompanyName(e.target.value)}
+   243→                    className="h-8 w-[200px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]"
+   244→                  />
+   245→                </Row>
+   246→                <Row label="Default course" description="Course used for RescueLoop monitoring">
+   247→                  <Select value={defaultCourse} onValueChange={setDefaultCourse}>
+   248→                    <SelectTrigger className="h-8 w-[200px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]">
+   249→                      <SelectValue />
+   250→                    </SelectTrigger>
+   251→                    <SelectContent className="rounded-none">
+   252→                      {COURSES_FOR_SELECTION.map((c) => (
+   253→                        <SelectItem key={c.id} value={c.id} className="text-[12px]">
+   254→                          {c.name}
+   255→                        </SelectItem>
+   256→                      ))}
+   257→                    </SelectContent>
+   258→                  </Select>
+   259→                </Row>
+   260→                <Row label="Timezone" description="Used for quiet hours and daily digests">
+   261→                  <Select value={timezone} onValueChange={setTimezone}>
+   262→                    <SelectTrigger className="h-8 w-[200px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]">
+   263→                      <SelectValue />
+   264→                    </SelectTrigger>
+   265→                    <SelectContent className="rounded-none">
+   266→                      {TIMEZONES.map((tz) => (
+   267→                        <SelectItem key={tz.value} value={tz.value} className="text-[12px]">
+   268→                          {tz.label}
+   269→                        </SelectItem>
+   270→                      ))}
+   271→                    </SelectContent>
+   272→                  </Select>
+   273→                </Row>
+   274→                <Row label="Notification email" description="Where alerts are sent" last>
+   275→                  <Input
+   276→                    type="email"
+   277→                    value={notifEmail}
+   278→                    onChange={(e) => setNotifEmail(e.target.value)}
+   279→                    className="h-8 w-[220px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]"
+   280→                  />
+   281→                </Row>
+   282→              </GroupedList>
+   283→            </>
+   284→          )}
+   285→
+   286→          {/* Whop connection */}
+   287→          {active === "whop" && (
+   288→            <GroupedList
+   289→              title="Whop connection"
+   290→              description="Sync status and product mapping"
+   291→            >
+   292→              <Row label="Connection status" description="Whop API connection">
+   293→                <span className="flex items-center gap-1.5 border border-[var(--recovery-green)]/30 bg-[var(--recovery-light)] px-2 py-0.5 text-[11px] font-medium text-[var(--recovery-green)]">
+   294→                  <span className="size-1.5 rounded-full bg-[var(--recovery-green)]" />
+   295→                  Connected
+   296→                </span>
+   297→              </Row>
+   298→              <Row label="Last sync">
+   299→                <ValueLabel mono>{LAST_SYNC}</ValueLabel>
+   300→              </Row>
+   301→              <Row label="Next sync">
+   302→                <ValueLabel mono>{NEXT_SYNC}</ValueLabel>
+   303→              </Row>
+   304→              <Row label="Sync now" description="Force a manual sync from Whop" last>
+   305→                <Button
+   306→                  size="sm"
+   307→                  onClick={handleSyncNow}
+   308→                  className="h-8 rounded-none bg-[var(--ink-primary)] text-[var(--canvas)] hover:bg-[var(--ink-primary)]/90"
+   309→                >
+   310→                  <RefreshCw className="size-3.5" />
+   311→                  Sync now
+   312→                </Button>
+   313→              </Row>
+   314→            </GroupedList>
+   315→          )}
+   316→
+   317→          {/* Product mapping (Whop sub-section) */}
+   318→          {active === "whop" && (
+   319→            <GroupedList
+   320→              title="Product mapping"
+   321→              description="Whop products mapped to RescueLoop courses"
+   322→            >
+   323→              <div className="flex flex-col">
+   324→                <div className="grid grid-cols-[1fr_1fr_60px] gap-2 border-b border-[var(--hairline)] bg-[var(--canvas-elevated)] px-4 py-2">
+   325→                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+   326→                    Whop product
+   327→                  </span>
+   328→                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+   329→                    Mapped course
+   330→                  </span>
+   331→                  <span className="text-right font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+   332→                    Price
+   333→                  </span>
+   334→                </div>
+   335→                <div className="grid grid-cols-[1fr_1fr_60px] gap-2 px-4 py-2.5">
+   336→                  <span className="text-[12px] text-[var(--ink-primary)]">{PRODUCT.name}</span>
+   337→                  <span className="text-[12px] text-[var(--ink-secondary)]">{COURSE.name}</span>
+   338→                  <span className="text-right font-mono text-[12px] tabular-nums text-[var(--ink-primary)]">
+   339→                    ${PRODUCT.price}
+   340→                  </span>
+   341→                </div>
+   342→              </div>
+   343→            </GroupedList>
+   344→          )}
+   345→
+   346→          {/* Automation */}
+   347→          {active === "automation" && (
+   348→            <GroupedList
+   349→              title="Automation"
+   350→              description="Modes, quiet hours, and safety controls"
+   351→            >
+   352→              <Row label="Automation mode" description="Controls how interventions are dispatched">
+   353→                <SegmentedControl
+   354→                  ariaLabel="Automation mode"
+   355→                  size="sm"
+   356→                  segments={AUTOMATION_MODE_SEGMENTS}
+   357→                  value={isPaused ? "manual_approval" : automationState}
+   358→                  onChange={(v) => handleAutomationModeChange(v as AutomationState)}
+   359→                />
+   360→              </Row>
+   361→              <Row label="Pause automation" description={isPaused ? "Currently paused" : "Currently running"}>
+   362→                <Button
+   363→                  size="sm"
+   364→                  variant={isPaused ? "default" : "outline"}
+   365→                  onClick={handlePauseToggle}
+   366→                  className={cn(
+   367→                    "h-8 rounded-none",
+   368→                    isPaused
+   369→                      ? "bg-[var(--recovery-green)] text-white hover:bg-[var(--recovery-green)]/90"
+   370→                      : "border-[var(--critical)]/30 text-[var(--critical)] hover:bg-[var(--critical-light)]",
+   371→                  )}
+   372→                >
+   373→                  {isPaused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+   374→                  {isPaused ? "Resume" : "Pause"}
+   375→                </Button>
+   376→              </Row>
+   377→              <Row label="Quiet hours" description="No messages sent during these hours (local time)">
+   378→                <div className="flex items-center gap-1.5">
+   379→                  <Input
+   380→                    type="time"
+   381→                    value={quietStart}
+   382→                    onChange={(e) => setQuietStart(e.target.value)}
+   383→                    className="h-8 w-[90px] rounded-none border-[var(--hairline)] bg-[var(--surface)] font-mono text-[12px] tabular-nums"
+   384→                  />
+   385→                  <span className="text-[12px] text-[var(--ink-muted)]">to</span>
+   386→                  <Input
+   387→                    type="time"
+   388→                    value={quietEnd}
+   389→                    onChange={(e) => setQuietEnd(e.target.value)}
+   390→                    className="h-8 w-[90px] rounded-none border-[var(--hairline)] bg-[var(--surface)] font-mono text-[12px] tabular-nums"
+   391→                  />
+   392→                </div>
+   393→              </Row>
+   394→              <Row label="Cooldown" description="Days between interventions to the same member">
+   395→                <div className="flex items-center gap-1.5">
+   396→                  <Input
+   397→                    type="number"
+   398→                    min={1}
+   399→                    max={60}
+   400→                    value={cooldownDays}
+   401→                    onChange={(e) => setCooldownDays(Number(e.target.value))}
+   402→                    className="h-8 w-[60px] rounded-none border-[var(--hairline)] bg-[var(--surface)] font-mono text-[12px] tabular-nums"
+   403→                  />
+   404→                  <span className="text-[12px] text-[var(--ink-muted)]">days</span>
+   405→                </div>
+   406→              </Row>
+   407→              <Row label="Max messages per member" description="Per-month safety cap" last>
+   408→                <div className="flex items-center gap-1.5">
+   409→                  <Input
+   410→                    type="number"
+   411→                    min={1}
+   412→                    max={10}
+   413→                    value={maxMessages}
+   414→                    onChange={(e) => setMaxMessages(Number(e.target.value))}
+   415→                    className="h-8 w-[60px] rounded-none border-[var(--hairline)] bg-[var(--surface)] font-mono text-[12px] tabular-nums"
+   416→                  />
+   417→                  <span className="text-[12px] text-[var(--ink-muted)]">/ month</span>
+   418→                </div>
+   419→              </Row>
+   420→            </GroupedList>
+   421→          )}
+   422→
+   423→          {/* Notifications */}
+   424→          {active === "notifications" && (
+   425→            <GroupedList
+   426→              title="Notifications"
+   427→              description="What you get alerted about"
+   428→            >
+   429→              {NOTIFICATION_TOGGLES.map((t, i) => (
+   430→                <Row
+   431→                  key={t.id}
+   432→                  label={t.label}
+   433→                  description={t.description}
+   434→                  last={i === NOTIFICATION_TOGGLES.length - 1}
+   435→                >
+   436→                  <Switch
+   437→                    checked={notifState[t.id] ?? false}
+   438→                    onCheckedChange={(next) => toggleNotif(t.id, next)}
+   439→                    aria-label={t.label}
+   440→                  />
+   441→                </Row>
+   442→              ))}
+   443→            </GroupedList>
+   444→          )}
+   445→
+   446→          {/* Team */}
+   447→          {active === "team" && (
+   448→            <GroupedList
+   449→              title="Team"
+   450→              description="Invite teammates to your workspace"
+   451→            >
+   452→              <Row
+   453→                label="Coming soon"
+   454→                description="Team invites, roles, and shared approval workflows are on the roadmap."
+   455→                last
+   456→              >
+   457→                <span className="border border-[var(--hairline)] bg-[var(--canvas-elevated)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+   458→                  Roadmap
+   459→                </span>
+   460→              </Row>
+   461→            </GroupedList>
+   462→          )}
+   463→
+   464→          {/* Plan and usage */}
+   465→          {active === "plan" && (
+   466→            <>
+   467→              <GroupedList
+   468→                title="Plan and usage"
+   469→                description="Subscription, usage, and upgrades"
+   470→              >
+   471→                <Row label="Plan" description="RescueLoop Pro">
+   472→                  <ValueLabel mono>$29/mo</ValueLabel>
+   473→                </Row>
+   474→                <Row
+   475→                  label="Intervention usage"
+   476→                  description={`${interventionsUsed} of ${PLAN_INTERVENTION_LIMIT} monthly interventions used`}
+   477→                >
+   478→                  <div className="w-[140px]">
+   479→                    <div className="h-2 w-full overflow-hidden bg-[var(--hairline)]">
+   480→                      <div
+   481→                        className="h-full bg-[var(--recovery-green)] transition-all"
+   482→                        style={{ width: `${interventionsPct}%` }}
+   483→                      />
+   484→                    </div>
+   485→                    <div className="mt-1 flex items-center justify-between font-mono text-[10px] tabular-nums text-[var(--ink-muted)]">
+   486→                      <span>{interventionsPct}%</span>
+   487→                      <span>resets Feb 12</span>
+   488→                    </div>
+   489→                  </div>
+   490→                </Row>
+   491→                <Row label="Upgrade" description="Move to RescueLoop Scale for unlimited interventions" last>
+   492→                  <Button
+   493→                    size="sm"
+   494→                    onClick={() => toast.success("Upgrade flow started — Stripe checkout opening")}
+   495→                    className="h-8 rounded-none bg-[var(--recovery-green)] text-white hover:bg-[var(--recovery-green)]/90"
+   496→                  >
+   497→                    Upgrade plan
+   498→                  </Button>
+   499→                </Row>
+   500→              </GroupedList>
+   501→            </>
+   502→          )}
+   503→
+   504→          {/* Data and privacy */}
+   505→          {active === "data" && (
+   506→            <>
+   507→              <GroupedList
+   508→                title="Data and privacy"
+   509→                description="Exports, retention, and deletion"
+   510→              >
+   511→                <Row label="Export students" description="Download all students as a CSV">
+   512→                  <Button
+   513→                    size="sm"
+   514→                    variant="outline"
+   515→                    onClick={() => handleExport("students")}
+   516→                    className="h-8 rounded-none border-[var(--hairline)] text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]"
+   517→                  >
+   518→                    <Download className="size-3.5" />
+   519→                    Export
+   520→                  </Button>
+   521→                </Row>
+   522→                <Row label="Export interventions" description="All interventions sent">
+   523→                  <Button
+   524→                    size="sm"
+   525→                    variant="outline"
+   526→                    onClick={() => handleExport("interventions")}
+   527→                    className="h-8 rounded-none border-[var(--hairline)] text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]"
+   528→                  >
+   529→                    <Download className="size-3.5" />
+   530→                    Export
+   531→                  </Button>
+   532→                </Row>
+   533→                <Row label="Export value ledger" description="All value events">
+   534→                  <Button
+   535→                    size="sm"
+   536→                    variant="outline"
+   537→                    onClick={() => handleExport("value")}
+   538→                    className="h-8 rounded-none border-[var(--hairline)] text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]"
+   539→                  >
+   540→                    <Download className="size-3.5" />
+   541→                    Export
+   542→                  </Button>
+   543→                </Row>
+   544→                <Row label="Retention period" description="How long RescueLoop stores raw events" last>
+   545→                  <Select value={retention} onValueChange={setRetention}>
+   546→                    <SelectTrigger className="h-8 w-[140px] rounded-none border-[var(--hairline)] bg-[var(--surface)] text-[12px]">
+   547→                      <SelectValue />
+   548→                    </SelectTrigger>
+   549→                    <SelectContent className="rounded-none">
+   550→                      {RETENTION_OPTIONS.map((r) => (
+   551→                        <SelectItem key={r.value} value={r.value} className="text-[12px]">
+   552→                          {r.label}
+   553→                        </SelectItem>
+   554→                      ))}
+   555→                    </SelectContent>
+   556→                  </Select>
+   557→                </Row>
+   558→              </GroupedList>
+   559→
+   560→              {/* Destructive action — separated */}
+   561→              <GroupedList variant="destructive" title="History deletion">
+   562→                <Row
+   563→                  label="Delete intervention history"
+   564→                  description="Permanently delete all sent interventions and responses. Cannot be undone."
+   565→                  destructive
+   566→                  last
+   567→                >
+   568→                  <AlertDialog>
+   569→                    <AlertDialogTrigger asChild>
+   570→                      <Button
+   571→                        size="sm"
+   572→                        variant="outline"
+   573→                        className="h-8 rounded-none border-[var(--critical)]/30 text-[var(--critical)] hover:bg-[var(--critical-light)]"
+   574→                      >
+   575→                        <Trash2 className="size-3.5" />
+   576→                        Delete
+   577→                      </Button>
+   578→                    </AlertDialogTrigger>
+   579→                    <AlertDialogContent className="rounded-none sm:max-w-md">
+   580→                      <AlertDialogHeader>
+   581→                        <AlertDialogTitle>Delete intervention history?</AlertDialogTitle>
+   582→                        <AlertDialogDescription>
+   583→                          This permanently removes all sent interventions, responses, and
+   584→                          attribution evidence. Students will not be affected, but you will lose
+   585→                          the value ledger history.
+   586→                        </AlertDialogDescription>
+   587→                      </AlertDialogHeader>
+   588→                      <AlertDialogFooter>
+   589→                        <AlertDialogCancel className="rounded-none">Cancel</AlertDialogCancel>
+   590→                        <AlertDialogAction
+   591→                          className="rounded-none bg-[var(--critical)] text-white hover:bg-[var(--critical)]/90"
+   592→                          onClick={() => toast.success("Intervention history deleted")}
+   593→                        >
+   594→                          Delete history
+   595→                        </AlertDialogAction>
+   596→                      </AlertDialogFooter>
+   597→                    </AlertDialogContent>
+   598→                  </AlertDialog>
+   599→                </Row>
+   600→              </GroupedList>
+   601→            </>
+   602→          )}
+   603→
+   604→          {/* Danger zone */}
+   605→          {active === "danger" && (
+   606→            <GroupedList
+   607→              variant="destructive"
+   608→              title="Danger zone"
+   609→              description="Irreversible account actions — separated from the rest of settings"
+   610→            >
+   611→              <Row
+   612→                label="Disconnect Whop"
+   613→                description="Stops all syncs and automation. Reconnect to resume."
+   614→                destructive
+   615→              >
+   616→                <AlertDialog>
+   617→                  <AlertDialogTrigger asChild>
+   618→                    <Button
+   619→                      size="sm"
+   620→                      variant="outline"
+   621→                      className="h-8 rounded-none border-[var(--critical)]/30 text-[var(--critical)] hover:bg-[var(--critical-light)]"
+   622→                    >
+   623→                      <Unplug className="size-3.5" />
+   624→                      Disconnect
+   625→                    </Button>
+   626→                  </AlertDialogTrigger>
+   627→                  <AlertDialogContent className="rounded-none sm:max-w-md">
+   628→                    <AlertDialogHeader>
+   629→                      <AlertDialogTitle>Disconnect Whop?</AlertDialogTitle>
+   630→                      <AlertDialogDescription>
+   631→                        All automation will pause and memberships will stop syncing. Existing
+   632→                        student data remains, but no new signals will be detected until you
+   633→                        reconnect.
+   634→                      </AlertDialogDescription>
+   635→                    </AlertDialogHeader>
+   636→                    <AlertDialogFooter>
+   637→                      <AlertDialogCancel className="rounded-none">Cancel</AlertDialogCancel>
+   638→                      <AlertDialogAction
+   639→                        className="rounded-none bg-[var(--critical)] text-white hover:bg-[var(--critical)]/90"
+   640→                        onClick={() => toast.success("Whop disconnected — automation paused")}
+   641→                      >
+   642→                        Disconnect Whop
+   643→                      </AlertDialogAction>
+   644→                    </AlertDialogFooter>
+   645→                  </AlertDialogContent>
+   646→                </AlertDialog>
+   647→              </Row>
+   648→              <Row
+   649→                label="Delete account"
+   650→                description="Permanently delete your workspace, students, interventions, and value history."
+   651→                destructive
+   652→                last
+   653→              >
+   654→                <DeleteAccountDialog />
+   655→              </Row>
+   656→            </GroupedList>
+   657→          )}
+   658→        </div>
+   659→      </div>
+   660→    </div>
+   661→  );
+   662→}
+   663→
+   664→function DeleteAccountDialog() {
+   665→  const [step, setStep] = useState<"idle" | "confirm">("idle");
+   666→  const [confirmText, setConfirmText] = useState("");
+   667→
+   668→  return (
+   669→    <AlertDialog
+   670→      open={step === "confirm"}
+   671→      onOpenChange={(o) => {
+   672→        if (!o) {
+   673→          setStep("idle");
+   674→          setConfirmText("");
+   675→        }
+   676→      }}
+   677→    >
+   678→      <AlertDialogTrigger asChild>
+   679→        <Button
+   680→          size="sm"
+   681→          variant="outline"
+   682→          onClick={() => setStep("confirm")}
+   683→          className="h-8 rounded-none border-[var(--critical)]/30 bg-[var(--critical)] text-white hover:bg-[var(--critical)]/90"
+   684→        >
+   685→          <Trash2 className="size-3.5" />
+   686→          Delete account
+   687→        </Button>
+   688→      </AlertDialogTrigger>
+   689→      <AlertDialogContent className="rounded-none sm:max-w-md">
+   690→        <AlertDialogHeader>
+   691→          <AlertDialogTitle>Delete your RescueLoop account?</AlertDialogTitle>
+   692→          <AlertDialogDescription>
+   693→            This permanently deletes your workspace, students, interventions, value ledger, and
+   694→            all settings. <span className="font-semibold text-[var(--critical)]">This cannot be undone.</span>
+   695→          </AlertDialogDescription>
+   696→        </AlertDialogHeader>
+   697→        <div className="flex flex-col gap-2 py-2">
+   698→          <label className="text-[12px] text-[var(--ink-secondary)]">
+   699→            Type <span className="font-mono font-semibold">DELETE</span> to confirm:
+   700→          </label>
+   701→          <Input
+   702→            value={confirmText}
+   703→            onChange={(e) => setConfirmText(e.target.value)}
+   704→            placeholder="DELETE"
+   705→            className="h-9 rounded-none border-[var(--critical)]/30 font-mono text-[13px]"
+   706→          />
+   707→        </div>
+   708→        <AlertDialogFooter>
+   709→          <AlertDialogCancel
+   710→            className="rounded-none"
+   711→            onClick={() => {
+   712→              setStep("idle");
+   713→              setConfirmText("");
+   714→            }}
+   715→          >
+   716→            Cancel
+   717→          </AlertDialogCancel>
+   718→          <AlertDialogAction
+   719→            disabled={confirmText !== "DELETE"}
+   720→            className="rounded-none bg-[var(--critical)] text-white hover:bg-[var(--critical)]/90 disabled:opacity-40"
+   721→            onClick={() => {
+   722→              toast.success("Account scheduled for deletion");
+   723→              setStep("idle");
+   724→              setConfirmText("");
+   725→            }}
+   726→          >
+   727→            Delete account permanently
+   728→          </AlertDialogAction>
+   729→        </AlertDialogFooter>
+   730→      </AlertDialogContent>
+   731→    </AlertDialog>
+   732→  );
+   733→}
+   734→
