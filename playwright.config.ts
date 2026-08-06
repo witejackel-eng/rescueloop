@@ -8,6 +8,7 @@ import { defineConfig, devices } from '@playwright/test';
  * - Retry flaky tests twice
  * - 30s test timeout, 5s expect timeout
  * - Screenshots on failure only, trace on first retry, video on failure
+ * - Brand evidence screenshots saved to test-results/brand-evidence/
  * - In CI: starts standalone server via `node .next/standalone/server.js`
  *   (next start does NOT work with output: standalone)
  */
