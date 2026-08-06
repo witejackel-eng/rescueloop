@@ -13,7 +13,7 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 
 ## WP-00: CI Pipeline Strict Green
 
-**Status:** ✅ COMPLETE
+**Status:** 🔄 IN PROGRESS (commit 3 remediation)
 
 **Objective:** Fix all CI failures on `integration/rescueloop-v1`; remove all false-green patterns; ensure lint, typecheck, unit, contract, integration, E2E, security, and production build genuinely fail on errors.
 
@@ -82,3 +82,48 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 ## WP-02 through WP-09: (Not started)
 
 **Status:** ⏳ PENDING
+
+### Commit 3: Remediation of False-Green Gates
+
+**Date:** 2025-08-06
+
+#### Security Scan — Genuine Blocking Gate
+- Removed `|| true` from `bun audit` command
+- Replaced fragile `grep -E '^\s*critical:.*\(direct dependency\)'` with proper multi-line parser that tracks severity across Bun audit output lines
+- Upgraded direct dependencies: next 16.1.1 → 16.3.0, sharp 0.34.3 → 0.35.3, vitest 2.1.0 → 3.2.7
+- Result: 0 critical/high vulnerabilities in direct dependencies (39 transitive-only remain)
+- Changed `as any` check to FAIL on production source code (test-only occurrences reported separately)
+- Confirmed: 0 `as any` casts in production source (all 72 occurrences are in test files)
+
+#### Prisma Migration Drift — Validated Production Path
+- Generated migration `20260805000000_add_missing_tables` covering 10 missing models:
+  DataExportRequest, UsageReservation, PlanOverride, PilotApplication,
+  InternalAuditLog, SyncExecution, SyncStage, SyncCheckpoint,
+  ReconciliationOutcome, ReconciliationRun
+- Created 9 new enum types in migration
+- Replaced `prisma db push --accept-data-loss` with `prisma migrate deploy` in both
+  Integration Tests and E2E jobs
+- Added `migration_lock.toml` for Prisma migration consistency
+- `prisma migrate deploy` now runs on empty PostgreSQL database in CI
+
+#### E2E Tests — Route-Specific Assertions
+- Replaced HTTP 200 + visible body with route-specific element assertions:
+  - /overview: h1 "Recovery Pulse" + period selector tablist
+  - /students: h1 "Students" + search input
+  - /campaigns: h1 "Campaign Studio"
+  - /insights: h1 "Course Intelligence"
+  - /value: h1 "Value Ledger"
+  - /settings: h1 "Settings"
+  - /rescue-queue: h1 "Rescue Queue" + search input
+- Added `assertWorkspaceShell()` helper checking for nav[aria-label="Workspace navigation"]
+  or nav[aria-label="Mobile navigation"] after hydration
+- Added `assertNoErrorOverlay()` helper checking for Next.js error portal or
+  "Application error" heading
+- Fixed marketing.spec.ts locator: `aref="/overview"]` → `a[href="/overview"]`
+  and `aref="/legal/privacy"]` → `a[href="/legal/privacy"]`
+
+#### Visual Regression — Explicit Ledger Item
+- Created `docs/implementation/VISUAL_REGRESSION_LEDGER.md` with:
+  owner, acceptance criteria, rationale, remediation plan
+- Visual baselines are OS-specific; committing non-Linux baselines causes CI failures
+- This is tracked debt, not silently deleted coverage

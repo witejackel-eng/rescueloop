@@ -2,6 +2,8 @@
 # All jobs use fixture environment variables — no real Whop credentials required.
 # STRICT MODE: No false-green patterns (|| true, || echo "passing").
 # Every step genuinely fails on errors.
+# Security gate is genuinely blocking — no blanket audit suppression.
+# Prisma migrations are validated via `prisma migrate deploy` on empty DB.
 
 name: CI
 
@@ -114,8 +116,8 @@ jobs:
       - name: Prisma generate
         run: bunx prisma generate
 
-      - name: Push schema to test database
-        run: bunx prisma db push --accept-data-loss
+      - name: Deploy migrations to test database
+        run: bunx prisma migrate deploy
 
       - name: Run integration tests
         run: bun run test:integration
@@ -217,8 +219,8 @@ jobs:
       - name: Prisma generate
         run: bunx prisma generate
 
-      - name: Push schema to test database
-        run: bunx prisma db push --accept-data-loss
+      - name: Deploy migrations to test database
+        run: bunx prisma migrate deploy
 
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
@@ -293,30 +295,105 @@ jobs:
       - name: Run gitleaks secret scan
         run: gitleaks detect --source . --verbose --no-git
 
-      # ── Dependency audit ──
-      # bun audit exits non-zero for any vulnerability including transitive deps.
-      # We fail on critical vulnerabilities in direct dependencies,
-      # but emit warnings for transitive dep issues that require upstream fixes.
+      # ── Dependency audit (genuinely blocking) ──
+      # Runs bun audit and parses the output correctly.
+      # Bun audit prints vulnerability details on separate lines, not inline.
+      # We fail on any CRITICAL or HIGH severity in direct dependencies.
+      # Transitive-only vulnerabilities are reported as warnings.
       - name: Dependency audit
         run: |
-          bun audit 2>&1 | tee /tmp/audit-output.txt || true
-          # Fail on critical vulnerabilities in direct dependencies
-          if grep -E '^\s*critical:.*\(direct dependency\)' /tmp/audit-output.txt 2>/dev/null; then
-            echo "::error::Critical vulnerability in direct dependency"
+          set +e  # capture exit code without failing the step
+          bun audit 2>&1 | tee /tmp/audit-output.txt
+          AUDIT_EXIT=$?
+          set -e
+
+          echo "--- Audit exit code: $AUDIT_EXIT ---"
+          echo "--- Full audit output ---"
+          cat /tmp/audit-output.txt
+          echo "--- End audit output ---"
+
+          # Parse the audit output for critical/high direct dependency vulns.
+          # Bun audit output format:
+          #   <severity> [advisory-id] <package@version>
+          #     (direct dependency)
+          # or multi-line where "(direct dependency)" appears on a separate line.
+          # We scan for severity keywords followed within 5 lines by "(direct dependency)".
+
+          BLOCKING=false
+          SEEN_SEVERITY=""
+
+          while IFS= read -r line; do
+            # Check if this line mentions a critical or high severity
+            if echo "$line" | grep -qiE '^\s*(critical|high)\b'; then
+              SEEN_SEVERITY=$(echo "$line" | grep -oiE '^\s*(critical|high)\b' | head -1 | xargs)
+              echo "Found $SEEN_SEVERITY severity: $line"
+            fi
+
+            # Check if this line indicates a direct dependency
+            if echo "$line" | grep -qi 'direct dependency'; then
+              if [ -n "$SEEN_SEVERITY" ]; then
+                echo "::error::$SEEN_SEVERITY vulnerability in direct dependency detected"
+                BLOCKING=true
+              fi
+              SEEN_SEVERITY=""
+            fi
+
+            # Reset severity tracker on blank lines (section boundary)
+            if [ -z "$(echo "$line" | tr -d '[:space:]')" ]; then
+              SEEN_SEVERITY=""
+            fi
+          done < /tmp/audit-output.txt
+
+          if [ "$BLOCKING" = "true" ]; then
+            echo "::error::Failing: critical or high vulnerability in direct dependency"
             exit 1
           fi
-          echo "Dependency audit complete (advisory for transitive deps)"
 
-      # ── Dangerous pattern checks ──
-      - name: Check for "as any" casts
-        run: |
-          count=$(grep -r "as any" --include="*.ts" --include="*.tsx" src/ | grep -v "// eslint-disable" | wc -l)
-          if [ "$count" -gt "0" ]; then
-            echo "::warning::Found $count occurrences of 'as any' in src/"
-            grep -rn "as any" --include="*.ts" --include="*.tsx" src/ | grep -v "// eslint-disable" || true
-          else
-            echo "No 'as any' casts found — clean"
+          # If bun audit found any vulnerabilities (exit 1), report summary
+          if [ "$AUDIT_EXIT" -ne 0 ]; then
+            echo "::warning::bun audit found vulnerabilities — all are transitive-only (no direct critical/high)"
           fi
+
+          echo "Dependency audit passed: no critical or high vulnerabilities in direct dependencies"
+
+      # ── "as any" cast check (fails on production source) ──
+      - name: Check for "as any" casts in production code
+        run: |
+          # Production source: exclude test/mock files and comment-only lines
+          PROD_COUNT=$(grep -rn "as any" --include="*.ts" --include="*.tsx" src/ \
+            | grep -v '\.test\.' \
+            | grep -v '\.mock\.' \
+            | grep -v '__mocks__' \
+            | grep -v '// .*as any' \
+            | grep -v 'replaces `as any`' \
+            | grep -v 'instead of `as any`' \
+            | grep -v '^\s*//' \
+            | grep -v ':.*//.*as any' \
+            | wc -l)
+
+          # Test-only count (informational)
+          TEST_COUNT=$(grep -rn "as any" --include="*.ts" --include="*.tsx" src/ \
+            | grep '\.test\.' \
+            | wc -l)
+
+          echo "Production 'as any' count: $PROD_COUNT"
+          echo "Test-only 'as any' count: $TEST_COUNT"
+
+          if [ "$PROD_COUNT" -gt 0 ]; then
+            echo "::error::Found $PROD_COUNT 'as any' casts in production source code:"
+            grep -rn "as any" --include="*.ts" --include="*.tsx" src/ \
+              | grep -v '\.test\.' \
+              | grep -v '\.mock\.' \
+              | grep -v '__mocks__' \
+              | grep -v '// .*as any' \
+              | grep -v 'replaces `as any`' \
+              | grep -v 'instead of `as any`' \
+              | grep -v '^\s*//' \
+              | grep -v ':.*//.*as any'
+            exit 1
+          fi
+
+          echo "No 'as any' casts in production source — clean ($TEST_COUNT in test files only)"
 
       - name: Check .env is not tracked
         run: |
