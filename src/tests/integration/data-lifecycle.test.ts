@@ -95,13 +95,23 @@ describe.skipIf(skip)('Data lifecycle', () => {
 
   it('Export includes interventions with delivery attempts', async () => {
     const student = await createTestStudent(orgId);
+    const campaign = await db.campaign.create({
+      data: {
+        organizationId: orgId,
+        name: 'Test Campaign',
+        messageTemplate: 'Hello {{student.name}}',
+      },
+    });
     const intervention = await db.intervention.create({
       data: {
         organizationId: orgId,
         studentId: student.id,
+        campaignId: campaign.id,
         state: 'delivered',
-        type: 'activation_rescue',
-        channel: 'email',
+        trigger: 'eligibility',
+        evidenceJson: {},
+        messagePreview: 'Test message',
+        idempotencyKey: `int-export-${Date.now()}`,
       },
     });
 
@@ -221,6 +231,7 @@ describe.skipIf(skip)('Data lifecycle', () => {
     const token = await db.studentAccessToken.create({
       data: {
         organizationId: orgId,
+        interventionId: 'test-intervention-' + Date.now(),
         studentId: student.id,
         tokenHash: 'hash-test-token-' + Date.now(),
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -242,13 +253,23 @@ describe.skipIf(skip)('Data lifecycle', () => {
   it('Deletion stops pending interventions', async () => {
     const student = await createTestStudent(orgId);
 
+    const campaign = await db.campaign.create({
+      data: {
+        organizationId: orgId,
+        name: 'Deletion Test Campaign',
+        messageTemplate: 'Hello {{student.name}}',
+      },
+    });
     const pending = await db.intervention.create({
       data: {
         organizationId: orgId,
         studentId: student.id,
+        campaignId: campaign.id,
         state: 'queued',
-        type: 'activation_rescue',
-        channel: 'email',
+        trigger: 'eligibility',
+        evidenceJson: {},
+        messagePreview: 'Test message',
+        idempotencyKey: `int-delete-${Date.now()}`,
       },
     });
 

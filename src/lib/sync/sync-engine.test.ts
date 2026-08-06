@@ -241,8 +241,8 @@ describe("Phase 10: progress ingestion edge cases", () => {
     // After lesson removal, the StudentCourseState.totalLessons (old: 10)
     // no longer matches course.lessonCount (new: 7).
     // The bounded recalculation updates totalLessons to match.
-    const courseLessonCount = 7;
-    const staleTotalLessons = 10;
+    const courseLessonCount: number = 7;
+    const staleTotalLessons: number = 10;
     const isStale = staleTotalLessons !== courseLessonCount;
     expect(isStale).toBe(true);
   });

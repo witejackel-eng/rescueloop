@@ -93,13 +93,31 @@ describe.skipIf(skip)('Tenant isolation', () => {
     const studentA = await createTestStudent(orgAId);
     const studentB = await createTestStudent(orgBId);
 
+    const campaignA = await db.campaign.create({
+      data: {
+        organizationId: orgAId,
+        name: 'Isolation Campaign A',
+        messageTemplate: 'Hello {{student.name}}',
+      },
+    });
+    const campaignB = await db.campaign.create({
+      data: {
+        organizationId: orgBId,
+        name: 'Isolation Campaign B',
+        messageTemplate: 'Hello {{student.name}}',
+      },
+    });
+
     const interventionA = await db.intervention.create({
       data: {
         organizationId: orgAId,
         studentId: studentA.id,
+        campaignId: campaignA.id,
         state: 'drafted',
-        type: 'activation_rescue',
-        channel: 'email',
+        trigger: 'eligibility',
+        evidenceJson: {},
+        messagePreview: 'Test message A',
+        idempotencyKey: `int-iso-a-${Date.now()}`,
       },
     });
 
@@ -107,9 +125,12 @@ describe.skipIf(skip)('Tenant isolation', () => {
       data: {
         organizationId: orgBId,
         studentId: studentB.id,
+        campaignId: campaignB.id,
         state: 'drafted',
-        type: 'activation_rescue',
-        channel: 'email',
+        trigger: 'eligibility',
+        evidenceJson: {},
+        messagePreview: 'Test message B',
+        idempotencyKey: `int-iso-b-${Date.now()}`,
       },
     });
 
@@ -122,13 +143,23 @@ describe.skipIf(skip)('Tenant isolation', () => {
 
   it('Direct-ID intervention lookup with wrong org returns null', async () => {
     const studentB = await createTestStudent(orgBId);
+    const campaignB = await db.campaign.create({
+      data: {
+        organizationId: orgBId,
+        name: 'Direct ID Campaign B',
+        messageTemplate: 'Hello {{student.name}}',
+      },
+    });
     const interventionB = await db.intervention.create({
       data: {
         organizationId: orgBId,
         studentId: studentB.id,
+        campaignId: campaignB.id,
         state: 'drafted',
-        type: 'activation_rescue',
-        channel: 'email',
+        trigger: 'eligibility',
+        evidenceJson: {},
+        messagePreview: 'Test message',
+        idempotencyKey: `int-direct-${Date.now()}`,
       },
     });
 

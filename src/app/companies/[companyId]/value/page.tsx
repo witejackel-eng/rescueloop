@@ -107,7 +107,7 @@ export default async function ValuePage({
       skip: cursor ? 1 : 0,
       cursor,
       include: {
-        attributionEvidences: {
+        evidence: {
           select: { evidenceType: true, evidenceRef: true, timestamp: true },
           orderBy: { timestamp: "asc" },
         },
@@ -251,20 +251,20 @@ export default async function ValuePage({
 
                 {ve.intervention && (
                   <p className="text-[12px] text-[var(--ink-secondary)]">
-                    Student: {ve.intervention.student.name ?? ve.intervention.student.email ?? "\u2014"}{" "}
+                    Student: {ve.intervention.student?.name ?? ve.intervention.student?.email ?? "\u2014"}{" "}
                     &middot; Intervention: {ve.intervention.state}{" "}
                     &middot; Trigger: {ve.intervention.trigger}
                   </p>
                 )}
 
                 {/* Evidence chain */}
-                {ve.attributionEvidences.length > 0 && (
+                {ve.evidence.length > 0 && (
                   <div className="flex flex-col gap-1">
                     <p className="font-mono text-[10px] uppercase tracking-wide text-[var(--ink-muted)]">
                       Evidence chain
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {ve.attributionEvidences.map((e, i) => (
+                      {ve.evidence.map((e, i) => (
                         <span
                           key={i}
                           className="font-mono text-[10px] text-[var(--ink-muted)]"

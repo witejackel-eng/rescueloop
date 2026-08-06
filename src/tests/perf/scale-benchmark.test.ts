@@ -544,10 +544,9 @@ async function insertFixturesIntoDb(orgs: OrgFixture[]): Promise<void> {
                 },
               },
             },
-            productId,
+            product: { connect: { id: productId } },
             whopMembershipId: m.id,
             status: m.status,
-            cancelAtPeriodEnd: m.status === "cancelling",
             joinedAt: m.joinedAt,
             renewalDate: new Date(m.joinedAt.getTime() + 30 * 86_400_000),
             priceCents: 7900,
@@ -1022,13 +1021,11 @@ describe("Unbounded query protection", () => {
 describe.skipIf(skip)("Real database benchmarks", () => {
   let sampleOrgId: string;
 
-  // eslint-disable-next-line vitest/no-hooks
   beforeAll(async () => {
     await insertFixturesIntoDb(fixtures);
     sampleOrgId = fixtures[0].orgId;
   }, 120_000);
 
-  // eslint-disable-next-line vitest/no-hooks
   afterAll(async () => {
     await cleanupPerfData();
     await baseDb.$disconnect();

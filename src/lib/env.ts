@@ -10,6 +10,7 @@ const envSchema = z.object({
   WHOP_API_KEY: z.string().min(1, "WHOP_API_KEY is required"),
   NEXT_PUBLIC_WHOP_APP_ID: z.string().min(1, "NEXT_PUBLIC_WHOP_APP_ID is required"),
   WHOP_WEBHOOK_SECRET: z.string().min(1, "WHOP_WEBHOOK_SECRET is required"),
+  WHOP_COMPANY_ID: z.string().min(1).optional(),
   APP_URL: z.string().url("APP_URL must be a valid URL"),
   STUDENT_LINK_SIGNING_SECRET: z.string().min(32, "STUDENT_LINK_SIGNING_SECRET must be at least 32 characters"),
   CRON_SECRET: z.string().min(1, "CRON_SECRET is required"),

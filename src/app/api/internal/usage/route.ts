@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withInternalAuth } from "@/lib/auth/internal-route-helpers";
 import { recordInternalAudit } from "@/lib/auth/internal-audit";
 import { db } from "@/lib/db";
+import type { PlanTier } from "@prisma/client";
 
 export async function GET(request: NextRequest) {
   return withInternalAuth(request, async () => {
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
 
       const result = counters.map((c) => {
         const org = orgMap.get(c.organizationId);
-        const plan = planMap.get((org?.planTier as string) ?? "rescue");
+        const plan = planMap.get((org?.planTier ?? "rescue") as PlanTier);
         // Simple limit inference based on metric
         let limit: number | null = null;
         if (c.metric === "monitored_members" && plan) {
