@@ -6,10 +6,13 @@ import type { Metadata, MetadataRoute } from "next";
 
 /** Derive metadataBase from environment, safe for preview/local. */
 export function getMetadataBase(): URL {
-  const url = process.env.APP_URL ?? process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3000";
-  return new URL(url);
+  const appUrl = process.env.APP_URL;
+  if (appUrl && appUrl.length > 0) return new URL(appUrl);
+
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl && vercelUrl.length > 0) return new URL(`https://${vercelUrl}`);
+
+  return new URL("http://localhost:3000");
 }
 
 /** Index policy for public pages. */
