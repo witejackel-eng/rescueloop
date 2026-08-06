@@ -219,20 +219,28 @@ jobs:
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
 
-      - name: Install wait-on
-        run: npm install -g wait-on
-
-      - name: Start app in fixture mode
-        run: bun run start &
+      - name: Build Next.js for E2E
+        run: bun run build
         env:
-          PORT: 3000
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/rescueloop_test"
           RESCUELOOP_FIXTURE_MODE: "true"
-
-      - name: Wait for app
-        run: wait-on http://localhost:3000 --timeout 60000
+          NEXT_PUBLIC_WHOP_APP_ID: "ci-fixture-app-id"
+          NEXT_PUBLIC_POSTHOG_KEY: "phc_ci_fixture_key"
+          NEXT_PUBLIC_POSTHOG_HOST: "https://us.posthog.com"
+          WHOP_API_KEY: "ci-fixture-whop-api-key"
+          WHOP_WEBHOOK_SECRET: "whsec_ci_fixture_webhook_secret_padding_32ch"
+          APP_URL: "http://localhost:3000"
+          CRON_SECRET: "ci-fixture-cron-secret-padding-32ch"
+          INNGEST_EVENT_KEY: "ci-fixture-inngest-event-key"
+          JOB_PROVIDER_SECRET: "ci-fixture-job-provider-secret-32"
+          STUDENT_LINK_SIGNING_SECRET: "ci-fixture-student-link-signing-32ch"
+          SENTRY_DSN: ""
+          RESCUELOOP_INTERNAL_TOKEN: "ci-fixture-internal-token-padding-32"
 
       - name: Run E2E tests
         run: bunx playwright test
+        env:
+          RESCUELOOP_FIXTURE_MODE: "true"
 
       - name: Upload test artifacts (on failure)
         if: failure()
