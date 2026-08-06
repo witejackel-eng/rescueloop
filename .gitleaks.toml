@@ -1,0 +1,21 @@
+# Gitleaks configuration for RescueLoop
+# Allow known fixture/placeholder secrets in CI environment
+
+[allowlist]
+  description = "CI fixture secrets are not real credentials"
+
+  [[allowlist.regexes]]
+    regex = '''ci-fixture-[a-z-]+-padding-32ch'''
+    description = "CI fixture secret with padding suffix"
+
+  [[allowlist.regexes]]
+    regex = '''whsec_ci_fixture_[a-z_]+'''
+    description = "CI fixture Whop webhook secret"
+
+  [[allowlist.regexes]]
+    regex = '''phc_ci_fixture_[a-z_]+'''
+    description = "CI fixture PostHog key"
+
+  [[allowlist.regexes]]
+    regex = '''ci-fixture-[a-z-]+-[0-9]{2}'''
+    description = "CI fixture secret with 2-digit suffix"

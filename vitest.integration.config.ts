@@ -13,6 +13,9 @@ export default defineConfig({
       },
     },
   },
+  css: {
+    postcss: {},
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
