@@ -9,6 +9,7 @@ import { test, expect } from '@playwright/test';
  * - Auth is handled client-side via sessionStorage + fetch to /api/internal/auth
  *
  * The correct E2E assertion is: unauthenticated → login form visible (200).
+ * Authenticated → dashboard content visible, workspace shell present.
  */
 
 const INTERNAL_API_KEY = process.env.RESCUELOOP_INTERNAL_TOKEN ?? 'ci-fixture-internal-token-padding-32';

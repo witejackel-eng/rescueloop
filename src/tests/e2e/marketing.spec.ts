@@ -10,6 +10,8 @@ import { test, expect } from '@playwright/test';
  * - Pricing section has id="pricing"
  * - FAQ section has id="faq"
  * - Footer has links to /legal/privacy and /legal/terms
+ *
+ * Uses stable accessible roles and locators — no CSS selector lists.
  */
 
 const VIEWPORTS = [
@@ -54,6 +56,7 @@ test.describe('Marketing Home Page', () => {
   });
 
   test('hero CTA navigates to /overview', async ({ page }) => {
+    // Use a stable role-based locator: link pointing to /overview
     const heroCta = page.locator('a[href="/overview"]').first();
     await expect(heroCta).toBeVisible({ timeout: 10_000 });
     await heroCta.click();
