@@ -1,0 +1,724 @@
+     1→"use client";
+     2→
+     3→// ConnectedShell — the company-scoped shell for /companies/[companyId]/* routes.
+     4→//
+     5→// This shell is SEPARATE from the demo WorkspaceShell. It never links to
+     6→// demo routes (/overview, /rescue-queue, etc.). Every nav href includes
+     7→// the companyId so creators stay inside their company scope.
+     8→//
+     9→// Visual language is the warm cream design system, but the shell is
+    10→// visually distinct from the demo workspace:
+    11→//   - Wider desktop nav rail (76px) with section dividers
+    12→//   - Environment badge (FIXTURE / CONNECTED / NOT CONFIGURED)
+    13→//   - Installation-state dot next to the company name
+    14→//   - "Last sync" timestamp with relative time
+    15→//   - Emergency pause button (calls /api/companies/[id]/settings/pause)
+    16→//   - User menu placeholder (no auth wired here — server-side handles it)
+    17→//
+    18→// All numbers in font-mono tabular-nums.
+    19→
+    20→import { useState } from "react";
+    21→import Link from "next/link";
+    22→import { usePathname, useRouter } from "next/navigation";
+    23→import { motion, AnimatePresence } from "framer-motion";
+    24→import {
+    25→  Pause,
+    26→  Play,
+    27→  RefreshCw,
+    28→  ChevronDown,
+    29→  MoreHorizontal,
+    30→  User as UserIcon,
+    31→  Settings as SettingsIcon,
+    32→  LogOut,
+    33→  ShieldAlert,
+    34→  CheckCircle2,
+    35→  AlertTriangle,
+    36→  Loader2,
+    37→  type LucideIcon,
+    38→} from "lucide-react";
+    39→import { cn } from "@/lib/utils";
+    40→import { Button } from "@/components/ui/button";
+    41→import {
+    42→  Sheet,
+    43→  SheetContent,
+    44→  SheetHeader,
+    45→  SheetTitle,
+    46→} from "@/components/ui/sheet";
+    47→import {
+    48→  Tooltip,
+    49→  TooltipContent,
+    50→  TooltipProvider,
+    51→  TooltipTrigger,
+    52→} from "@/components/ui/tooltip";
+    53→import {
+    54→  AlertDialog,
+    55→  AlertDialogAction,
+    56→  AlertDialogCancel,
+    57→  AlertDialogContent,
+    58→  AlertDialogDescription,
+    59→  AlertDialogFooter,
+    60→  AlertDialogHeader,
+    61→  AlertDialogTitle,
+    62→  AlertDialogTrigger,
+    63→} from "@/components/ui/alert-dialog";
+    64→import {
+    65→  DropdownMenu,
+    66→  DropdownMenuContent,
+    67→  DropdownMenuItem,
+    68→  DropdownMenuLabel,
+    69→  DropdownMenuSeparator,
+    70→  DropdownMenuTrigger,
+    71→} from "@/components/ui/dropdown-menu";
+    72→import { toast } from "sonner";
+    73→import { RescueLoopMark } from "@/components/brand/logo";
+    74→import {
+    75→  CONNECTED_NAV_ITEMS,
+    76→  MOBILE_PRIMARY_ITEMS,
+    77→  MOBILE_MORE_ITEMS,
+    78→  buildCompanyHref,
+    79→  getActiveConnectedNavKey,
+    80→  ENVIRONMENT_BADGE,
+    81→  ENVIRONMENT_LABEL,
+    82→  type ConnectedEnvironment,
+    83→  type InstallationState,
+    84→} from "@/components/shell/connected-nav";
+    85→
+    86→export interface ConnectedShellProps {
+    87→  /** Company ID used in every nav href. In fixture mode this is FIXTURE_COMPANY_ID. */
+    88→  companyId: string;
+    89→  /** Display name for the company (from the Organization row). */
+    90→  companyName?: string;
+    91→  /** Environment badge mode. */
+    92→  environment: ConnectedEnvironment;
+    93→  /** Whether the Whop installation is active / missing / unknown. */
+    94→  installationState: InstallationState;
+    95→  /** ISO timestamp of the last successful sync (webhook receipt). null if never. */
+    96→  lastSyncAt: string | null;
+    97→  /** Whether the org is currently paused (no interventions send). */
+    98→  isPaused: boolean;
+    99→  children: React.ReactNode;
+   100→}
+   101→
+   102→export function ConnectedShell({
+   103→  companyId,
+   104→  companyName,
+   105→  environment,
+   106→  installationState,
+   107→  lastSyncAt,
+   108→  isPaused: initialPaused,
+   109→  children,
+   110→}: ConnectedShellProps) {
+   111→  const pathname = usePathname();
+   112→  const router = useRouter();
+   113→  const [moreSheetOpen, setMoreSheetOpen] = useState(false);
+   114→  const [pauseBusy, setPauseBusy] = useState(false);
+   115→  const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
+   116→  const [paused, setPaused] = useState(initialPaused);
+   117→
+   118→  const activeKey = getActiveConnectedNavKey(pathname, companyId);
+   119→  const envBadge = ENVIRONMENT_BADGE[environment];
+   120→  const envLabel = ENVIRONMENT_LABEL[environment];
+   121→
+   122→  async function togglePause(nextPaused: boolean) {
+   123→    setPauseBusy(true);
+   124→    try {
+   125→      const res = await fetch(
+   126→        `/api/companies/${encodeURIComponent(companyId)}/settings/pause`,
+   127→        {
+   128→          method: "POST",
+   129→          headers: { "content-type": "application/json" },
+   130→          body: JSON.stringify({
+   131→            paused: nextPaused,
+   132→            reason: nextPaused ? "admin_paused_shell" : "admin_resumed_shell",
+   133→          }),
+   134→        },
+   135→      );
+   136→      const json = await res.json().catch(() => ({}));
+   137→      if (!res.ok) {
+   138→        toast.error(json?.error?.message ?? "Failed to update pause state.");
+   139→        return;
+   140→      }
+   141→      setPaused(nextPaused);
+   142→      toast.success(
+   143→        nextPaused
+   144→          ? "Automation paused — no interventions will send."
+   145→          : "Automation resumed.",
+   146→      );
+   147→      setPauseDialogOpen(false);
+   148→      router.refresh();
+   149→    } catch {
+   150→      toast.error("Network error — please try again.");
+   151→    } finally {
+   152→      setPauseBusy(false);
+   153→    }
+   154→  }
+   155→
+   156→  return (
+   157→    <div className="flex h-screen overflow-hidden bg-[var(--canvas)]">
+   158→      {/* ─── Desktop vertical nav rail ─────────────────────────── */}
+   159→      <aside className="hidden w-[76px] shrink-0 flex-col border-r border-[var(--hairline)] bg-[var(--canvas-elevated)] md:flex">
+   160→        <div className="flex h-14 items-center justify-center border-b border-[var(--hairline)]">
+   161→          <Link
+   162→            href={buildCompanyHref(companyId, "overview")}
+   163→            aria-label="RescueLoop — company overview"
+   164→          >
+   165→            <RescueLoopMark size={26} />
+   166→          </Link>
+   167→        </div>
+   168→
+   169→        {/* Environment badge in the rail (vertical text) */}
+   170→        <div className="flex justify-center border-b border-[var(--hairline)] py-2">
+   171→          <span
+   172→            className={cn(
+   173→              "inline-flex items-center gap-1 rounded-[3px] border px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-wide",
+   174→              envBadge.bgClass,
+   175→              envBadge.textClass,
+   176→            )}
+   177→            title={envLabel}
+   178→          >
+   179→            <span className={cn("size-1 rounded-full", envBadge.dotClass)} />
+   180→            {envBadge.label}
+   181→          </span>
+   182→        </div>
+   183→
+   184→        <nav
+   185→          className="flex flex-1 flex-col items-center gap-1 overflow-y-auto py-3"
+   186→          aria-label="Company navigation"
+   187→        >
+   188→          <TooltipProvider delayDuration={150}>
+   189→            {CONNECTED_NAV_ITEMS.map((item) => (
+   190→              <NavRailItem
+   191→                key={item.key}
+   192→                item={item}
+   193→                companyId={companyId}
+   194→                active={activeKey === item.key}
+   195→              />
+   196→            ))}
+   197→          </TooltipProvider>
+   198→        </nav>
+   199→
+   200→        {/* Footer: installation state + settings shortcut */}
+   201→        <div className="flex flex-col items-center gap-1 border-t border-[var(--hairline)] py-3">
+   202→          <TooltipProvider delayDuration={150}>
+   203→            <Tooltip>
+   204→              <TooltipTrigger asChild>
+   205→                <div
+   206→                  className="flex items-center gap-1 font-mono text-[10px] text-[var(--ink-muted)]"
+   207→                  aria-label={`Installation: ${installationState}`}
+   208→                >
+   209→                  <InstallationDot state={installationState} />
+   210→                  <span className="hidden lg:inline">
+   211→                    {installationState === "active"
+   212→                      ? "installed"
+   213→                      : installationState === "missing"
+   214→                        ? "no install"
+   215→                        : "unknown"}
+   216→                  </span>
+   217→                </div>
+   218→              </TooltipTrigger>
+   219→              <TooltipContent side="right" sideOffset={8}>
+   220→                {installationState === "active"
+   221→                  ? "Whop installation active"
+   222→                  : installationState === "missing"
+   223→                    ? "Whop installation missing"
+   224→                    : "Installation state unknown"}
+   225→              </TooltipContent>
+   226→            </Tooltip>
+   227→          </TooltipProvider>
+   228→        </div>
+   229→      </aside>
+   230→
+   231→      {/* ─── Main content area ─────────────────────────────────── */}
+   232→      <div className="flex min-w-0 flex-1 flex-col">
+   233→        {/* Top command bar */}
+   234→        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-[var(--hairline)] bg-[var(--canvas)] px-4 lg:px-6">
+   235→          {/* Mobile logo */}
+   236→          <Link
+   237→            href={buildCompanyHref(companyId, "overview")}
+   238→            className="flex items-center gap-2 md:hidden"
+   239→            aria-label="RescueLoop"
+   240→          >
+   241→            <RescueLoopMark size={22} />
+   242→          </Link>
+   243→
+   244→          {/* Company selector (read-only) */}
+   245→          <button
+   246→            type="button"
+   247→            className="hidden items-center gap-2 text-[13px] font-medium text-[var(--ink-primary)] md:flex"
+   248→            aria-label={`Company: ${companyName ?? companyId}`}
+   249→            title="Company context (read-only)"
+   250→          >
+   251→            {/* Environment pill (compact) */}
+   252→            <span
+   253→              className={cn(
+   254→                "inline-flex items-center gap-1 rounded-[4px] border px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide",
+   255→                envBadge.bgClass,
+   256→                envBadge.textClass,
+   257→              )}
+   258→            >
+   259→              <span className={cn("size-1 rounded-full", envBadge.dotClass)} />
+   260→              {envBadge.label}
+   261→            </span>
+   262→            <span className="inline-flex items-center gap-1.5">
+   263→              <InstallationDot state={installationState} />
+   264→              <span className="max-w-[180px] truncate">
+   265→                {companyName ?? "Connected company"}
+   266→              </span>
+   267→            </span>
+   268→            <span className="font-mono text-[11px] text-[var(--ink-muted)]">
+   269→              ·
+   270→            </span>
+   271→            <span className="font-mono text-[11px] text-[var(--ink-muted)]">
+   272→              {companyId}
+   273→            </span>
+   274→            <ChevronDown className="size-3.5 text-[var(--ink-muted)]" />
+   275→          </button>
+   276→
+   277→          <div className="ml-auto flex items-center gap-1.5">
+   278→            {/* Last sync timestamp */}
+   279→            <div
+   280→              className="hidden items-center gap-1.5 lg:flex"
+   281→              title={
+   282→                lastSyncAt
+   283→                  ? `Last sync: ${new Date(lastSyncAt).toLocaleString()}`
+   284→                  : "No sync yet"
+   285→              }
+   286→            >
+   287→              <RefreshCw className="size-3.5 text-[var(--ink-muted)]" />
+   288→              <span className="font-mono text-[11px] text-[var(--ink-muted)] tabular-nums">
+   289→                {lastSyncAt
+   290→                  ? `sync ${formatRelativeShort(lastSyncAt)}`
+   291→                  : "never synced"}
+   292→              </span>
+   293→            </div>
+   294→
+   295→            {/* Sync status — installation/connected indicator */}
+   296→            <SyncStatusPill
+   297→              installationState={installationState}
+   298→              environment={environment}
+   299→            />
+   300→
+   301→            {/* Pause / Resume */}
+   302→            {paused ? (
+   303→              <Button
+   304→                onClick={() => togglePause(false)}
+   305→                disabled={pauseBusy}
+   306→                variant="ghost"
+   307→                size="sm"
+   308→                className="h-9 gap-1.5 rounded-[8px] bg-[var(--recovery-green)] px-3 text-[12px] font-medium text-white hover:bg-[var(--recovery-green)]/90"
+   309→                aria-label="Resume automation"
+   310→              >
+   311→                {pauseBusy ? (
+   312→                  <Loader2 className="size-4 animate-spin" />
+   313→                ) : (
+   314→                  <Play className="size-4" />
+   315→                )}
+   316→                <span className="hidden sm:inline">Resume</span>
+   317→              </Button>
+   318→            ) : (
+   319→              <AlertDialog open={pauseDialogOpen} onOpenChange={setPauseDialogOpen}>
+   320→                <AlertDialogTrigger asChild>
+   321→                  <Button
+   322→                    variant="ghost"
+   323→                    size="sm"
+   324→                    className="h-9 gap-1.5 rounded-[8px] px-3 text-[12px] font-medium text-[var(--critical)] hover:bg-[var(--critical-light)]/40"
+   325→                    aria-label="Pause automation"
+   326→                  >
+   327→                    <Pause className="size-4" />
+   328→                    <span className="hidden sm:inline">Pause</span>
+   329→                  </Button>
+   330→                </AlertDialogTrigger>
+   331→                <AlertDialogContent>
+   332→                  <AlertDialogHeader>
+   333→                    <AlertDialogTitle>
+   334→                      Pause all automation?
+   335→                    </AlertDialogTitle>
+   336→                    <AlertDialogDescription>
+   337→                      No new interventions will be sent while paused. Existing
+   338→                      scheduled sends will be stopped at the delivery safety
+   339→                      check. You can resume at any time from the shell.
+   340→                    </AlertDialogDescription>
+   341→                  </AlertDialogHeader>
+   342→                  <AlertDialogFooter>
+   343→                    <AlertDialogCancel disabled={pauseBusy}>
+   344→                      Cancel
+   345→                    </AlertDialogCancel>
+   346→                    <AlertDialogAction
+   347→                      disabled={pauseBusy}
+   348→                      onClick={async (e) => {
+   349→                        e.preventDefault();
+   350→                        await togglePause(true);
+   351→                      }}
+   352→                      className="bg-[var(--critical)] text-white hover:bg-[var(--critical)]/90"
+   353→                    >
+   354→                      {pauseBusy ? (
+   355→                        <Loader2 className="size-4 animate-spin" />
+   356→                      ) : (
+   357→                        <Pause className="size-4" />
+   358→                      )}
+   359→                      Pause automation
+   360→                    </AlertDialogAction>
+   361→                  </AlertDialogFooter>
+   362→                </AlertDialogContent>
+   363→              </AlertDialog>
+   364→            )}
+   365→
+   366→            {/* User menu (placeholder) */}
+   367→            <UserMenu companyId={companyId} />
+   368→          </div>
+   369→        </header>
+   370→
+   371→        {/* Paused banner */}
+   372→        <AnimatePresence>
+   373→          {paused && (
+   374→            <motion.div
+   375→              initial={{ height: 0, opacity: 0 }}
+   376→              animate={{ height: "auto", opacity: 1 }}
+   377→              exit={{ height: 0, opacity: 0 }}
+   378→              className="overflow-hidden border-b border-[var(--critical-light)] bg-[var(--critical-light)]/40"
+   379→            >
+   380→              <p className="px-4 py-1.5 text-center text-[12px] font-medium text-[var(--critical)]">
+   381→                Automation paused — no interventions will be sent until you resume.
+   382→              </p>
+   383→            </motion.div>
+   384→          )}
+   385→        </AnimatePresence>
+   386→
+   387→        {/* Environment banner (unconfigured / fixture) */}
+   388→        <AnimatePresence>
+   389→          {environment !== "whop" && (
+   390→            <motion.div
+   391→              initial={{ height: 0, opacity: 0 }}
+   392→              animate={{ height: "auto", opacity: 1 }}
+   393→              exit={{ height: 0, opacity: 0 }}
+   394→              className={cn(
+   395→                "overflow-hidden border-b",
+   396→                environment === "fixture"
+   397→                  ? "border-[var(--warning-light)] bg-[var(--warning-light)]/40"
+   398→                  : "border-[var(--critical-light)] bg-[var(--critical-light)]/40",
+   399→              )}
+   400→            >
+   401→              <p
+   402→                className={cn(
+   403→                  "px-4 py-1.5 text-center text-[12px] font-medium",
+   404→                  environment === "fixture"
+   405→                    ? "text-[var(--warning)]"
+   406→                    : "text-[var(--critical)]",
+   407→                )}
+   408→              >
+   409→                {environment === "fixture"
+   410→                  ? "Fixture environment — local deterministic data, no live Whop calls."
+   411→                  : "Whop integration not configured — set WHOP_API_KEY, WHOP_WEBHOOK_SECRET, and NEXT_PUBLIC_WHOP_APP_ID."}
+   412→              </p>
+   413→            </motion.div>
+   414→          )}
+   415→        </AnimatePresence>
+   416→
+   417→        {/* Page content */}
+   418→        <div className="min-h-0 flex-1 overflow-y-auto pb-24 md:pb-0">
+   419→          <div className="mx-auto w-full max-w-[1320px] px-4 py-6 lg:px-8 lg:py-8">
+   420→            {children}
+   421→          </div>
+   422→        </div>
+   423→      </div>
+   424→
+   425→      {/* ─── Mobile bottom tab bar ────────────────────────────── */}
+   426→      <nav
+   427→        className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-around border-t border-[var(--hairline)] bg-[var(--canvas-elevated)]/95 backdrop-blur md:hidden"
+   428→        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+   429→        aria-label="Mobile company navigation"
+   430→      >
+   431→        {MOBILE_PRIMARY_ITEMS.map((item) => {
+   432→          const active = activeKey === item.key;
+   433→          return (
+   434→            <Link
+   435→              key={item.key}
+   436→              href={buildCompanyHref(companyId, item.segment)}
+   437→              className="relative flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 py-2"
+   438→              aria-current={active ? "page" : undefined}
+   439→              aria-label={item.label}
+   440→            >
+   441→              {active && (
+   442→                <motion.span
+   443→                  layoutId="mobile-connected-nav-active"
+   444→                  transition={{ type: "spring", stiffness: 380, damping: 34 }}
+   445→                  className="absolute top-0 h-[2px] w-8 bg-[var(--recovery-green)]"
+   446→                />
+   447→              )}
+   448→              <item.icon
+   449→                className={cn(
+   450→                  "size-5",
+   451→                  active
+   452→                    ? "text-[var(--ink-primary)]"
+   453→                    : "text-[var(--ink-muted)]",
+   454→                )}
+   455→              />
+   456→              <span
+   457→                className={cn(
+   458→                  "text-[10px]",
+   459→                  active
+   460→                    ? "text-[var(--ink-primary)]"
+   461→                    : "text-[var(--ink-muted)]",
+   462→                )}
+   463→              >
+   464→                {item.label}
+   465→              </span>
+   466→            </Link>
+   467→          );
+   468→        })}
+   469→        <button
+   470→          type="button"
+   471→          onClick={() => setMoreSheetOpen(true)}
+   472→          className="flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 py-2"
+   473→          aria-label="More navigation"
+   474→        >
+   475→          <MoreHorizontal className="size-5 text-[var(--ink-muted)]" />
+   476→          <span className="text-[10px] text-[var(--ink-muted)]">More</span>
+   477→        </button>
+   478→      </nav>
+   479→
+   480→      {/* ─── Mobile "More" sheet ──────────────────────────────── */}
+   481→      <Sheet open={moreSheetOpen} onOpenChange={setMoreSheetOpen}>
+   482→        <SheetContent side="bottom" className="rounded-t-[20px] p-0">
+   483→          <SheetHeader className="border-b border-[var(--hairline)] px-5 pt-5">
+   484→            <SheetTitle className="flex items-center justify-between font-serif text-xl">
+   485→              <span>More</span>
+   486→              <span
+   487→                className={cn(
+   488→                  "inline-flex items-center gap-1 rounded-[4px] border px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide",
+   489→                  envBadge.bgClass,
+   490→                  envBadge.textClass,
+   491→                )}
+   492→              >
+   493→                <span className={cn("size-1 rounded-full", envBadge.dotClass)} />
+   494→                {envBadge.label}
+   495→              </span>
+   496→            </SheetTitle>
+   497→          </SheetHeader>
+   498→          <nav
+   499→            className="flex flex-col p-3"
+   500→            aria-label="More company navigation"
+   501→          >
+   502→            {MOBILE_MORE_ITEMS.map((item) => {
+   503→              const active = activeKey === item.key;
+   504→              return (
+   505→                <Link
+   506→                  key={item.key}
+   507→                  href={buildCompanyHref(companyId, item.segment)}
+   508→                  onClick={() => setMoreSheetOpen(false)}
+   509→                  className={cn(
+   510→                    "flex min-h-[44px] items-center gap-3 rounded-[8px] px-3 py-3 text-[15px]",
+   511→                    active
+   512→                      ? "bg-[var(--canvas-elevated)] text-[var(--ink-primary)]"
+   513→                      : "text-[var(--ink-secondary)]",
+   514→                  )}
+   515→                >
+   516→                  <item.icon className="size-5" />
+   517→                  <span className="flex flex-col">
+   518→                    <span>{item.label}</span>
+   519→                    <span className="text-[11px] text-[var(--ink-muted)]">
+   520→                      {item.description}
+   521→                    </span>
+   522→                  </span>
+   523→                </Link>
+   524→              );
+   525→            })}
+   526→          </nav>
+   527→        </SheetContent>
+   528→      </Sheet>
+   529→    </div>
+   530→  );
+   531→}
+   532→
+   533→// ─── Sub-components ─────────────────────────────────────────────
+   534→
+   535→interface NavRailItemProps {
+   536→  item: {
+   537→    key: string;
+   538→    label: string;
+   539→    icon: LucideIcon;
+   540→    segment: string;
+   541→    description: string;
+   542→  };
+   543→  companyId: string;
+   544→  active: boolean;
+   545→}
+   546→
+   547→function NavRailItem({ item, companyId, active }: NavRailItemProps) {
+   548→  const href = buildCompanyHref(companyId, item.segment);
+   549→  return (
+   550→    <Tooltip>
+   551→      <TooltipTrigger asChild>
+   552→        <Link
+   553→          href={href}
+   554→          className="relative flex size-10 items-center justify-center press"
+   555→          aria-current={active ? "page" : undefined}
+   556→          aria-label={item.label}
+   557→        >
+   558→          {active && (
+   559→            <motion.span
+   560→              layoutId="connected-nav-active-bg"
+   561→              transition={{ type: "spring", stiffness: 300, damping: 32 }}
+   562→              className="absolute inset-0 rounded-[8px] bg-[var(--surface)] shadow-[0_0_0_1px_var(--hairline)]"
+   563→            />
+   564→          )}
+   565→          <item.icon
+   566→            className={cn(
+   567→              "relative z-10 size-[18px] transition-colors",
+   568→              active
+   569→                ? "text-[var(--ink-primary)]"
+   570→                : "text-[var(--ink-muted)] hover:text-[var(--ink-primary)]",
+   571→            )}
+   572→          />
+   573→          {active && (
+   574→            <motion.span
+   575→              layoutId="connected-nav-active-bar"
+   576→              transition={{ type: "spring", stiffness: 380, damping: 34 }}
+   577→              className="absolute -left-[16px] top-1/2 h-5 w-[2px] -translate-y-1/2 bg-[var(--recovery-green)]"
+   578→            />
+   579→          )}
+   580→        </Link>
+   581→      </TooltipTrigger>
+   582→      <TooltipContent side="right" sideOffset={8}>
+   583→        <div className="flex flex-col">
+   584→          <span className="font-medium">{item.label}</span>
+   585→          <span className="text-[11px] opacity-80">{item.description}</span>
+   586→        </div>
+   587→      </TooltipContent>
+   588→    </Tooltip>
+   589→  );
+   590→}
+   591→
+   592→function InstallationDot({ state }: { state: InstallationState }) {
+   593→  if (state === "active") {
+   594→    return (
+   595→      <CheckCircle2 className="size-3 text-[var(--recovery-green)]" aria-hidden />
+   596→    );
+   597→  }
+   598→  if (state === "missing") {
+   599→    return (
+   600→      <AlertTriangle className="size-3 text-[var(--warning)]" aria-hidden />
+   601→    );
+   602→  }
+   603→  return (
+   604→    <ShieldAlert
+   605→      className="size-3 text-[var(--ink-muted)]"
+   606→      aria-hidden
+   607→    />
+   608→  );
+   609→}
+   610→
+   611→function SyncStatusPill({
+   612→  installationState,
+   613→  environment,
+   614→}: {
+   615→  installationState: InstallationState;
+   616→  environment: ConnectedEnvironment;
+   617→}) {
+   618→  let label: string;
+   619→  let dotClass: string;
+   620→  let textClass: string;
+   621→
+   622→  if (environment === "unconfigured") {
+   623→    label = "Not configured";
+   624→    dotClass = "bg-[var(--critical)]";
+   625→    textClass = "text-[var(--critical)]";
+   626→  } else if (installationState === "active") {
+   627→    label = environment === "fixture" ? "Fixture" : "Connected";
+   628→    dotClass = environment === "fixture" ? "bg-[var(--warning)]" : "bg-[var(--recovery-green)]";
+   629→    textClass = environment === "fixture" ? "text-[var(--warning)]" : "text-[var(--recovery-green)]";
+   630→  } else if (installationState === "missing") {
+   631→    label = "Install missing";
+   632→    dotClass = "bg-[var(--warning)]";
+   633→    textClass = "text-[var(--warning)]";
+   634→  } else {
+   635→    label = "Sync unknown";
+   636→    dotClass = "bg-[var(--ink-muted)]";
+   637→    textClass = "text-[var(--ink-secondary)]";
+   638→  }
+   639→
+   640→  return (
+   641→    <div
+   642→      className={cn(
+   643→        "hidden items-center gap-1.5 rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] px-2 py-1 sm:flex",
+   644→        textClass,
+   645→      )}
+   646→      title={`Sync status: ${label}`}
+   647→    >
+   648→      <span className={cn("size-1.5 rounded-full", dotClass)} />
+   649→      <span className="text-[11px] font-medium">{label}</span>
+   650→    </div>
+   651→  );
+   652→}
+   653→
+   654→function UserMenu({ companyId }: { companyId: string }) {
+   655→  return (
+   656→    <DropdownMenu>
+   657→      <DropdownMenuTrigger asChild>
+   658→        <Button
+   659→          variant="ghost"
+   660→          size="icon"
+   661→          className="size-9 rounded-[8px] text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]"
+   662→          aria-label="User menu"
+   663→        >
+   664→          <UserIcon className="size-[18px]" />
+   665→        </Button>
+   666→      </DropdownMenuTrigger>
+   667→      <DropdownMenuContent align="end" className="w-56">
+   668→        <DropdownMenuLabel className="flex flex-col gap-0.5">
+   669→          <span className="text-[13px] font-medium text-[var(--ink-primary)]">
+   670→            Creator account
+   671→          </span>
+   672→          <span className="font-mono text-[11px] text-[var(--ink-muted)]">
+   673→            {companyId}
+   674→          </span>
+   675→        </DropdownMenuLabel>
+   676→        <DropdownMenuSeparator />
+   677→        <DropdownMenuItem
+   678→          className="gap-2 text-[13px]"
+   679→          onClick={() => {
+   680→            toast.info("Profile is not wired in the pilot.");
+   681→          }}
+   682→        >
+   683→          <UserIcon className="size-4" />
+   684→          Profile
+   685→        </DropdownMenuItem>
+   686→        <DropdownMenuItem
+   687→          className="gap-2 text-[13px]"
+   688→          onClick={() => {
+   689→            window.location.href = buildCompanyHref(companyId, "settings");
+   690→          }}
+   691→        >
+   692→          <SettingsIcon className="size-4" />
+   693→          Organisation settings
+   694→        </DropdownMenuItem>
+   695→        <DropdownMenuSeparator />
+   696→        <DropdownMenuItem
+   697→          className="gap-2 text-[13px] text-[var(--critical)]"
+   698→          onClick={() => {
+   699→            toast.info("Sign-out is handled by Whop — close the embedded frame.");
+   700→          }}
+   701→        >
+   702→          <LogOut className="size-4" />
+   703→          Sign out
+   704→        </DropdownMenuItem>
+   705→      </DropdownMenuContent>
+   706→    </DropdownMenu>
+   707→  );
+   708→}
+   709→
+   710→// ─── Helpers ────────────────────────────────────────────────────
+   711→
+   712→function formatRelativeShort(iso: string): string {
+   713→  const d = new Date(iso);
+   714→  const diffMs = Date.now() - d.getTime();
+   715→  const mins = Math.floor(diffMs / 60000);
+   716→  if (mins < 1) return "just now";
+   717→  if (mins < 60) return `${mins}m ago`;
+   718→  const hours = Math.floor(mins / 60);
+   719→  if (hours < 24) return `${hours}h ago`;
+   720→  const days = Math.floor(hours / 24);
+   721→  if (days < 30) return `${days}d ago`;
+   722→  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+   723→}
+   724→
