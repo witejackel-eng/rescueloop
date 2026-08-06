@@ -53,10 +53,8 @@ export function LiveRegion({
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Reset visibility when message changes
+  // Auto-clear after the specified duration when message changes
   useEffect(() => {
-    setVisible(true);
-
     if (timerRef.current !== undefined) {
       clearTimeout(timerRef.current);
     }

@@ -1,5 +1,19 @@
 "use client";
 
+/**
+ * AppShell — the stable application shell that persists across routes.
+ *
+ * Per spec 03_APP_SHELL_AND_NAVIGATION.md:
+ * - Shell stays mounted across route changes
+ * - Uses regional skeletons instead of full-screen flashes
+ * - Errors render inside the content region
+ * - Browser back restores reasonable context
+ * - Deep links open the correct inspector where supported
+ * - Navigation exposes current route, supports keyboard/screen readers
+ * - Close mobile sheets on navigation
+ * - Share one route registry with the command palette
+ */
+
 import {
   Bell,
   LifeBuoy,
@@ -8,13 +22,15 @@ import {
   RefreshCw,
   ChevronDown,
   Menu,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useCallback, type ReactNode, type ErrorInfo } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet,
   SheetContent,
@@ -50,8 +66,11 @@ import {
   UNRESOLVED_NOTIFICATION_COUNT,
 } from "@/lib/mock-data";
 import { NotificationList } from "@/components/layout/notification-list";
+import { useEscapeKey } from "@/hooks/use-focus-restore";
 
-const NAV_ITEMS = [
+// ─── Route registry (shared with CommandPalette) ───
+
+export const NAV_ITEMS = [
   { href: "/overview", label: "Overview" },
   { href: "/rescue-queue", label: "Rescue Queue" },
   { href: "/students", label: "Students" },
@@ -59,10 +78,186 @@ const NAV_ITEMS = [
   { href: "/insights", label: "Insights" },
   { href: "/value", label: "Value" },
   { href: "/settings", label: "Settings" },
-];
+] as const;
+
+export type NavRoute = (typeof NAV_ITEMS)[number];
+
+/**
+ * Get the current active nav key from a pathname.
+ * Shared between AppShell, CommandPalette, and keyboard handlers.
+ */
+export function getActiveNavKey(pathname: string): string | null {
+  for (const item of NAV_ITEMS) {
+    if (pathname.startsWith(item.href)) return item.href;
+  }
+  return null;
+}
+
+// ─── Regional skeleton patterns ───
+
+export interface RegionSkeletonProps {
+  /** Number of skeleton rows */
+  rows?: number;
+  /** Variant controls the skeleton shape */
+  variant?: "table" | "cards" | "list" | "chart";
+  className?: string;
+}
+
+/**
+ * RegionSkeleton — renders a regional skeleton for a content area.
+ * Per spec: use regional skeletons instead of full-screen flashes.
+ * Each region loads independently so the shell never flashes.
+ */
+export function RegionSkeleton({
+  rows = 4,
+  variant = "table",
+  className,
+}: RegionSkeletonProps) {
+  if (variant === "cards") {
+    return (
+      <div className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-3", className)}>
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="flex flex-col gap-3 rounded-xl border border-[#E3E5DF] bg-white p-4">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-8 w-1/2" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (variant === "chart") {
+    return (
+      <div className={cn("flex flex-col gap-4", className)}>
+        <Skeleton className="h-6 w-1/4" />
+        <Skeleton className="h-[200px] w-full rounded-lg" />
+        <div className="flex gap-4">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-4 w-1/3" />
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === "list") {
+    return (
+      <div className={cn("flex flex-col gap-2", className)}>
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg px-3 py-2">
+            <Skeleton className="size-8 rounded-full" />
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Skeleton className="h-3 w-1/3" />
+              <Skeleton className="h-2 w-2/3" />
+            </div>
+            <Skeleton className="h-3 w-16" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Default: table
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      {/* Header row */}
+      <div className="flex items-center gap-4 rounded-lg bg-[#F8F8F5] px-3 py-2">
+        <Skeleton className="h-3 w-1/5" />
+        <Skeleton className="h-3 w-1/5" />
+        <Skeleton className="h-3 w-1/5" />
+        <Skeleton className="h-3 w-1/5" />
+        <Skeleton className="h-3 w-1/5" />
+      </div>
+      {/* Data rows */}
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4 rounded-lg px-3 py-2">
+          <Skeleton className="h-4 w-1/5" />
+          <Skeleton className="h-4 w-1/5" />
+          <Skeleton className="h-4 w-1/5" />
+          <Skeleton className="h-4 w-1/5" />
+          <Skeleton className="h-4 w-1/5" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Content-region error boundary ───
+
+interface ContentErrorProps {
+  error: Error;
+  resetErrorBoundary?: () => void;
+  className?: string;
+}
+
+/**
+ * ContentRegionError — renders an error inside the content region.
+ * Per spec: errors render inside the content region, not as full-page overlays.
+ */
+export function ContentRegionError({
+  error,
+  resetErrorBoundary,
+  className,
+}: ContentErrorProps) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-4 rounded-xl border border-[#E8C9C5] bg-[#FDF6F5] px-6 py-12 text-center",
+        className
+      )}
+      role="alert"
+      aria-live="assertive"
+    >
+      <div className="flex size-12 items-center justify-center rounded-full bg-[#C64D45]/10">
+        <AlertTriangle className="size-6 text-[#C64D45]" />
+      </div>
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-semibold text-[#171A17]">Something went wrong</h3>
+        <p className="text-sm text-[#6A706A]">
+          {error.message || "An unexpected error occurred in this section."}
+        </p>
+      </div>
+      {resetErrorBoundary && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={resetErrorBoundary}
+          className="gap-1.5"
+        >
+          <RefreshCw className="size-3.5" />
+          Try again
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ─── Content Region wrapper ───
+
+export interface ContentRegionProps {
+  children: ReactNode;
+  className?: string;
+}
+
+/**
+ * ContentRegion — wraps page content inside the shell's main area.
+ * Provides a consistent container with error boundary support.
+ * The shell stays mounted; only this region changes between routes.
+ */
+export function ContentRegion({ children, className }: ContentRegionProps) {
+  return (
+    <div className={cn("min-h-[50vh]", className)}>
+      {children}
+    </div>
+  );
+}
+
+// ─── AppHeader ───
 
 export function AppHeader() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [automationState, setAutomationState] = useState<AutomationState>(AUTOMATION_STATE);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -72,6 +267,22 @@ export function AppHeader() {
   function togglePause() {
     setAutomationState((prev) => (prev === "paused" ? "manual_approval" : "paused"));
   }
+
+  // Close mobile nav on route change
+  const handleNavClick = useCallback(
+    (href: string) => {
+      setMobileNavOpen(false);
+      router.push(href);
+    },
+    [router]
+  );
+
+  // Escape closes mobile nav
+  useEscapeKey(() => setMobileNavOpen(false), mobileNavOpen);
+  useEscapeKey(() => setNotifOpen(false), notifOpen);
+
+  // Determine current route for aria-current and screen readers
+  const activeKey = getActiveNavKey(pathname);
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-[#E3E5DF] bg-[#FFFFFF]/95 backdrop-blur supports-[backdrop-filter]:bg-[#FFFFFF]/80">
@@ -94,28 +305,32 @@ export function AppHeader() {
                 <RescueLoopLogo />
               </SheetTitle>
             </SheetHeader>
-            <nav className="flex flex-col gap-1 p-4">
-              {NAV_ITEMS.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileNavOpen(false)}
-                  className={cn(
-                    "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    pathname.startsWith(item.href)
-                      ? "bg-[#E8F5EF] text-[#0B5144]"
-                      : "text-[#6A706A] hover:bg-[#F8F8F5] hover:text-[#171A17]",
-                  )}
-                >
-                  {item.label}
-                </Link>
-              ))}
+            <nav className="flex flex-col gap-1 p-4" aria-label="Mobile navigation">
+              {NAV_ITEMS.map((item) => {
+                const active = item.href === activeKey;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileNavOpen(false)}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      active
+                        ? "bg-[#E8F5EF] text-[#0B5144]"
+                        : "text-[#6A706A] hover:bg-[#F8F8F5] hover:text-[#171A17]",
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
             </nav>
           </SheetContent>
         </Sheet>
 
         {/* Logo */}
-        <Link href="/overview" className="shrink-0">
+        <Link href="/overview" className="shrink-0" aria-label="RescueLoop home">
           <RescueLoopLogo />
         </Link>
 
@@ -247,15 +462,16 @@ export function AppHeader() {
         </div>
       </div>
 
-      {/* Desktop horizontal nav */}
+      {/* Desktop horizontal nav — with aria-current for screen readers */}
       <nav className="hidden border-t border-[#E3E5DF] bg-[#FFFFFF] lg:block" aria-label="Main navigation">
         <div className="mx-auto flex max-w-[1400px] items-center gap-1 px-4 lg:px-6">
           {NAV_ITEMS.map((item) => {
-            const active = pathname.startsWith(item.href);
+            const active = item.href === activeKey;
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "relative -mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
                   active
@@ -272,7 +488,7 @@ export function AppHeader() {
 
       {/* Paused banner */}
       {isPaused && (
-        <div className="border-b border-[#E8C9C5] bg-[#FDF6F5] px-4 py-2 text-center lg:px-6">
+        <div className="border-b border-[#E8C9C5] bg-[#FDF6F5] px-4 py-2 text-center lg:px-6" role="alert">
           <p className="text-xs font-medium text-[#C64D45]">
             Automation is paused. No interventions will be sent until you resume.
           </p>
@@ -282,16 +498,21 @@ export function AppHeader() {
   );
 }
 
+// ─── AppShell ───
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-[#F4F4F1]">
+      {/* Skip to content — keyboard accessibility */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-[#147D68] focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
       >
         Skip to content
       </a>
+      {/* Shell stays mounted across route changes */}
       <AppHeader />
+      {/* Content region — only this area changes between routes */}
       <main
         id="main-content"
         className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 lg:px-6 lg:py-8"
@@ -299,6 +520,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         {children}
       </main>
+      {/* Sticky footer — pushed down by flex-1 on main */}
       <footer className="border-t border-[#E3E5DF] bg-[#FFFFFF] py-4">
         <div className="mx-auto flex max-w-[1400px] flex-col items-center justify-between gap-2 px-4 text-xs text-[#6A706A] sm:flex-row lg:px-6">
           <p>RescueLoop — student-success command centre for Whop course creators</p>

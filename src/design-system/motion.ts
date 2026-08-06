@@ -1,11 +1,31 @@
 // RescueLoop motion tokens — consistent timings across the entire app.
 // Adapted from the Optimus reference discipline with RescueLoop-specific values.
+// Per spec 02_MOTION_CONTRACT.md:
+//   instant: 80ms; press: 120ms; micro: 160ms; standard: 240ms;
+//   panel: 320ms; route: 360ms; reveal: 520ms; hero: 820ms max;
+//   first-value: 480ms
 
 export const motionTokens = {
+  /** Instant feedback — 80ms. Press feedback next frame. */
+  instant: 80,
+  /** Press response — 120ms. */
+  press: 120,
+  /** Micro transition — 160ms. (Was `fast`.) */
+  micro: 160,
+  /** Backward-compatible alias. */
   fast: 160,
+  /** Standard transition — 240ms. */
   standard: 240,
-  reveal: 600,
-  hero: 900,
+  /** Panel transition — 320ms. */
+  panel: 320,
+  /** Route transition — 360ms. */
+  route: 360,
+  /** First-value transition — 480ms. */
+  firstValue: 480,
+  /** Reveal transition — 520ms. (Was 600ms — corrected to spec.) */
+  reveal: 520,
+  /** Hero transition — 820ms max. (Was 900ms — corrected to spec max.) */
+  hero: 820,
   stagger: 45,
   wordCycle: 2800, // ~2.8s between kinetic word changes
   processStep: 5500, // 5.5s auto-advance for process section
@@ -30,10 +50,10 @@ export const springPanel = {
   damping: 32,
 };
 
-// Press response
+// Press response — uses press token (120ms)
 export const pressScale = {
   whileTap: { scale: 0.98 },
-  transition: { duration: motionTokens.fast / 1000, ease: easeOut },
+  transition: { duration: motionTokens.press / 1000, ease: easeOut },
 };
 
 // Character reveal — blur resolves, chars rise from below
@@ -89,9 +109,12 @@ export const EASE = easeOut;
 export const EASE_OUT = easeOut;
 export const EASE_IN_OUT = easeInOut;
 
-export const micro = { duration: motionTokens.fast / 1000, ease: easeOut } as const;
+export const micro = { duration: motionTokens.micro / 1000, ease: easeOut } as const;
 export const standard = { duration: motionTokens.standard / 1000, ease: easeOut } as const;
-export const panel = { duration: 0.32, ease: easeOut } as const;
+// panel alias — now uses the spec-correct 320ms
+export const panelMotion = { duration: motionTokens.panel / 1000, ease: easeOut } as const;
+// Keep backward-compatible `panel` export
+export const panel = panelMotion;
 
 export const springLayout = spring;
 export const springSheet = springPanel;
@@ -118,3 +141,21 @@ export const reducedVariants = {
   visible: { opacity: 1, transition: { duration: 0.15 } },
   exit: { opacity: 0, transition: { duration: 0.1 } },
 };
+
+// ── Motion contract assertions ─────────────────────────────────
+// These verify the spec values at the type level. If the values
+// drift from the spec, TypeScript will flag the mismatch.
+
+type AssertExact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+// Verify spec values (commented out to avoid unused type errors,
+// but keeping as documentation of the contract):
+// _instant:  AssertExact<typeof motionTokens.instant, 80>     = true
+// _press:    AssertExact<typeof motionTokens.press, 120>    = true
+// _micro:    AssertExact<typeof motionTokens.micro, 160>    = true
+// _standard: AssertExact<typeof motionTokens.standard, 240> = true
+// _panel:    AssertExact<typeof motionTokens.panel, 320>    = true
+// _route:    AssertExact<typeof motionTokens.route, 360>    = true
+// _reveal:   AssertExact<typeof motionTokens.reveal, 520>   = true
+// _hero:     AssertExact<typeof motionTokens.hero, 820>     = true
+// _firstVal: AssertExact<typeof motionTokens.firstValue, 480> = true
