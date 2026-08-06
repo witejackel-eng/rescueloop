@@ -246,13 +246,23 @@ export default function RescueQueuePage() {
   );
 
   useKeyboardQueue({
-    rows: visibleRows,
-    selectedId: effectiveSelectedId,
-    onSelectId: setSelectedId,
+    rows: visibleRows.map((r) => ({ id: r.id, selectable: true })),
+    activeId: effectiveSelectedId,
+    onActiveId: setSelectedId,
+    onOpenInspector: (id) => {
+      setSelectedId(id);
+      if (isMobile) setSheetOpen(true);
+    },
+    onCloseInspector: () => {
+      setSheetOpen(false);
+    },
+    onToggleSelection: () => {}, // selection not used in queue context
     onApprove: handleApprove,
     onDismiss: handleDismiss,
     onSchedule: handleScheduleFromKeyboard,
+    inspectorOpen: sheetOpen || !!effectiveSelectedId,
     enabled: true,
+    listboxId: "rescue-queue-list",
   });
 
   // Mobile: selecting a row opens the inspector sheet. On desktop, the right
