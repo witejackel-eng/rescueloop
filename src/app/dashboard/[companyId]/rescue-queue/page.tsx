@@ -1,12 +1,12 @@
 // /dashboard/[companyId]/rescue-queue
 //
 // Canonical rescue queue (WP-03). Shows database-backed Activation Rescue
-// candidates for the admin's org. Uses real data in Whop mode, fixture data
-// only in fixture mode.
+// candidates for the admin's org.
+//
+// FAIL-CLOSED: Calls requireCompanyAccess() at the top.
 
 import "server-only";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { getProviderMode } from "@/providers";
 import { FIXTURE_COMPANY_ID } from "@/providers/fixtures/fixtures-data";
 import {
@@ -14,12 +14,11 @@ import {
   getCourseStudents as getFixtureCourseStudents,
   getCourses as getFixtureCourses,
 } from "@/providers/fixtures";
-import { requireCompanyAdmin } from "@/lib/auth/whop-auth";
 import { db } from "@/lib/db";
 import {
-  resolveStrictCompanyAuth,
-  renderCompanyAuthError,
-} from "@/lib/auth/strict-company-auth";
+  requireCompanyAccess,
+  renderAccessDeniedError,
+} from "@/lib/auth/require-company-access";
 import {
   CompanyPageHeader,
   EmptyStateCard,
@@ -54,32 +53,25 @@ export default async function RescueQueuePage({
   params: Promise<{ companyId: string }>;
 }) {
   const { companyId } = await params;
-  const mode = getProviderMode();
 
-  let organizationId: string;
-
-  if (mode === "fixture") {
-    organizationId = FIXTURE_COMPANY_ID;
-  } else if (mode === "whop") {
-    try {
-      const auth = await resolveStrictCompanyAuth(companyId);
-      organizationId = auth.organizationId;
-    } catch (error) {
-      const rendered = renderCompanyAuthError(error, companyId);
-      if (rendered) return <div className="mx-auto max-w-3xl">{rendered}</div>;
-      throw error;
-    }
-  } else {
-    redirect("/onboarding");
+  // ─── Auth guard (fail-closed) ────────────────────────────────
+  let ctx;
+  try {
+    ctx = await requireCompanyAccess(companyId);
+  } catch (error) {
+    const rendered = renderAccessDeniedError(error, companyId);
+    if (rendered) return <div className="mx-auto max-w-3xl">{rendered}</div>;
+    throw error;
   }
 
-  if (mode === "fixture") {
+  // ─── Fixture mode ───────────────────────────────────────────
+  if (ctx.mode === "fixture") {
     return <FixtureRescueQueue companyId={companyId} />;
   }
 
-  // ─── Whop mode ───────────────────────────────────────────────
+  // ─── Connected mode (auth confirmed) ────────────────────────
   const interventions = await db.intervention.findMany({
-    where: { organizationId, state: "awaiting_approval" },
+    where: { organizationId: ctx.organizationId, state: "awaiting_approval" },
     orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     include: {
       student: {

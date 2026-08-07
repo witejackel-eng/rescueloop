@@ -102,7 +102,7 @@ async function checkWhopConnection(
     const { getWhopClient } = await import("@/lib/whop/client");
     const client = getWhopClient();
     // Use a lightweight list call with limit=1 to test connectivity
-    await client.companies.retrieve({ company_id: companyId });
+    await client.companies.retrieve(companyId);
     return {
       id,
       category: "connected",

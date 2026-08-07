@@ -106,26 +106,19 @@ export function OnboardingWizard({
   whopUnavailable,
 }: OnboardingWizardProps) {
   // Onboarding state
-  const [onboardingState, setOnboardingState] =
-    useState<OnboardingState | null>(null);
+  const [onboardingState, setOnboardingState] = useState<OnboardingState | null>(
+    () => createInitialState(companyId, organizationId),
+  );
   const [syncProgress, setSyncProgress] = useState<SyncProgress>(
     createInitialSyncProgress(),
   );
   const [diagnostics, setDiagnostics] = useState<DiagnosticResult[] | null>(
     null,
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [diagnosticsRunning, setDiagnosticsRunning] = useState(false);
-
-  // Initialize onboarding state
-  useEffect(() => {
-    // In production, this would load persisted state from the API
-    // For now, create fresh state
-    setOnboardingState(createInitialState(companyId, organizationId));
-    setLoading(false);
-  }, [companyId, organizationId]);
 
   // ─── API interactions ───────────────────────────────────────
 

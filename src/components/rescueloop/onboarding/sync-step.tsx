@@ -96,7 +96,7 @@ export function SyncStep({
   onSyncComplete,
   syncing,
 }: SyncStepProps) {
-  const [progress, setProgress] = useState<SyncProgress>(initialSyncProgress);
+  const progress = initialSyncProgress;
   const [polling, setPolling] = useState(false);
 
   // Auto-detect completion
@@ -118,7 +118,6 @@ export function SyncStep({
   // In production, this would use WebSocket or SSE
   useEffect(() => {
     if (!syncing || hasFailure || allComplete) {
-      setPolling(false);
       return;
     }
 
@@ -134,11 +133,6 @@ export function SyncStep({
       setPolling(false);
     };
   }, [syncing, hasFailure, allComplete]);
-
-  // Update local state when parent provides new progress
-  useEffect(() => {
-    setProgress(initialSyncProgress);
-  }, [initialSyncProgress]);
 
   const handleRetry = useCallback(() => {
     onRetry();

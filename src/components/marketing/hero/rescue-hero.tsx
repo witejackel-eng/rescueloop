@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, User } from "lucide-react";
-import { RecoveryLoopCanvas } from "@/components/marketing/hero/recovery-loop-canvas";
+import { ClosingSignalHeroVisual } from "@/components/marketing/hero/closing-signal-visual";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
-import { motionTokens, easeOut } from "@/design-system/motion";
+import { easeOut } from "@/design-system/motion";
 import { copy } from "@/brand/copy";
 
 export function RescueHero() {
@@ -27,7 +27,8 @@ export function RescueHero() {
   return (
     <section
       id="hero"
-      className="relative min-h-[100svh] overflow-hidden bg-[var(--canvas)] scroll-mt-0"
+      className="relative overflow-hidden bg-[var(--canvas)] scroll-mt-0"
+      style={{ minHeight: "min(100svh, 768px)" }}
     >
       {/* Subtle technical grid */}
       <div
@@ -56,7 +57,7 @@ export function RescueHero() {
       />
 
       {/* Two-column grid: copy left, Closing Signal visual right */}
-      <div className="relative z-10 mx-auto grid min-h-[100svh] max-w-[1400px] grid-cols-1 items-center gap-8 px-6 pt-28 pb-12 lg:grid-cols-[1.1fr_1fr] lg:gap-12 lg:px-12 lg:pt-32 lg:pb-20">
+      <div className="relative z-10 mx-auto grid max-w-[1400px] grid-cols-1 items-center gap-8 px-6 pt-28 pb-12 lg:grid-cols-[1.1fr_1fr] lg:gap-12 lg:px-12 lg:pt-28 lg:pb-16">
         {/* ── LEFT: Copy column ── */}
         <div className="flex flex-col">
           {/* Eyebrow */}
@@ -64,7 +65,7 @@ export function RescueHero() {
             initial={fade(0)}
             animate={animate}
             transition={transition(0.1)}
-            className="mb-8"
+            className="mb-6"
           >
             <span className="inline-flex items-center gap-3 font-mono text-[12px] text-[var(--ink-muted)]">
               <span className="h-px w-8 bg-[var(--hairline-strong)]" />
@@ -74,7 +75,7 @@ export function RescueHero() {
 
           {/* Headline — "leave" in italic with ink-secondary */}
           <h1
-            className="max-w-[900px] font-serif text-[clamp(2.75rem,6vw,6rem)] font-normal leading-[0.95] tracking-[-0.03em] text-[var(--ink-primary)]"
+            className="max-w-[900px] font-serif text-[clamp(2.75rem,5vw,4.5rem)] font-normal leading-[0.95] tracking-[-0.03em] text-[var(--ink-primary)]"
           >
             <motion.span
               className="block"
@@ -93,7 +94,7 @@ export function RescueHero() {
             initial={fade(0.4)}
             animate={animate}
             transition={transition(0.4)}
-            className="mt-8 max-w-[520px] text-[17px] leading-relaxed text-[var(--ink-secondary)] lg:text-[18px]"
+            className="mt-6 max-w-[520px] text-[17px] leading-relaxed text-[var(--ink-secondary)] lg:text-[18px]"
           >
             {copy.support}
           </motion.p>
@@ -103,7 +104,7 @@ export function RescueHero() {
             initial={fade(0.55)}
             animate={animate}
             transition={transition(0.55)}
-            className="mt-10 flex flex-col gap-3 sm:flex-row lg:items-center"
+            className="mt-8 flex flex-col gap-3 sm:flex-row lg:items-center"
           >
             <Link
               href="/overview"
@@ -126,7 +127,7 @@ export function RescueHero() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={transition(0.75)}
-            className="mt-6"
+            className="mt-5"
           >
             <span className="font-mono text-[11px] tracking-wide text-[var(--ink-muted)]">
               {copy.trustLine}
@@ -138,7 +139,7 @@ export function RescueHero() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={transition(0.9)}
-            className="mt-3"
+            className="mt-2"
           >
             <span className="font-mono text-[10px] tracking-wide text-[var(--ink-muted)] opacity-60">
               {copy.disclosure}
@@ -151,9 +152,9 @@ export function RescueHero() {
           initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
           animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1 }}
           transition={reduced ? { duration: 0.15 } : { delay: 0.3, duration: 0.9, ease: easeOut }}
-          className="relative h-[340px] w-full sm:h-[420px] lg:h-[560px]"
+          className="relative h-[300px] w-full sm:h-[380px] lg:h-[480px]"
         >
-          <RecoveryLoopCanvas className="h-full w-full" density={1} />
+          <ClosingSignalHeroVisual className="h-full w-full" />
         </motion.div>
       </div>
     </section>

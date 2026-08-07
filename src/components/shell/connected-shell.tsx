@@ -1,10 +1,10 @@
 "use client";
 
-// ConnectedShell — the company-scoped shell for /companies/[companyId]/* routes.
+// ConnectedShell — the company-scoped shell for /dashboard/[companyId]/* routes.
 //
 // This shell is SEPARATE from the demo WorkspaceShell. It never links to
 // demo routes (/overview, /rescue-queue, etc.). Every nav href includes
-// the companyId so creators stay inside their company scope.
+// the companyId so creators stay inside their dashboard scope.
 //
 // Visual language is the warm cream design system, but the shell is
 // visually distinct from the demo workspace:
@@ -75,13 +75,17 @@ import {
   CONNECTED_NAV_ITEMS,
   MOBILE_PRIMARY_ITEMS,
   MOBILE_MORE_ITEMS,
-  buildCompanyHref,
+  buildDashboardHref,
   getActiveConnectedNavKey,
   ENVIRONMENT_BADGE,
   ENVIRONMENT_LABEL,
   type ConnectedEnvironment,
   type InstallationState,
 } from "@/components/shell/connected-nav";
+import { ShellInteractionWrapper } from "@/components/shell/shell-core";
+import { useReducedMotionContract } from "@/hooks/use-reduced-motion-contract";
+import { ConnectedCommandPalette } from "@/components/interaction/connected-command-palette";
+import { Search } from "lucide-react";
 
 export interface ConnectedShellProps {
   /** Company ID used in every nav href. In fixture mode this is FIXTURE_COMPANY_ID. */
@@ -114,10 +118,12 @@ export function ConnectedShell({
   const [pauseBusy, setPauseBusy] = useState(false);
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
   const [paused, setPaused] = useState(initialPaused);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   const activeKey = getActiveConnectedNavKey(pathname, companyId);
   const envBadge = ENVIRONMENT_BADGE[environment];
   const envLabel = ENVIRONMENT_LABEL[environment];
+  const motionContract = useReducedMotionContract();
 
   async function togglePause(nextPaused: boolean) {
     setPauseBusy(true);
@@ -154,13 +160,14 @@ export function ConnectedShell({
   }
 
   return (
+    <ShellInteractionWrapper>
     <div className="flex h-screen overflow-hidden bg-[var(--canvas)]">
       {/* ─── Desktop vertical nav rail ─────────────────────────── */}
       <aside className="hidden w-[76px] shrink-0 flex-col border-r border-[var(--hairline)] bg-[var(--canvas-elevated)] md:flex">
         <div className="flex h-14 items-center justify-center border-b border-[var(--hairline)]">
           <Link
-            href={buildCompanyHref(companyId, "overview")}
-            aria-label="RescueLoop — company overview"
+            href={buildDashboardHref(companyId, "")}
+            aria-label="RescueLoop — dashboard"
           >
             <RescueLoopMark size={26} />
           </Link>
@@ -234,7 +241,7 @@ export function ConnectedShell({
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-[var(--hairline)] bg-[var(--canvas)] px-4 lg:px-6">
           {/* Mobile logo */}
           <Link
-            href={buildCompanyHref(companyId, "overview")}
+            href={buildDashboardHref(companyId, "")}
             className="flex items-center gap-2 md:hidden"
             aria-label="RescueLoop"
           >
@@ -275,6 +282,19 @@ export function ConnectedShell({
           </button>
 
           <div className="ml-auto flex items-center gap-1.5">
+            {/* Command palette trigger */}
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="hidden items-center gap-2 rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] px-2.5 py-1.5 text-[12px] text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-secondary)] sm:flex"
+              aria-label="Open command palette"
+            >
+              <Search className="size-3.5" />
+              <span>Search</span>
+              <kbd className="flex items-center gap-0.5 rounded border border-[var(--hairline)] bg-[var(--canvas-elevated)] px-1 py-px font-mono text-[10px]">
+                ⌘K
+              </kbd>
+            </button>
+
             {/* Last sync timestamp */}
             <div
               className="hidden items-center gap-1.5 lg:flex"
@@ -368,13 +388,15 @@ export function ConnectedShell({
           </div>
         </header>
 
-        {/* Paused banner */}
+        {/* Paused banner — reduced-motion-aware */}
         <AnimatePresence>
           {paused && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              {...motionContract.motionProps({
+                hidden: { height: 0, opacity: 0 },
+                visible: { height: "auto", opacity: 1 },
+                exit: { height: 0, opacity: 0 },
+              })}
               className="overflow-hidden border-b border-[var(--critical-light)] bg-[var(--critical-light)]/40"
             >
               <p className="px-4 py-1.5 text-center text-[12px] font-medium text-[var(--critical)]">
@@ -415,7 +437,7 @@ export function ConnectedShell({
         </AnimatePresence>
 
         {/* Page content */}
-        <div className="min-h-0 flex-1 overflow-y-auto pb-24 md:pb-0">
+        <div className="min-h-0 flex-1 overflow-y-auto pb-24 md:pb-0" id="main-content" tabIndex={-1}>
           <div className="mx-auto w-full max-w-[1320px] px-4 py-6 lg:px-8 lg:py-8">
             {children}
           </div>
@@ -433,7 +455,7 @@ export function ConnectedShell({
           return (
             <Link
               key={item.key}
-              href={buildCompanyHref(companyId, item.segment)}
+              href={buildDashboardHref(companyId, item.segment)}
               className="relative flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 py-2"
               aria-current={active ? "page" : undefined}
               aria-label={item.label}
@@ -504,7 +526,7 @@ export function ConnectedShell({
               return (
                 <Link
                   key={item.key}
-                  href={buildCompanyHref(companyId, item.segment)}
+                  href={buildDashboardHref(companyId, item.segment)}
                   onClick={() => setMoreSheetOpen(false)}
                   className={cn(
                     "flex min-h-[44px] items-center gap-3 rounded-[8px] px-3 py-3 text-[15px]",
@@ -526,7 +548,15 @@ export function ConnectedShell({
           </nav>
         </SheetContent>
       </Sheet>
+
+      {/* Company-scoped command palette */}
+      <ConnectedCommandPalette
+        companyId={companyId}
+        isPaused={paused}
+        onTogglePause={() => togglePause(!paused)}
+      />
     </div>
+    </ShellInteractionWrapper>
   );
 }
 
@@ -545,7 +575,7 @@ interface NavRailItemProps {
 }
 
 function NavRailItem({ item, companyId, active }: NavRailItemProps) {
-  const href = buildCompanyHref(companyId, item.segment);
+  const href = buildDashboardHref(companyId, item.segment);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -686,7 +716,7 @@ function UserMenu({ companyId }: { companyId: string }) {
         <DropdownMenuItem
           className="gap-2 text-[13px]"
           onClick={() => {
-            window.location.href = buildCompanyHref(companyId, "settings");
+            window.location.href = buildDashboardHref(companyId, "settings");
           }}
         >
           <SettingsIcon className="size-4" />
