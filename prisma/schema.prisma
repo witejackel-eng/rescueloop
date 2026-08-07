@@ -1,0 +1,160 @@
+// RescueLoop — Production Domain Schema
+// PX01–PX07 domain models
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── Core ─────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      String   @default("creator") // creator | operator | admin
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  plan        String   @default("rescue") // rescue | growth | scale
+  whopOrgId   String?
+  status      String   @default("active") // active | suspended | cancelled
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ── PX01: Async Trust UX ─────────────────────────────────────
+
+model Operation {
+  id                String    @id @default(cuid())
+  type              String    // first_sync | incremental_sync | bulk_evaluate | export | data_deletion
+  status            String    @default("pending") // pending | running | completed | failed | cancelled
+  orgId             String?
+  stages            String    @default("[]") // JSON array of stage objects
+  currentStageIndex Int       @default(0)
+  processedCount    Int       @default(0)
+  totalCount        Int       @default(0)
+  persistenceState  String    @default("not_persisted") // not_persisted | persisting | persisted
+  providerState     String    @default("{\"type\":\"healthy\"}") // JSON
+  candidatePreview  String?   // JSON
+  error             String?
+  meta              String?   // JSON
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  completedAt       DateTime?
+}
+
+// ── PX02: System Health ──────────────────────────────────────
+
+model HealthCheck {
+  id        String   @id @default(cuid())
+  orgId     String
+  domain    String   // whop | permissions | membership_sync | course_activity | webhooks | jobs | notifications | billing | data_freshness
+  status    String   // healthy | degraded | unhealthy | unknown
+  details   String?
+  impact    String?
+  dataSafe  Boolean  @default(true)
+  retrying  Boolean  @default(false)
+  actionRequired Boolean @default(false)
+  checkedAt DateTime @default(now())
+}
+
+// ── PX03: Exception Operations ───────────────────────────────
+
+model ExceptionRecord {
+  id          String   @id @default(cuid())
+  orgId       String
+  type        String   // permission_failure | stalled_sync | dead_letter | billing_issue | webhook_lag | high_cost
+  severity    String   @default("medium") // low | medium | high | critical
+  status      String   @default("open") // open | investigating | resolving | resolved
+  message     String
+  details     String?  // JSON
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditEntry {
+  id        String   @id @default(cuid())
+  orgId     String?
+  action    String
+  actor     String   // operator email or system
+  target    String?  // what was acted on
+  result    String   // success | failed | pending | idempotent_noop
+  details   String?  // JSON
+  createdAt DateTime @default(now())
+}
+
+// ── PX04: Self-Healing ───────────────────────────────────────
+
+model DiagnosticRecord {
+  id              String   @id @default(cuid())
+  orgId           String?
+  diagnosticId    String   @unique // unique traceable ID
+  errorType       String
+  errorCode       String?
+  message         String
+  context         String?  // JSON (sanitized, no secrets/PII)
+  recoveryStatus  String   @default("none") // none | in_progress | succeeded | failed | max_retries_exceeded
+  recoveryStrategy String?
+  retryCount      Int      @default(0)
+  maxRetries      Int      @default(3)
+  nextRetryAt     DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ── PX05: Cost Guardrails ────────────────────────────────────
+
+model TenantUsage {
+  id            String   @id @default(cuid())
+  orgId         String   @unique
+  plan          String   @default("rescue")
+  mrr           Int      @default(0) // in cents
+  memberCount   Int      @default(0)
+  eventCount    Int      @default(0)
+  jobCount      Int      @default(0)
+  providerCalls Int      @default(0)
+  periodStart   DateTime
+  periodEnd     DateTime
+  updatedAt     DateTime @updatedAt
+}
+
+// ── PX07: Growth Instrumentation ─────────────────────────────
+
+model FunnelEvent {
+  id        String   @id @default(cuid())
+  orgId     String
+  step      String   // install | permission_complete | first_sync_started | ... | subscription_activated
+  data      String?  // JSON (privacy-safe only, no PII)
+  createdAt DateTime @default(now())
+}
+
+model ReferralAttribution {
+  id          String   @id @default(cuid())
+  orgId       String
+  source      String   // organic | partner | content | ad | referral | whop_marketplace
+  medium      String?
+  campaign    String?
+  convertedAt DateTime?
+  createdAt   DateTime @default(now())
+}
+
+model CaseStudyConsent {
+  id          String   @id @default(cuid())
+  orgId       String
+  granted     Boolean  @default(false)
+  grantedAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+}
