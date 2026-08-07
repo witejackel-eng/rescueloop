@@ -766,3 +766,61 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 - Vercel deployment status: pending GitHub Actions + Vercel auto-deploy from push
 - Visual screenshot capture: requires deployed preview URL (not available in sandbox)
 - `window.location.href` warning in student-rescue blocker page (1 lint warning)
+
+---
+
+## WP-08 / WP-09 Hardening Pass (Additive)
+
+**Status:** ✅ COMPLETE
+
+**Commit:** (this commit) `chore(release): additive marketplace hardening + production gates + agent-ctx cleanup`
+
+**Rationale:** The prior WP08 and WP09 commits established listing copy, permissions, security headers, the migration rehearsal script, and the rollback/release docs. This additive pass completes the runtime enforcement and adversarial-test surface that the threat model and WP09 acceptance criteria require.
+
+### Additive changes
+
+| # | File | Change | Rationale |
+|---|------|--------|-----------|
+| 1 | `src/middleware.ts` | Edge middleware: enforces route-aware iframe policy + rejects open-redirect `?next=` / `?redirect=` params | Static CSP in `next.config.ts` applies `frame-ancestors https://*.whop.com` to ALL routes uniformly — student experience routes must NEVER be framed (token leak risk). Middleware sets `frame-ancestors 'none'` on student/internal/API/marketing routes and only allows Whop framing on `/dashboard/*` and `/onboarding`. Also rejects open redirects (threat model #7, #11). |
+| 2 | `src/lib/marketplace/iframe-policy.ts` | `decideIframePolicy()` — route-aware iframe decision engine | Single source of truth for "may this route be framed?" — consumed by middleware. |
+| 3 | `src/lib/marketplace/manifest.ts` | Marketplace manifest: forbidden claims list, app views, listing readiness checklist, `assertNoForbiddenClaims()` truth-language guard | Supplements `src/lib/whop/marketplace-listing.ts` with runtime truth-language enforcement and structural completeness checks. |
+| 4 | `src/lib/marketplace/pilot-analytics.ts` | 17-event pilot allowlist + `sanitizePilotEvent()` PII guard | Threat model #13: "Student free text enters analytics/AI unexpectedly." Hard rule: student name/email/id, message content/preview/draft, blocker description, token, tokenHash, whopUserId, ipAddress, userAgent are NEVER sent. |
+| 5 | `src/lib/marketplace/data-lifecycle-manifest.ts` | Structured pause/uninstall/export/delete/student-opt-out manifest | Supplements `docs/DATA_LIFECYCLE.md` with a machine-readable contract. |
+| 6 | `src/lib/release/production-gates.ts` | 26 production gates across database/security/reliability/observability/performance/release + `runBuildTimeChecks()` destructive-command scanner + `PROMOTION_CHECKLIST` | Encodes WP09 acceptance criteria as runtime-checkable invariants. Build-time scanner catches `prisma migrate reset` and `prisma db push --accept-data-loss` in non-test, non-comment source. |
+| 7 | `src/app/marketplace/page.tsx` | Public marketplace listing preview page | Renders the manifest with truth-language guard running at render time. Complements the in-app `/dashboard/[companyId]/settings/marketplace` page. |
+| 8 | `src/tests/unit/marketplace/marketplace-manifest.test.ts` | 31 unit tests | Truth language, permissions minimalism, iframe policy decisions, pilot PII guard, data lifecycle coverage. |
+| 9 | `src/tests/unit/release/security-invariants.test.ts` | 12 unit tests | Gate completeness, build-time destructive-command scan (pass + 3 fail scenarios), promotion checklist completeness, secrets redaction list. |
+| 10 | `src/tests/unit/release/observability-privacy.test.ts` | 6 unit tests | Pilot allowlist, forbidden key stripping, non-allowlisted event rejection, long-string truncation, PostHog/pilot list alignment. |
+| 11 | `src/tests/unit/release/performance-iframe.test.ts` | 10 unit tests | Viewport widths (360/768/1024/1280/1366/1440 + 200% zoom), iframe policy consistency for embedded vs denied routes, hydration payload contract, accessibility contract. |
+| 12 | `docs/marketplace/LISTING.md` | Non-code mirror of the marketplace manifest | For non-engineer review of the listing copy and permissions. |
+| 13 | `.gitignore` | Added `/agent-ctx/` exclusion | Master prompt Stage 0: "Remove remaining AI workspace artefacts." Prevents future commits of agent workspace files. |
+| 14 | `agent-ctx/*.md` (15 files) | DELETED | Stage 0 cleanup — these were AI workspace artefacts that should never have been tracked. |
+
+### Acceptance gates (additive)
+
+| Gate | Status |
+|------|--------|
+| Route-aware iframe enforcement (student routes deny framing) | ✅ |
+| Open-redirect rejection at the edge | ✅ |
+| Pilot analytics PII guard (student free text never sent) | ✅ |
+| Production gates module with 26 invariants | ✅ |
+| Build-time destructive-command scanner | ✅ |
+| 59 new unit tests (31 marketplace + 28 release) | ✅ |
+| No duplicate architecture (additions only, no replacements) | ✅ |
+| No tracked AI workspace artefacts | ✅ |
+
+### Final local CI (all green)
+
+| Check | Result | Details |
+|-------|--------|---------|
+| `bun install --frozen-lockfile` | ✅ PASS | 983 packages |
+| `bun run lint` | ✅ PASS | 0 errors, 1 pre-existing warning |
+| `bun run typecheck` | ✅ PASS | `tsc --noEmit` clean |
+| `bun run test` | ✅ PASS | 635 tests passed across 25 test files |
+| `bun run build` | ✅ PASS | All routes compile; middleware registered |
+
+### Stop gates preserved (per master prompt)
+
+- First real Whop notification: requires explicit owner confirmation. Documented in `docs/implementation/RELEASE_CHECKLIST.md`.
+- First real Whop charge: requires explicit owner confirmation. Documented in same checklist.
+- Production promotion: only after all release gates pass and owner signs off.
