@@ -9,6 +9,7 @@ import {
   RefreshCw,
   TrendingUp,
   DollarSign,
+  AtSign,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,12 +27,15 @@ const NOTIF_META: Record<Notification["type"], { icon: LucideIcon; color: string
   campaign_paused: { icon: Pause, color: "text-[var(--ink-muted)]" },
   sync_problem: { icon: RefreshCw, color: "text-[var(--critical)]" },
   plan_limit: { icon: AlertTriangle, color: "text-[var(--warning)]" },
+  creator_mention: { icon: AtSign, color: "text-[var(--recovery-green)]" },
+  member_mention: { icon: AtSign, color: "text-[var(--recovery-green)]" },
 };
 
 export function NotificationPanel({ onClose }: { onClose: () => void }) {
   const notifications = useDemoStore((s) => s.notifications);
   const resolveNotification = useDemoStore((s) => s.resolveNotification);
-  const unresolvedCount = notifications.filter((n) => !n.resolved).length;
+  const visible = notifications.filter((n) => !n.dismissed);
+  const unresolvedCount = visible.filter((n) => !n.resolved).length;
 
   return (
     <>
@@ -47,7 +51,7 @@ export function NotificationPanel({ onClose }: { onClose: () => void }) {
       </SheetHeader>
       <ScrollArea className="h-[calc(100vh-65px)]">
         <div className="divide-y divide-[var(--hairline-subtle)]">
-          {notifications.map((notif) => {
+          {visible.map((notif) => {
             const meta = NOTIF_META[notif.type];
             const Icon = meta.icon;
             return (

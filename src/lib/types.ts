@@ -218,22 +218,56 @@ export interface ValueEvent {
   date: string;
 }
 
+export type NotificationType =
+  | "help_request"
+  | "cancellation_detection"
+  | "recovery_confirmed"
+  | "friction_finding"
+  | "campaign_paused"
+  | "sync_problem"
+  | "plan_limit"
+  | "creator_mention"
+  | "member_mention";
+
+export type NotificationCategory = "rescue" | "response" | "system" | "mention";
+
 export interface Notification {
   id: string;
-  type:
-    | "help_request"
-    | "cancellation_detection"
-    | "recovery_confirmed"
-    | "friction_finding"
-    | "campaign_paused"
-    | "sync_problem"
-    | "plan_limit";
+  type: NotificationType;
+  /** High-level bucket for the Notifications Center filter chips */
+  category: NotificationCategory;
   title: string;
   description: string;
+  /** Human-readable relative time, e.g. "12 minutes ago" */
   createdAt: string;
+  /** ISO timestamp for time-range filtering & sorting */
+  createdAtIso: string;
+  /** Read state (treated as "read" in the Notifications Center) */
   resolved: boolean;
+  /** Soft-hidden from the default list view */
+  dismissed: boolean;
   actionLabel: string;
   actionHref: string;
+}
+
+/** Notification preferences shape used by the demo store */
+export interface NotificationPreferences {
+  // Rescue alerts
+  rescueCandidateDetected: boolean;
+  highRiskMember: boolean;
+  recoveryCompleted: boolean;
+  // Response notifications
+  memberResponded: boolean;
+  responseOverdue: boolean;
+  positiveFeedback: boolean;
+  // System notifications
+  syncCompleted: boolean;
+  syncFailed: boolean;
+  maintenanceScheduled: boolean;
+  // Delivery channels
+  channelInApp: boolean;
+  channelEmail: boolean;
+  channelSlack: boolean;
 }
 
 export interface FrictionFinding {

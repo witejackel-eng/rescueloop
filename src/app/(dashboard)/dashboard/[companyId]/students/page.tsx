@@ -12,11 +12,16 @@ import {
   AlertTriangle,
   TrendingUp,
   Activity,
+  CheckSquare,
+  Archive,
+  Send,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
@@ -26,6 +31,7 @@ import { FilterBar, type ActiveFilters } from "@/components/shared/filter-bar";
 import { toast } from "sonner";
 import { PageTransition } from "@/components/shared/page-transition";
 import { SectionHeader } from "@/components/shared/section-header";
+import { EnhancedEmptyState } from "@/components/shared/empty-state";
 
 type StatusFilter = "all" | "needs_attention" | "active" | "responded" | "paused_reminders";
 
@@ -158,6 +164,8 @@ export default function MembersPage() {
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
 
   const allMembers = bundle?.members ?? [];
 
@@ -187,6 +195,40 @@ export default function MembersPage() {
     setRefreshing(true);
     refetch();
     setTimeout(() => setRefreshing(false), 800);
+  }
+
+  function toggleSelectMode() {
+    setSelectMode((v) => !v);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(members.map((m) => m.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function bulkToast(action: string) {
+    if (selectedIds.size === 0) return;
+    toast.success(`${action} ${selectedIds.size} member${selectedIds.size === 1 ? "" : "s"}`, {
+      description: "Action queued for the selected members.",
+    });
+    clearSelection();
+    setSelectMode(false);
   }
 
   return (
@@ -298,14 +340,29 @@ export default function MembersPage() {
             );
           })}
         </div>
-        <div className="relative sm:ml-auto sm:w-[240px]">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
-          <Input
-            placeholder="Search members…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-8 rounded-[6px] pl-8 text-[12px]"
-          />
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <Button
+            variant={selectMode ? "default" : "ghost"}
+            size="sm"
+            onClick={toggleSelectMode}
+            className={cn(
+              "h-8 rounded-[6px] px-2.5 text-[11px]",
+              selectMode && "bg-[var(--ink-primary)] text-white",
+            )}
+            aria-label="Toggle selection mode"
+          >
+            <CheckSquare className="mr-1 size-3" />
+            {selectMode ? "Exit select" : "Select"}
+          </Button>
+          <div className="relative sm:w-[240px]">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--ink-muted)]" />
+            <Input
+              placeholder="Search members…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-8 rounded-[6px] pl-8 text-[12px]"
+            />
+          </div>
         </div>
       </div>
 
@@ -313,20 +370,37 @@ export default function MembersPage() {
       {loading ? (
         <CardSkeleton rows={6} />
       ) : members.length === 0 ? (
-        <Card className="flex h-40 items-center justify-center rounded-[8px] border border-dashed border-[var(--hairline)] bg-[var(--canvas)]">
-          <div className="text-center">
-            <Users className="mx-auto size-6 text-[var(--ink-muted)]" />
-            <p className="mt-2 text-[12px] text-[var(--ink-muted)]">No members match this filter.</p>
-          </div>
-        </Card>
+        <EnhancedEmptyState
+          icon={Users}
+          title="No members match this filter"
+          description="Try adjusting your filters or search query to find the members you're looking for."
+          actionLabel="Reset filters"
+          onAction={() => {
+            setFilter("all");
+            setSearch("");
+            setActiveFilters({});
+          }}
+        />
       ) : (
         <Card className="overflow-hidden rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)]">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scrollbar-thin">
             <table className="w-full text-[12px]">
               <thead>
-                <tr className="border-b border-[var(--hairline)] bg-[var(--canvas-elevated)]">
+                <tr className="border-b border-[var(--hairline-subtle)] bg-[var(--canvas-elevated)]">
+                  {selectMode && (
+                    <th className="w-[44px] whitespace-nowrap px-3 py-2.5 text-left">
+                      <Checkbox
+                        checked={members.length > 0 && selectedIds.size === members.length}
+                        onCheckedChange={(checked) => {
+                          if (checked) selectAllVisible();
+                          else clearSelection();
+                        }}
+                        aria-label="Select all visible members"
+                      />
+                    </th>
+                  )}
                   {["Student", "Risk", "Membership", "Progress", "Trend", "Last activity", "Status", "Intervention", "Response"].map((h) => (
-                    <th key={h} className="whitespace-nowrap px-4 py-2.5 text-left text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+                    <th key={h} className="whitespace-nowrap px-4 py-2.5 text-left text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--ink-secondary)]">
                       {h}
                     </th>
                   ))}
@@ -340,6 +414,7 @@ export default function MembersPage() {
                     const risk = riskStyle(riskScore);
                     const sparkData = sparklineData(m);
                     const relTime = toRelativeTime(m.lastActivity);
+                    const isSelected = selectedIds.has(m.id);
                     return (
                       <motion.tr
                         key={m.id}
@@ -348,12 +423,26 @@ export default function MembersPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
                         transition={{ delay: i * 0.03, duration: 0.2 }}
+                        data-selected={isSelected || undefined}
+                        onClick={selectMode ? () => toggleSelected(m.id) : undefined}
                         className={cn(
-                          "group relative border-b border-[var(--hairline)] transition-colors last:border-0 hover:bg-[var(--canvas-elevated)]",
+                          "group relative border-b border-[var(--hairline-subtle)] last:border-0",
+                          "table-row-hover",
                           "before:absolute before:inset-y-0 before:left-0 before:w-[2px] before:content-[''] before:opacity-0 before:transition-opacity group-hover:before:opacity-100",
                           STATUS_BORDER[m.status],
+                          isSelected && "table-row-selected before:opacity-100 before:bg-[var(--recovery-green)]",
+                          selectMode && "cursor-pointer",
                         )}
                       >
+                        {selectMode && (
+                          <td className="whitespace-nowrap px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleSelected(m.id)}
+                              aria-label={`Select ${m.name}`}
+                            />
+                          </td>
+                        )}
                         <td className="whitespace-nowrap px-4 py-3">
                           <div className="flex items-center gap-2.5">
                             <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--canvas-elevated)] font-mono text-[10px] font-medium text-[var(--ink-secondary)]">
@@ -453,6 +542,66 @@ export default function MembersPage() {
           </div>
         </Card>
       )}
+
+      {/* Bulk action bar — slides up when rows are selected */}
+      <AnimatePresence>
+        {selectMode && selectedIds.size > 0 && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+            className="fixed inset-x-0 bottom-0 z-30 lg:pl-[228px]"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
+            <div className="mx-auto max-w-[1200px] px-4 pb-4">
+              <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--hairline-strong)] bg-[var(--ink-primary)] px-4 py-3 text-white shadow-[0_8px_32px_-8px_rgba(17,17,15,0.4)]">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-8 items-center justify-center rounded-[6px] bg-white/10">
+                    <CheckSquare className="size-4" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-medium">
+                      {selectedIds.size} selected
+                    </p>
+                    <p className="text-[11px] text-white/60">
+                      Choose an action to apply
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => bulkToast("Tagged")}
+                    className="bg-[var(--recovery-green)] text-white hover:bg-[var(--recovery-green)]/90 h-8 px-3 text-[12px]"
+                  >
+                    <Send className="mr-1 size-3" />
+                    Tag
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => bulkToast("Archived")}
+                    variant="outline"
+                    className="h-8 border-white/20 bg-transparent px-3 text-[12px] text-white hover:bg-white/10 hover:text-white"
+                  >
+                    <Archive className="mr-1 size-3" />
+                    Archive
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={clearSelection}
+                    variant="ghost"
+                    className="h-8 px-2 text-[12px] text-white/70 hover:bg-white/10 hover:text-white"
+                    aria-label="Clear selection"
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
     </PageTransition>
   );

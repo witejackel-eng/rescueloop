@@ -23,7 +23,10 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={cn(
+        "bg-[var(--canvas-elevated)] [&_tr]:border-b [&_tr]:border-[var(--hairline-subtle)]",
+        className,
+      )}
       {...props}
     />
   )
@@ -57,7 +60,12 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors",
+        // Hover state using --surface-hover for a premium feel
+        "hover:bg-[var(--surface-hover)]",
+        // Selected state (both legacy `data-state=selected` and new `data-selected=true`)
+        "data-[state=selected]:bg-muted data-[selected=true]:bg-[var(--recovery-light)]/60",
+        // Border + smooth transition
+        "border-b border-[var(--hairline-subtle)] transition-colors duration-200 ease-out",
         className
       )}
       {...props}
@@ -70,7 +78,9 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "text-foreground h-11 px-4 py-2.5 text-left align-middle font-medium whitespace-nowrap",
+        "text-[var(--ink-secondary)]",
+        "[&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className
       )}
       {...props}
@@ -83,7 +93,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "py-3 px-4 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className
       )}
       {...props}

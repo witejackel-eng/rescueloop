@@ -9,6 +9,7 @@ import {
   RefreshCw,
   TrendingUp,
   DollarSign,
+  AtSign,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,8 @@ const NOTIF_META: Record<
   campaign_paused: { icon: Pause, color: "text-[#6A706A]", bg: "bg-[#F0F2EC]" },
   sync_problem: { icon: RefreshCw, color: "text-[#C64D45]", bg: "bg-[#F4E8E6]" },
   plan_limit: { icon: AlertTriangle, color: "text-[#D89222]", bg: "bg-[#FEF3E2]" },
+  creator_mention: { icon: AtSign, color: "text-[#27966A]", bg: "bg-[#E8F5EF]" },
+  member_mention: { icon: AtSign, color: "text-[#27966A]", bg: "bg-[#E8F5EF]" },
 };
 
 export function NotificationList({
@@ -36,10 +39,11 @@ export function NotificationList({
   notifications: Notification[];
   onAction?: () => void;
 }) {
+  const visible = notifications.filter((n) => !n.dismissed);
   return (
     <ScrollArea className="h-[calc(100vh-80px)]">
       <div className="divide-y divide-[#E3E5DF]">
-        {notifications.map((notif) => {
+        {visible.map((notif) => {
           const meta = NOTIF_META[notif.type];
           const Icon = meta.icon;
           return (

@@ -1120,15 +1120,23 @@ export default function RescueQueuePage() {
                   >
                     <Card
                       className={cn(
-                        "relative cursor-pointer rounded-[8px] border border-l-[3px] bg-[var(--surface)] p-4 transition-all",
+                        "relative cursor-pointer overflow-hidden rounded-[8px] border border-l-[3px] bg-[var(--surface)] p-4",
+                        "card-hover-lift",
                         priorityBorder(c.priority),
                         isSelected
-                          ? "shadow-[0_0_0_1px_var(--recovery-green)]"
-                          : "hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]",
-                        isChecked && "ring-1 ring-[var(--recovery-green)]/30"
+                          ? "border-[var(--recovery-green)] shadow-[0_0_0_1px_var(--recovery-green),0_8px_24px_-8px_rgba(20,125,104,0.25)]"
+                          : "hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]",
+                        isChecked && "ring-1 ring-[var(--recovery-green)]/40",
                       )}
                       onClick={() => bulkMode ? toggleSelected(c.id) : setSelectedId(c.id)}
                     >
+                      {/* Subtle gradient accent strip on selected/bulk-checked items */}
+                      {(isSelected || isChecked) && (
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-[var(--recovery-green)] to-[var(--info)]"
+                        />
+                      )}
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 flex-1 items-start gap-2">
                           {bulkMode && (

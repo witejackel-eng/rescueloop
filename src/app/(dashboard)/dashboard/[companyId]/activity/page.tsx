@@ -25,15 +25,15 @@ import { PageTransition } from "@/components/shared/page-transition";
 
 type EventType = DemoActivityEvent["type"] | "all";
 
-const EVENT_META: Record<DemoActivityEvent["type"], { icon: typeof Activity; color: string; label: string }> = {
-  sync_completed: { icon: RefreshCw, color: "text-[var(--ink-muted)]", label: "Sync" },
-  candidate_detected: { icon: AlertCircle, color: "text-[var(--warning)]", label: "Detected" },
-  draft_prepared: { icon: Clock, color: "text-[var(--info)]", label: "Draft" },
-  creator_edited: { icon: MessageSquare, color: "text-[var(--ink-secondary)]", label: "Edited" },
-  approved: { icon: CheckCircle2, color: "text-[var(--recovery-green)]", label: "Approved" },
-  student_opened: { icon: Users, color: "text-[var(--info)]", label: "Opened" },
-  student_responded: { icon: MessageSquare, color: "text-[var(--recovery-green)]", label: "Responded" },
-  course_activity_observed: { icon: TrendingUp, color: "text-[var(--recovery-green)]", label: "Activity" },
+const EVENT_META: Record<DemoActivityEvent["type"], { icon: typeof Activity; color: string; label: string; ring: string }> = {
+  sync_completed: { icon: RefreshCw, color: "text-[var(--ink-muted)]", label: "Sync", ring: "ring-[var(--ink-muted)]/30" },
+  candidate_detected: { icon: AlertCircle, color: "text-[var(--warning)]", label: "Detected", ring: "ring-[var(--warning)]/30" },
+  draft_prepared: { icon: Clock, color: "text-[var(--info)]", label: "Draft", ring: "ring-[var(--info)]/30" },
+  creator_edited: { icon: MessageSquare, color: "text-[var(--ink-secondary)]", label: "Edited", ring: "ring-[var(--ink-secondary)]/30" },
+  approved: { icon: CheckCircle2, color: "text-[var(--recovery-green)]", label: "Approved", ring: "ring-[var(--recovery-green)]/30" },
+  student_opened: { icon: Users, color: "text-[var(--info)]", label: "Opened", ring: "ring-[var(--info)]/30" },
+  student_responded: { icon: MessageSquare, color: "text-[var(--recovery-green)]", label: "Responded", ring: "ring-[var(--recovery-green)]/30" },
+  course_activity_observed: { icon: TrendingUp, color: "text-[var(--recovery-green)]", label: "Activity", ring: "ring-[var(--recovery-green)]/30" },
 };
 
 const FILTERS: EventType[] = [
@@ -143,7 +143,7 @@ export default function ActivityPage() {
         </Card>
       ) : (
         <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
-          <div className="mb-4 flex items-center justify-between border-b border-[var(--hairline)] pb-3">
+          <div className="mb-4 flex items-center justify-between border-b border-[var(--hairline-subtle)] pb-3">
             <div className="flex items-center gap-2">
               <Activity className="size-4 text-[var(--ink-secondary)]" />
               <h2 className="font-serif text-[15px] text-[var(--ink-primary)]">Recent Events</h2>
@@ -155,7 +155,7 @@ export default function ActivityPage() {
           <div className="relative">
             {/* Vertical timeline rail — proper 2px line through icon centers */}
             <div
-              className="absolute left-[23px] top-3 bottom-3 w-[2px] rounded-full bg-[var(--hairline)]"
+              className="absolute left-[23px] top-3 bottom-3 w-[2px] rounded-full bg-[var(--hairline-subtle)]"
               aria-hidden
             />
 
@@ -172,14 +172,16 @@ export default function ActivityPage() {
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 4 }}
                       transition={{ delay: i * 0.03, duration: 0.2 }}
-                      className="group relative flex items-start gap-3 rounded-[8px] px-2 py-2 transition-colors hover:bg-[var(--canvas)]"
+                      className="group relative flex items-start gap-3 rounded-[8px] px-2 py-2 transition-colors duration-200 hover:bg-[var(--canvas-elevated)]"
                     >
-                      {/* Uniform 48px circular icon container */}
+                      {/* Uniform 48px circular icon container with type-colored ring on hover */}
                       <div className={cn(
                         "relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full border-2 bg-[var(--surface)]",
-                        "border-[var(--hairline)] group-hover:border-[var(--hairline-strong)] group-hover:shadow-sm transition-all",
+                        "border-[var(--hairline)] transition-all duration-200 group-hover:border-[var(--hairline-strong)] group-hover:shadow-[0_4px_12px_-4px_rgba(17,17,15,0.12)]",
+                        "group-hover:ring-2 group-hover:ring-offset-0",
+                        meta.ring,
                       )}>
-                        <Icon className={cn("size-4", meta.color)} />
+                        <Icon className={cn("size-4 transition-transform duration-200 group-hover:scale-110", meta.color)} />
                       </div>
                       <div className="min-w-0 flex-1 pt-1">
                         <div className="flex items-start justify-between gap-2">
@@ -190,12 +192,12 @@ export default function ActivityPage() {
                             <p className="mt-0.5 flex items-center gap-1.5 text-[11px]">
                               <span className="font-medium text-[var(--ink-secondary)]">{e.actor}</span>
                               <span className="text-[var(--ink-muted)]">·</span>
-                              <Badge variant="outline" className="rounded-[2px] text-[9px]">
+                              <Badge variant="outline" className={cn("rounded-[2px] text-[9px]", meta.color, "border-current/30")}>
                                 {meta.label}
                               </Badge>
                             </p>
                           </div>
-                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--ink-secondary)]">
+                          <span className="shrink-0 rounded-[3px] bg-[var(--canvas)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-[var(--ink-secondary)] transition-colors group-hover:bg-[var(--surface)]">
                             {e.timestamp}
                           </span>
                         </div>
@@ -207,7 +209,7 @@ export default function ActivityPage() {
             </div>
           </div>
           {/* Sticky footer closure */}
-          <div className="mt-4 flex items-center justify-between border-t border-[var(--hairline)] pt-3 text-[10px] text-[var(--ink-muted)]">
+          <div className="mt-4 flex items-center justify-between border-t border-[var(--hairline-subtle)] pt-3 text-[10px] text-[var(--ink-muted)]">
             <span>Showing {events.length} of {bundle?.activity?.length ?? events.length} events</span>
             <button className="font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]">
               Load more

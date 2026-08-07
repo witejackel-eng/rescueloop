@@ -46,6 +46,7 @@ import { TimeRangeSelector } from "@/components/shared/time-range-selector";
 import { ExportDataButton } from "@/components/shared/export-data-button";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import type { TimeRange } from "@/components/shared/time-range-selector";
+import { ChartTooltip } from "@/components/shared/chart-tooltip";
 
 // ── Design system colors ─────────────────────────────────────
 const COLORS = {
@@ -126,51 +127,65 @@ const RISK_DISTRIBUTION = [
   { name: "Critical", range: "80–100", value: 13, color: COLORS.critical },
 ];
 
-// ── Custom tooltip ───────────────────────────────────────────
-function CustomTooltip({
-  active,
-  payload,
-  label,
-}: {
+// ── Chart tooltip wrappers ───────────────────────────────────
+// All three recharts charts (Area / Pie / Bar) use the shared
+// ChartTooltip component. Each wrapper just supplies a formatter
+// appropriate for the metric being displayed.
+
+// Area chart: recovery rate as a percentage.
+function AreaTooltip(props: {
   active?: boolean;
   payload?: Array<{ value: number; name: string; color: string }>;
   label?: string;
 }) {
-  if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 shadow-lg">
-      <p className="mb-1 text-[11px] font-medium text-[var(--ink-muted)]">{label}</p>
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-2 text-[12px]">
-          <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-[var(--ink-secondary)]">{p.name}:</span>
-          <span className="font-mono font-medium text-[var(--ink-primary)]">
-            {typeof p.value === "number" ? p.value.toLocaleString() : p.value}
-          </span>
-        </div>
-      ))}
-    </div>
+    <ChartTooltip
+      active={props.active}
+      payload={props.payload}
+      label={props.label}
+      formatter={(value) =>
+        `${typeof value === "number" ? value.toLocaleString() : value}%`
+      }
+    />
   );
 }
 
-// ── Custom pie tooltip ───────────────────────────────────────
-function PieTooltip({
-  active,
-  payload,
-}: {
+// Pie chart: member counts with a "members" suffix. The shared
+// ChartTooltip automatically renders the `range` label from the payload.
+function PieTooltip(props: {
   active?: boolean;
-  payload?: Array<{ name: string; value: number; payload: { range: string; color: string } }>;
+  payload?: Array<{
+    name: string;
+    value: number;
+    payload: { range: string; color: string };
+  }>;
 }) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0];
   return (
-    <div className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 shadow-lg">
-      <div className="flex items-center gap-2 text-[12px]">
-        <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: d.payload.color }} />
-        <span className="text-[var(--ink-secondary)]">{d.name} ({d.payload.range})</span>
-      </div>
-      <p className="mt-0.5 font-mono text-[14px] font-medium text-[var(--ink-primary)]">{d.value} members</p>
-    </div>
+    <ChartTooltip
+      active={props.active}
+      payload={props.payload}
+      formatter={(value) =>
+        `${typeof value === "number" ? value.toLocaleString() : value} members`
+      }
+    />
+  );
+}
+
+// Bar chart: revenue amounts in USD.
+function BarTooltip(props: {
+  active?: boolean;
+  payload?: Array<{ value: number; name: string; color: string }>;
+  label?: string;
+}) {
+  return (
+    <ChartTooltip
+      active={props.active}
+      payload={props.payload}
+      label={props.label}
+      formatter={(value) =>
+        `$${typeof value === "number" ? value.toLocaleString() : value}`
+      }
+    />
   );
 }
 
@@ -371,7 +386,7 @@ export default function AnalyticsPage() {
                     domain={[0, 100]}
                     tickFormatter={(v: number) => `${v}%`}
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<AreaTooltip />} />
                   <Area
                     type="monotone"
                     dataKey="rate"
@@ -503,7 +518,7 @@ export default function AnalyticsPage() {
                     tickLine={false}
                     tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<BarTooltip />} />
                   <Legend
                     iconType="circle"
                     iconSize={8}

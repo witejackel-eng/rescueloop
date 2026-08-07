@@ -44,3 +44,41 @@ export function formatShort(dateStr: string): string {
 export function syncLabel(): string {
   return "Demo sync · just now";
 }
+
+// Return an ISO timestamp X minutes before now
+export function minutesAgoIso(minutes: number): string {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - minutes);
+  return d.toISOString();
+}
+
+// Return an ISO timestamp X hours before now
+export function hoursAgoIso(hours: number): string {
+  const d = new Date();
+  d.setHours(d.getHours() - hours);
+  return d.toISOString();
+}
+
+// Return an ISO timestamp X days before now
+export function daysAgoIso(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
+// Format a "X minutes ago" / "Xh ago" / "Xd ago" label from an ISO timestamp
+export function relativeFromIso(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const diffSec = Math.max(0, Math.round((now - then) / 1000));
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  const diffWk = Math.round(diffDay / 7);
+  if (diffWk < 5) return `${diffWk}w ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}

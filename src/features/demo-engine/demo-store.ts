@@ -13,6 +13,7 @@ import type {
   ActivityEvent,
   ValueEvent,
   Notification,
+  NotificationPreferences,
   AutomationState,
 } from "@/lib/types";
 
@@ -45,6 +46,9 @@ interface DemoState {
   // Notifications
   notifications: Notification[];
 
+  // Notification preferences (Notifications Center)
+  notificationPreferences: NotificationPreferences;
+
   // Student-facing blocker submissions
   blockerSubmissions: { studentId: string; blocker: string; note: string | null; createdAt: string }[];
 
@@ -66,6 +70,15 @@ interface DemoState {
   addActivity: (event: ActivityEvent) => void;
   addValueEvent: (event: ValueEvent) => void;
   resolveNotification: (id: string) => void;
+
+  // Notifications Center actions
+  markNotificationRead: (id: string, read: boolean) => void;
+  markAllNotificationsRead: () => void;
+  dismissNotification: (id: string) => void;
+  bulkMarkNotificationsRead: (ids: string[]) => void;
+  bulkDismissNotifications: (ids: string[]) => void;
+  setNotificationPreference: (key: keyof NotificationPreferences, value: boolean) => void;
+  resetNotificationPreferences: () => void;
 
   submitBlocker: (studentId: string, blocker: string, note: string | null) => void;
 
@@ -98,6 +111,23 @@ function seedActivity(): ActivityEvent[] {
   }));
 }
 
+// Default notification preferences — every channel & alert is on, except
+// Slack which is gated as "Coming soon".
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  rescueCandidateDetected: true,
+  highRiskMember: true,
+  recoveryCompleted: true,
+  memberResponded: true,
+  responseOverdue: true,
+  positiveFeedback: true,
+  syncCompleted: false,
+  syncFailed: true,
+  maintenanceScheduled: true,
+  channelInApp: true,
+  channelEmail: true,
+  channelSlack: false,
+};
+
 export const useDemoStore = create<DemoState>()(
   persist(
     (set, get) => ({
@@ -106,6 +136,7 @@ export const useDemoStore = create<DemoState>()(
       activity: seedActivity(),
       valueEvents: [...VALUE_EVENTS],
       notifications: [...NOTIFICATIONS],
+      notificationPreferences: { ...DEFAULT_NOTIFICATION_PREFERENCES },
       blockerSubmissions: [],
       commandPaletteOpen: false,
 
@@ -201,6 +232,53 @@ export const useDemoStore = create<DemoState>()(
           ),
         })),
 
+      // ── Notifications Center actions ──
+      markNotificationRead: (id, read) =>
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.id === id ? { ...n, resolved: read } : n,
+          ),
+        })),
+
+      markAllNotificationsRead: () =>
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.dismissed ? n : { ...n, resolved: true },
+          ),
+        })),
+
+      dismissNotification: (id) =>
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.id === id ? { ...n, dismissed: true } : n,
+          ),
+        })),
+
+      bulkMarkNotificationsRead: (ids) =>
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            ids.includes(n.id) ? { ...n, resolved: true } : n,
+          ),
+        })),
+
+      bulkDismissNotifications: (ids) =>
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            ids.includes(n.id) ? { ...n, dismissed: true } : n,
+          ),
+        })),
+
+      setNotificationPreference: (key, value) =>
+        set((state) => ({
+          notificationPreferences: {
+            ...state.notificationPreferences,
+            [key]: value,
+          },
+        })),
+
+      resetNotificationPreferences: () =>
+        set({ notificationPreferences: { ...DEFAULT_NOTIFICATION_PREFERENCES } }),
+
       submitBlocker: (studentId, blocker, note) => {
         const submission = {
           studentId,
@@ -208,16 +286,20 @@ export const useDemoStore = create<DemoState>()(
           note,
           createdAt: new Date().toISOString(),
         };
+        const nowIso = new Date().toISOString();
         set((state) => ({
           blockerSubmissions: [submission, ...state.blockerSubmissions],
           notifications: [
             {
               id: `nt_blocker_${Date.now()}`,
               type: "help_request" as const,
+              category: "response" as const,
               title: "Student reported a blocker",
               description: `A student reported: ${blocker.replace(/_/g, " ")}`,
               createdAt: "just now",
+              createdAtIso: nowIso,
               resolved: false,
+              dismissed: false,
               actionLabel: "Review request",
               actionHref: "/students",
             },
@@ -292,6 +374,7 @@ export const useDemoStore = create<DemoState>()(
           activity: seedActivity(),
           valueEvents: [...VALUE_EVENTS],
           notifications: [...NOTIFICATIONS],
+          notificationPreferences: { ...DEFAULT_NOTIFICATION_PREFERENCES },
           blockerSubmissions: [],
           commandPaletteOpen: false,
         }),
@@ -304,8 +387,39 @@ export const useDemoStore = create<DemoState>()(
         activity: state.activity.slice(0, 30),
         valueEvents: state.valueEvents,
         notifications: state.notifications,
+        notificationPreferences: state.notificationPreferences,
         blockerSubmissions: state.blockerSubmissions,
       }),
+      // Migrate older persisted state that lacks the new notification fields.
+      // Each notification gets category/createdAtIso/dismissed backfilled with
+      // reasonable defaults derived from its existing type & createdAt string.
+      migrate: (persisted: unknown) => {
+        if (!persisted || typeof persisted !== "object") return persisted as DemoState;
+        const s = persisted as Partial<DemoState>;
+        if (Array.isArray(s.notifications)) {
+          s.notifications = s.notifications.map((n) => {
+            if (n.category && n.createdAtIso && typeof n.dismissed === "boolean") return n;
+            const category =
+              n.category ??
+              (n.type === "help_request"
+                ? "response"
+                : n.type === "creator_mention" || n.type === "member_mention"
+                  ? "mention"
+                  : n.type === "sync_problem" || n.type === "campaign_paused" || n.type === "plan_limit"
+                    ? "system"
+                    : "rescue");
+            const createdAtIso =
+              n.createdAtIso ?? new Date(Date.now() - 60 * 60 * 1000).toISOString();
+            const dismissed = n.dismissed ?? false;
+            return { ...n, category, createdAtIso, dismissed } as Notification;
+          });
+        }
+        if (!s.notificationPreferences) {
+          s.notificationPreferences = { ...DEFAULT_NOTIFICATION_PREFERENCES };
+        }
+        return s as DemoState;
+      },
+      version: 2,
     },
   ),
 );
@@ -317,7 +431,24 @@ export function useQueueCountByState(state: InterventionState) {
 }
 
 export function useUnresolvedNotificationCount() {
-  return useDemoStore((s) => s.notifications.filter((n) => !n.resolved).length);
+  return useDemoStore((s) => s.notifications.filter((n) => !n.resolved && !n.dismissed).length);
+}
+
+/**
+ * useNotifications — selector returning the full notification list (newest
+ * first by createdAtIso). Dismissed notifications remain in the list so the
+ * Notifications Center can show a "show dismissed" toggle.
+ */
+export function useNotifications() {
+  return useDemoStore((s) =>
+    [...s.notifications].sort(
+      (a, b) => new Date(b.createdAtIso).getTime() - new Date(a.createdAtIso).getTime(),
+    ),
+  );
+}
+
+export function useNotificationPreferences() {
+  return useDemoStore((s) => s.notificationPreferences);
 }
 
 export function useQueueItem(id: string) {

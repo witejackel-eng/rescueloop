@@ -62,6 +62,7 @@ const PRIMARY_NAV = [
 
 const SECONDARY_NAV = [
   { href: "/activity", label: "Activity", icon: Activity },
+  { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/settings/health", label: "System Health", icon: Heart },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/usage", label: "Plan & Usage", icon: CreditCard },
@@ -489,6 +490,7 @@ function getPageTitle(pathname: string, basePath: string): string {
     "insights": "Insights",
     "analytics": "Analytics",
     "activity": "Activity",
+    "notifications": "Notifications",
     "settings": "Settings",
     "usage": "Plan & Usage",
     "help": "Help",
