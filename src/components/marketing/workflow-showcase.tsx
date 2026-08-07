@@ -346,25 +346,27 @@ const TIERS: Tier[] = [
   {
     id: "confirmed",
     label: "Confirmed",
-    value: 237,
-    description: "Directly attributable to a specific intervention.",
-    evidence: "Payment received after a documented intervention sequence.",
+    value: 0,
+    description: "Directly attributable to a specific intervention under an auditable recovery rule.",
+    evidence:
+      "Confirmed recovered value remains $0 unless a defensible auditable monetary recovery rule is satisfied. Ordinary subscription payments after an intervention are NOT classified as confirmed recovery.",
     tone: "green",
   },
   {
     id: "strongly_associated",
     label: "Strongly associated",
     value: 79,
-    description: "Intervention sent, student returned, causal chain not fully isolated.",
-    evidence: "Returned within 14 days of an intervention with no other channel touch.",
+    description: "Notification accepted by Whop, student returned within the attribution window.",
+    evidence:
+      "Returned within 14 days of an intervention accepted by the provider. Temporal association only — NOT causal proof. No monetary value is claimed.",
     tone: "amber",
   },
   {
     id: "estimated",
     label: "Estimated",
     value: 711,
-    description: "Modeled projection of retention. Not yet confirmed.",
-    evidence: "90-day modeled retained value across the recovered cohort.",
+    description: "Modelled projection of opportunity. Not yet observed.",
+    evidence: "Modelled potential across the cohort. Recorded for visibility — NOT recovered money. Excluded from ROI totals.",
     tone: "blue",
   },
 ];
@@ -465,12 +467,12 @@ function ValueLedgerShowcase() {
         </div>
 
         <div className="border-t border-[var(--hairline)] bg-[var(--canvas-elevated)] px-5 py-4">
-          <div className="flex items-baseline justify-between">
+          <div className="flex items-baseline justify-between gap-3">
             <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--ink-muted)]">
-              Total defended value
+              Shown separately
             </span>
-            <span className="font-mono text-[18px] tabular-nums text-[var(--ink-primary)]">
-              {formatCurrency(TIERS.reduce((sum, t) => sum + t.value, 0))}
+            <span className="text-[12px] leading-snug text-[var(--ink-secondary)]">
+              Confirmed, strongly associated, and estimated value are never merged into one total.
             </span>
           </div>
         </div>

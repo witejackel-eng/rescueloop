@@ -3,6 +3,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Register custom breakpoints so `compact:*` and `full:*` variants
+   generate real CSS in Tailwind v4. Without this, the marketing
+   header's `compact:flex` / `compact:inline-flex` / `compact:hidden`
+   utilities silently no-op and the desktop nav never appears at any
+   viewport width. See src/components/marketing/floating-nav.tsx. */
+@theme {
+  --breakpoint-compact: 960px;
+  --breakpoint-full: 1366px;
+}
+
 @theme inline {
   --color-background: var(--canvas);
   --color-foreground: var(--ink-primary);

@@ -15,11 +15,11 @@ interface QA {
 const ITEMS: QA[] = [
   {
     q: "Does RescueLoop guarantee retained revenue?",
-    a: "No. RescueLoop surfaces at-risk members and coordinates interventions, but retention depends on the student and the course. We tag every recovered dollar with the strongest evidence we can defend — confirmed, strongly associated, or estimated — and never merge them into a single inflated number.",
+    a: "No. RescueLoop surfaces at-risk members and coordinates interventions, but retention depends on the student and the course. We tag every observed outcome with the strongest evidence we can defend — confirmed, strongly associated, or estimated — and never merge them into a single inflated number.",
   },
   {
-    q: "How is recovered revenue attributed?",
-    a: "Confirmed value requires a documented intervention sequence followed by a payment. Strongly associated value requires an intervention sent and a return within 14 days without another channel touch. Estimated value is a modeled projection over 90 days for the recovered cohort.",
+    q: "How is observed value attributed?",
+    a: "Confirmed recovered value remains $0 unless a defensible auditable monetary recovery rule is satisfied — ordinary subscription payments after an intervention are NOT classified as confirmed recovery. Strongly associated value reflects a notification accepted by Whop followed by a return within the attribution window; no monetary value is claimed for this tier. Estimated value is a modelled projection of opportunity, not recovered money, and is excluded from ROI totals.",
   },
   {
     q: "Will it message students automatically?",
@@ -47,11 +47,11 @@ const ITEMS: QA[] = [
   },
   {
     q: "What is confirmed versus estimated value?",
-    a: "Confirmed value is a payment received after a documented intervention with clear causal evidence. Estimated value is a modeled projection based on the probability that a recovered student will still be active in 90 days. The two are always shown separately.",
+    a: "Confirmed recovered value is $0 by policy unless an auditable monetary recovery rule is satisfied. Estimated value is a modelled projection of opportunity based on cohort behaviour — it is NOT recovered money. The two are always shown separately and never summed into a single total.",
   },
   {
     q: "Which plan fits my course?",
-    a: "Rescue fits a single course under 250 members where activation is the main problem. Growth fits creators with multiple courses and renewal exposure up to ~1,000 members. Scale fits established communities that need cancellation rescue and confirmed payment attribution. Move up only when the next risk surface is actually on your plate.",
+    a: "Rescue fits a single course under 250 members where activation is the main problem. Growth fits creators with multiple courses and renewal exposure up to ~1,000 members. Scale fits established communities that need cancellation rescue and evidence-tiered attribution. Move up only when the next risk surface is actually on your plate.",
   },
 ];
 

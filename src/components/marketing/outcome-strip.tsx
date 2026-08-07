@@ -5,11 +5,20 @@ import { AnimatedCounter } from "@/components/interaction/animated-counter";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { standard } from "@/design-system/motion";
 
+// All figures shown are illustrative demo numbers drawn from the
+// interactive demo workspace. They are NOT customer results.
+//
+// Evidence-class policy (see src/lib/attribution/policy.ts):
+//   - "Confirmed recovered value" must remain $0 unless a defensible
+//     auditable monetary recovery rule is satisfied. We do not claim
+//     confirmed recovery from ordinary post-intervention payments.
+//   - "Estimated opportunity" is a modelled projection only and is
+//     never summed with confirmed or strongly-associated value.
 const CELLS = [
-  { value: 742, label: "Members monitored", prefix: "", suffix: "" },
-  { value: 118, label: "Opportunities detected", prefix: "", suffix: "" },
-  { value: 31, label: "Students re-engaged", prefix: "", suffix: "" },
-  { value: 237, label: "Confirmed recovered value", prefix: "$", suffix: "" },
+  { value: 742, label: "Members monitored (illustrative)", prefix: "", suffix: "" },
+  { value: 118, label: "Opportunities detected (illustrative)", prefix: "", suffix: "" },
+  { value: 31, label: "Students re-engaged (illustrative)", prefix: "", suffix: "" },
+  { value: 0, label: "Confirmed recovered value", prefix: "$", suffix: "" },
 ];
 
 export function OutcomeStrip() {
