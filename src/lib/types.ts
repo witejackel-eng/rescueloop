@@ -51,7 +51,8 @@ export type InterventionState =
 export type AttributionLevel =
   | "confirmed"
   | "strongly_associated"
-  | "estimated";
+  | "estimated"
+  | "observed";
 
 export type CampaignType =
   | "activation_rescue"
