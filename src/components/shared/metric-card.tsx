@@ -28,6 +28,23 @@ const ACCENT_COLORS: Record<NonNullable<MetricCardProps["accent"]>, string> = {
   recovery: "bg-[var(--recovery-green)]",
 };
 
+// Map accent to icon container background + icon color + left border
+const ACCENT_CONTAINER: Record<NonNullable<MetricCardProps["accent"]>, string> = {
+  none: "bg-[var(--canvas-elevated)] text-[var(--ink-secondary)]",
+  warning: "bg-[var(--warning)]/10 text-[var(--warning)]",
+  critical: "bg-[var(--critical)]/10 text-[var(--critical)]",
+  info: "bg-[var(--info)]/10 text-[var(--info)]",
+  recovery: "bg-[var(--recovery-green)]/10 text-[var(--recovery-green)]",
+};
+
+const ACCENT_LEFT_BORDER: Record<NonNullable<MetricCardProps["accent"]>, string> = {
+  none: "",
+  warning: "before:bg-[var(--warning)]",
+  critical: "before:bg-[var(--critical)]",
+  info: "before:bg-[var(--info)]",
+  recovery: "before:bg-[var(--recovery-green)]",
+};
+
 export function MetricCard({
   label,
   value,
@@ -49,23 +66,34 @@ export function MetricCard({
       type={onClick ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "group relative block w-full text-left",
-        "rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all duration-200",
-        onClick && "hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_1px_0_var(--hairline),0_4px_12px_-6px_rgba(17,17,15,0.08)] active:scale-[0.99]",
+        "group relative block w-full overflow-hidden text-left",
+        "rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all duration-200",
+        // Left accent border (4px), visible when accent !== "none"
+        "before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:content-['']",
+        "before:transition-all before:duration-300",
+        accent !== "none" && ACCENT_LEFT_BORDER[accent],
+        onClick && "hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_1px_0_var(--hairline),0_4px_16px_-6px_rgba(17,17,15,0.10)] active:scale-[0.99]",
       )}
       style={{ animationDelay: `${delay}ms` }}
     >
-      {/* Top row: icon + label */}
-      <div className="flex items-center gap-2 text-[var(--ink-muted)]">
-        <Icon className="size-3.5" />
-        <span className="text-[10px] font-medium uppercase tracking-[0.06em]">
+      {/* Top row: tinted icon container + label + status dot */}
+      <div className="flex items-center gap-2.5">
+        <span
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-[6px] transition-transform group-hover:scale-105",
+            ACCENT_CONTAINER[accent],
+          )}
+        >
+          <Icon className="size-3.5" />
+        </span>
+        <span className="flex-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-muted)]">
           {label}
         </span>
         {accent !== "none" && (
           <span
             aria-hidden
             className={cn(
-              "ml-auto size-1.5 rounded-full",
+              "size-1.5 rounded-full",
               ACCENT_COLORS[accent],
             )}
           />
@@ -75,7 +103,7 @@ export function MetricCard({
       {/* Value */}
       <div
         className={cn(
-          "mt-2 font-serif text-[28px] leading-none tabular-nums",
+          "mt-3 font-serif text-[30px] leading-none tabular-nums tracking-tight",
           colorClassName ?? "text-[var(--ink-primary)]",
         )}
       >
@@ -84,7 +112,7 @@ export function MetricCard({
 
       {/* Trend */}
       {trend && (
-        <p className="mt-1.5 text-[10px] text-[var(--ink-muted)]">{trend}</p>
+        <p className="mt-2 text-[11px] font-medium text-[var(--ink-secondary)]">{trend}</p>
       )}
     </Wrapper>
   );

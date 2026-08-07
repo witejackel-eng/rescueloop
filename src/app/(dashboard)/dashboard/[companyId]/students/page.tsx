@@ -45,6 +45,19 @@ const STATUS_DOT: Record<DemoMember["status"], string> = {
   paused_reminders: "bg-[var(--ink-muted)]",
 };
 
+// Left border accent for rows based on status
+const STATUS_BORDER: Record<DemoMember["status"], string> = {
+  active: "before:bg-[var(--recovery-green)]",
+  needs_attention: "before:bg-[var(--warning)]",
+  responded: "before:bg-[var(--info)]",
+  paused_reminders: "before:bg-[var(--ink-muted)]",
+};
+
+// Empty state placeholder (italicized)
+const EmptyDash = () => (
+  <span className="italic text-[var(--ink-muted)]/70">Pending</span>
+);
+
 export default function MembersPage() {
   const params = useParams<{ companyId: string }>();
   const { data: bundle, loading, error, refetch } = useCompanyDataBundle(params.companyId);
@@ -185,7 +198,11 @@ export default function MembersPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
                         transition={{ delay: i * 0.03, duration: 0.2 }}
-                        className="group border-b border-[var(--hairline)] transition-colors last:border-0 hover:bg-[var(--canvas-elevated)]"
+                        className={cn(
+                          "group relative border-b border-[var(--hairline)] transition-colors last:border-0 hover:bg-[var(--canvas-elevated)]",
+                          "before:absolute before:inset-y-0 before:left-0 before:w-[2px] before:content-[''] before:opacity-0 before:transition-opacity group-hover:before:opacity-100",
+                          STATUS_BORDER[m.status],
+                        )}
                       >
                         <td className="whitespace-nowrap px-4 py-3">
                           <div className="flex items-center gap-2.5">
@@ -228,7 +245,7 @@ export default function MembersPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-[11px] text-[var(--ink-secondary)]">
-                          {m.lastIntervention ?? <span className="text-[var(--ink-muted)]">—</span>}
+                          {m.lastIntervention ?? <EmptyDash />}
                         </td>
                         <td className="px-4 py-3">
                           {m.lastResponse ? (
@@ -245,7 +262,7 @@ export default function MembersPage() {
                               {m.lastResponse}
                             </Badge>
                           ) : (
-                            <span className="text-[var(--ink-muted)]">—</span>
+                            <EmptyDash />
                           )}
                         </td>
                       </motion.tr>

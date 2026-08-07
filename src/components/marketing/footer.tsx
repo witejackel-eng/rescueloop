@@ -35,7 +35,7 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
 
 export function MarketingFooter() {
   return (
-    <footer className="border-t border-[var(--hairline)] bg-[var(--canvas)]">
+    <footer className="border-t-[1.5px] border-[var(--hairline-strong)] bg-[var(--canvas)]">
       <div className="mx-auto max-w-[1400px] px-4 py-16 lg:px-8 lg:py-20">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr] lg:gap-10">
           {/* Brand */}

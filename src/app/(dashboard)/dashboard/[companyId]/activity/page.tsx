@@ -140,12 +140,21 @@ export default function ActivityPage() {
           </div>
         </Card>
       ) : (
-        <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+        <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+          <div className="mb-4 flex items-center justify-between border-b border-[var(--hairline)] pb-3">
+            <div className="flex items-center gap-2">
+              <Activity className="size-4 text-[var(--ink-secondary)]" />
+              <h2 className="font-serif text-[15px] text-[var(--ink-primary)]">Recent Events</h2>
+            </div>
+            <Badge variant="outline" className="rounded-[3px] text-[10px]">
+              {events.length} {events.length === 1 ? "event" : "events"}
+            </Badge>
+          </div>
           <div className="relative">
             {/* Vertical timeline line */}
-            <div className="absolute left-[15px] top-2 bottom-2 w-px bg-[var(--hairline)]" aria-hidden />
+            <div className="absolute left-[19px] top-2 bottom-2 w-px bg-[var(--hairline)]" aria-hidden />
 
-            <div className="space-y-4">
+            <div className="space-y-1">
               <AnimatePresence mode="popLayout">
                 {events.map((e, i) => {
                   const meta = EVENT_META[e.type];
@@ -158,23 +167,23 @@ export default function ActivityPage() {
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 4 }}
                       transition={{ delay: i * 0.03, duration: 0.2 }}
-                      className="relative flex items-start gap-3"
+                      className="group relative flex items-start gap-3 rounded-[6px] px-2 py-2 transition-colors hover:bg-[var(--canvas)]"
                     >
                       <div className={cn(
-                        "relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border bg-[var(--canvas)]",
-                        "border-[var(--hairline)]",
+                        "relative z-10 flex size-10 shrink-0 items-center justify-center rounded-[8px] border bg-[var(--surface)] ring-2 ring-[var(--surface)]",
+                        "border-[var(--hairline)] group-hover:border-[var(--hairline-strong)]",
                       )}>
-                        <Icon className={cn("size-3.5", meta.color)} />
+                        <Icon className={cn("size-4", meta.color)} />
                       </div>
-                      <div className="min-w-0 flex-1 pb-1">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <span className="text-[13px] font-medium text-[var(--ink-primary)]">
                               {e.detail}
                             </span>
-                            <p className="mt-0.5 text-[11px] text-[var(--ink-muted)]">
+                            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--ink-muted)]">
                               <span className="text-[var(--ink-secondary)]">{e.actor}</span>
-                              <span className="mx-1">·</span>
+                              <span>·</span>
                               <Badge variant="outline" className="rounded-[2px] text-[9px]">
                                 {meta.label}
                               </Badge>
@@ -190,6 +199,13 @@ export default function ActivityPage() {
                 })}
               </AnimatePresence>
             </div>
+          </div>
+          {/* Sticky footer closure */}
+          <div className="mt-4 flex items-center justify-between border-t border-[var(--hairline)] pt-3 text-[10px] text-[var(--ink-muted)]">
+            <span>Showing {events.length} of {bundle?.activity?.length ?? events.length} events</span>
+            <button className="font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]">
+              Load more
+            </button>
           </div>
         </Card>
       )}

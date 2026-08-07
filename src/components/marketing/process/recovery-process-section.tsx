@@ -116,19 +116,32 @@ export function RecoveryProcessSection() {
                 key={step.number}
                 type="button"
                 onClick={() => handleSelect(index)}
-                className={`w-full border-b border-[var(--dark-hairline)] py-7 text-left transition-all duration-500 lg:py-8 ${
+                className={`group relative w-full border-b border-[var(--dark-hairline)] py-7 pl-5 text-left transition-all duration-500 lg:py-8 lg:pl-6 ${
                   activeStep === index ? "opacity-100" : "opacity-40 hover:opacity-70"
                 }`}
               >
+                {/* Green left-border accent when active */}
+                <span
+                  aria-hidden="true"
+                  className={`absolute left-0 top-1/2 h-[60%] w-[2px] -translate-y-1/2 rounded-full bg-[var(--recovery-green)] transition-all duration-500 ${
+                    activeStep === index ? "opacity-100" : "opacity-0"
+                  }`}
+                />
                 <div className="flex items-start gap-6">
-                  <span className="font-serif text-[28px] text-[var(--dark-secondary)] lg:text-[32px]">
+                  <span
+                    className={`font-serif text-[28px] transition-colors duration-500 lg:text-[32px] ${
+                      activeStep === index
+                        ? "text-[var(--recovery-green)]"
+                        : "text-[var(--dark-secondary)]"
+                    }`}
+                  >
                     {step.number}
                   </span>
                   <div className="flex-1">
-                    <h3 className="mb-2 font-serif text-[22px] text-white transition-transform duration-500 group-hover:translate-x-2 lg:text-[28px]">
+                    <h3 className="mb-2 font-sans text-[22px] font-semibold tracking-[-0.01em] text-white transition-transform duration-500 group-hover:translate-x-2 lg:text-[26px]">
                       {step.title}
                     </h3>
-                    <p className="max-w-[400px] text-[15px] leading-relaxed text-[var(--dark-secondary)]">
+                    <p className="max-w-[400px] text-[15px] leading-relaxed text-[var(--dark-secondary)]/85">
                       {step.description}
                     </p>
                     {activeStep === index && (

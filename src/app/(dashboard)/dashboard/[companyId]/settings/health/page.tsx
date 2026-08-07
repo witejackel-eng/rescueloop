@@ -7,16 +7,37 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import {
-  CheckCircle2,
   AlertCircle,
-  AlertTriangle,
   RefreshCw,
   Activity,
   Clock,
+  Plug,
+  Shield,
+  Users,
+  Webhook,
+  Cog,
+  Bell,
+  CreditCard,
+  Database,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
+
+function getDomainIcon(domain: string): typeof Plug {
+  const d = domain.toLowerCase();
+  if (d.includes("sync")) return Plug;
+  if (d.includes("permission") || d.includes("security")) return Shield;
+  if (d.includes("whop") || d.includes("member")) return Users;
+  if (d.includes("webhook")) return Webhook;
+  if (d.includes("job")) return Cog;
+  if (d.includes("notif")) return Bell;
+  if (d.includes("billing") || d.includes("payment")) return CreditCard;
+  if (d.includes("data")) return Database;
+  if (d.includes("course")) return BookOpen;
+  return Activity;
+}
 
 export default function SystemHealthPage() {
   const params = useParams<{ companyId: string }>();
@@ -33,12 +54,6 @@ export default function SystemHealthPage() {
   const company = bundle?.company;
   const healthyCount = healthDomains.filter((d) => d.status === "healthy").length;
   const total = healthDomains.length;
-
-  const STATUS_ICON = {
-    healthy: CheckCircle2,
-    degraded: AlertTriangle,
-    unhealthy: AlertCircle,
-  } as const;
 
   const STATUS_COLOR = {
     healthy: "text-[var(--recovery-green)]",
@@ -112,14 +127,14 @@ export default function SystemHealthPage() {
 
       {/* Overall health bar */}
       {!loading && total > 0 && (
-        <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
+        <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--canvas-elevated)] p-5">
           <div className="flex items-center justify-between text-[12px]">
             <span className="text-[var(--ink-secondary)]">Overall system health</span>
             <span className="font-mono tabular-nums text-[var(--ink-primary)]">
               {healthyCount}/{total} healthy
             </span>
           </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--canvas)]">
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-[var(--canvas)]">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${(healthyCount / total) * 100}%` }}
@@ -143,7 +158,7 @@ export default function SystemHealthPage() {
           Array.from({ length: 9 }).map((_, i) => <CardSkeleton key={i} />)
         ) : (
           healthDomains.map((d, i) => {
-            const StatusIcon = STATUS_ICON[d.status];
+            const DomainIcon = getDomainIcon(d.domain);
             return (
               <motion.div
                 key={d.domain}
@@ -152,10 +167,10 @@ export default function SystemHealthPage() {
                 transition={{ delay: i * 0.04, duration: 0.3 }}
               >
                 <Card className="group rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]">
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5">
                       <div className={cn("flex size-8 items-center justify-center rounded-[6px]", STATUS_BG[d.status])}>
-                        <StatusIcon className={cn("size-4", STATUS_COLOR[d.status])} />
+                        <DomainIcon className={cn("size-4", STATUS_COLOR[d.status])} />
                       </div>
                       <div>
                         <p className="text-[13px] font-medium text-[var(--ink-primary)]">{d.domain}</p>

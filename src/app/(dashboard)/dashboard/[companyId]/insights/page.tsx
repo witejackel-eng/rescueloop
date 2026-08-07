@@ -87,19 +87,25 @@ export default function InsightsPage() {
       {!loading && metrics && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: "Monitored", value: metrics.membersMonitored, icon: Users, color: "text-[var(--ink-primary)]" },
-            { label: "Detected", value: metrics.needsReview, icon: AlertTriangle, color: "text-[var(--warning)]" },
-            { label: "Returned", value: metrics.observedReturns, icon: TrendingUp, color: "text-[var(--recovery-green)]" },
-            { label: "Responses", value: metrics.recentResponses, icon: Activity, color: "text-[var(--info)]" },
+            { label: "Monitored", value: metrics.membersMonitored, icon: Users, color: "text-[var(--ink-primary)]", border: "before:bg-[var(--ink-secondary)]", iconBg: "bg-[var(--canvas-elevated)] text-[var(--ink-secondary)]" },
+            { label: "Detected", value: metrics.needsReview, icon: AlertTriangle, color: "text-[var(--warning)]", border: "before:bg-[var(--warning)]", iconBg: "bg-[var(--warning)]/10 text-[var(--warning)]" },
+            { label: "Returned", value: metrics.observedReturns, icon: TrendingUp, color: "text-[var(--recovery-green)]", border: "before:bg-[var(--recovery-green)]", iconBg: "bg-[var(--recovery-green)]/10 text-[var(--recovery-green)]" },
+            { label: "Responses", value: metrics.recentResponses, icon: Activity, color: "text-[var(--info)]", border: "before:bg-[var(--info)]", iconBg: "bg-[var(--info)]/10 text-[var(--info)]" },
           ].map((s) => {
             const Icon = s.icon;
             return (
-              <Card key={s.label} className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-3">
-                <div className="flex items-center gap-1.5 text-[var(--ink-muted)]">
-                  <Icon className="size-3" />
-                  <span className="text-[10px] uppercase tracking-[0.06em]">{s.label}</span>
+              <Card key={s.label} className={cn(
+                "relative overflow-hidden rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-3",
+                "before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:content-['']",
+                s.border,
+              )}>
+                <div className="flex items-center gap-2 pl-1 text-[var(--ink-muted)]">
+                  <span className={cn("flex size-6 items-center justify-center rounded-[5px]", s.iconBg)}>
+                    <Icon className="size-3" />
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.06em]">{s.label}</span>
                 </div>
-                <div className={cn("mt-1.5 font-serif text-[22px] leading-none tabular-nums", s.color)}>
+                <div className={cn("mt-2 pl-1 font-serif text-[24px] leading-none tabular-nums", s.color)}>
                   {s.value}
                 </div>
               </Card>
@@ -134,7 +140,7 @@ export default function InsightsPage() {
                   return (
                     <div
                       key={f.lesson}
-                      className="group rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] p-3 transition-colors hover:border-[var(--hairline-strong)]"
+                      className="group rounded-[6px] border border-l-[3px] border-l-[var(--warning)]/60 bg-[var(--canvas)] p-3 transition-colors hover:bg-[var(--canvas-elevated)]"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">

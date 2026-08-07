@@ -29,6 +29,7 @@ const TIER_META: Record<Classification, {
   icon: typeof CheckCircle2;
   color: string;
   accent: string;
+  leftBorder: string;
   description: string;
 }> = {
   confirmed_recovered: {
@@ -36,6 +37,7 @@ const TIER_META: Record<Classification, {
     icon: ShieldCheck,
     color: "text-[var(--recovery-green)]",
     accent: "border-[var(--recovery-green)]/30 bg-[var(--recovery-green)]/5",
+    leftBorder: "border-l-[3px] border-l-[var(--recovery-green)]",
     description: "Auditable monetary reversal events. Requires direct evidence.",
   },
   strongly_associated: {
@@ -43,6 +45,7 @@ const TIER_META: Record<Classification, {
     icon: TrendingUp,
     color: "text-[var(--info)]",
     accent: "border-[var(--info)]/30 bg-[var(--info)]/5",
+    leftBorder: "border-l-[3px] border-l-[var(--info)]",
     description: "Students who resumed activity after intervention. Causal chain not fully isolated.",
   },
   observed: {
@@ -50,6 +53,7 @@ const TIER_META: Record<Classification, {
     icon: Eye,
     color: "text-[var(--ink-secondary)]",
     accent: "border-[var(--hairline-strong)] bg-[var(--canvas-elevated)]/50",
+    leftBorder: "border-l-[3px] border-l-[var(--critical)]",
     description: "RescueLoop observed return-to-activity events after outreach.",
   },
   estimated_opportunity: {
@@ -57,6 +61,7 @@ const TIER_META: Record<Classification, {
     icon: BarChart3,
     color: "text-[var(--ink-muted)]",
     accent: "border-[var(--ink-muted)]/20 bg-[var(--canvas-elevated)]/30",
+    leftBorder: "border-l-[3px] border-l-[var(--warning)]",
     description: "Modeled projection of potential re-engagement. Not recovered revenue.",
   },
 };
@@ -129,6 +134,7 @@ export default function OutcomesPage() {
       )}
 
       {/* Tier summary */}
+      <div className="mt-6 border-t border-[var(--hairline)] pt-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
@@ -139,14 +145,14 @@ export default function OutcomesPage() {
             const meta = TIER_META[tier];
             const Icon = meta.icon;
             return (
-              <Card key={tier} className={cn("rounded-[8px] border bg-[var(--surface)] p-4", meta.accent)}>
+              <Card key={tier} className={cn("rounded-[8px] border bg-[var(--surface)] p-4", meta.accent, meta.leftBorder)}>
                 <div className="flex items-center gap-2.5">
                   <Icon className={cn("size-4", meta.color)} />
                   <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">
                     {meta.label}
                   </span>
                 </div>
-                <div className={cn("mt-2 font-serif text-[28px] leading-none tabular-nums", meta.color)}>
+                <div className={cn("mt-2 font-serif text-[28px] font-semibold leading-none tabular-nums", meta.color)}>
                   {tierCounts[tier]}
                 </div>
                 <p className="mt-1.5 text-[10px] leading-snug text-[var(--ink-muted)]">
@@ -156,6 +162,7 @@ export default function OutcomesPage() {
             );
           })
         )}
+      </div>
       </div>
 
       {/* Outcome list */}
@@ -170,7 +177,7 @@ export default function OutcomesPage() {
         </Card>
       ) : (
         <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
-          <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Attribution Ledger</h2>
+          <h2 className="font-serif text-[16px] font-semibold text-[var(--ink-primary)]">Attribution Ledger</h2>
           <p className="mt-0.5 text-[11px] text-[var(--ink-muted)]">
             {outcomes.length} outcome{outcomes.length === 1 ? "" : "s"} · click to expand evidence
           </p>

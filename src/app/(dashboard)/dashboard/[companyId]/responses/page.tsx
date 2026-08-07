@@ -23,11 +23,11 @@ type ResponseFilter = "all" | "Continue course" | "I need help" | "I'm blocked" 
 
 const FILTERS: ResponseFilter[] = ["all", "Continue course", "I need help", "I'm blocked", "Stop reminders"];
 
-const RESPONSE_META: Record<DemoResponse["response"], { color: string; bg: string; icon: typeof MessageSquare }> = {
-  "Continue course": { color: "text-[var(--recovery-green)]", bg: "bg-[var(--recovery-green)]/10 border-[var(--recovery-green)]/30", icon: ArrowUpRight },
-  "I need help": { color: "text-[var(--warning)]", bg: "bg-[var(--warning)]/10 border-[var(--warning)]/30", icon: MessageSquare },
-  "I'm blocked": { color: "text-[var(--critical)]", bg: "bg-[var(--critical)]/10 border-[var(--critical)]/30", icon: AlertCircle },
-  "Stop reminders": { color: "text-[var(--ink-muted)]", bg: "bg-[var(--ink-muted)]/10 border-[var(--ink-muted)]/30", icon: Clock },
+const RESPONSE_META: Record<DemoResponse["response"], { color: string; bg: string; border: string; icon: typeof MessageSquare }> = {
+  "Continue course": { color: "text-[var(--recovery-green)]", bg: "bg-[var(--recovery-green)]/10 border-[var(--recovery-green)]/30", border: "border-l-[var(--recovery-green)]", icon: ArrowUpRight },
+  "I need help": { color: "text-[var(--warning)]", bg: "bg-[var(--warning)]/10 border-[var(--warning)]/30", border: "border-l-[var(--warning)]", icon: MessageSquare },
+  "I'm blocked": { color: "text-[var(--critical)]", bg: "bg-[var(--critical)]/10 border-[var(--critical)]/30", border: "border-l-[var(--critical)]", icon: AlertCircle },
+  "Stop reminders": { color: "text-[var(--ink-muted)]", bg: "bg-[var(--ink-muted)]/10 border-[var(--ink-muted)]/30", border: "border-l-[var(--ink-muted)]", icon: Clock },
 };
 
 export default function ResponsesPage() {
@@ -88,17 +88,21 @@ export default function ResponsesPage() {
       {!loading && counts.total > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: "Continue course", value: counts.continue, color: "text-[var(--recovery-green)]", accent: "bg-[var(--recovery-green)]" },
-            { label: "Need help", value: counts.help, color: "text-[var(--warning)]", accent: "bg-[var(--warning)]" },
-            { label: "Blocked", value: counts.blocked, color: "text-[var(--critical)]", accent: "bg-[var(--critical)]" },
-            { label: "Opted out", value: counts.stop, color: "text-[var(--ink-muted)]", accent: "bg-[var(--ink-muted)]" },
+            { label: "Continue course", value: counts.continue, color: "text-[var(--recovery-green)]", accent: "bg-[var(--recovery-green)]", borderAccent: "before:bg-[var(--recovery-green)]" },
+            { label: "Need help", value: counts.help, color: "text-[var(--warning)]", accent: "bg-[var(--warning)]", borderAccent: "before:bg-[var(--warning)]" },
+            { label: "Blocked", value: counts.blocked, color: "text-[var(--critical)]", accent: "bg-[var(--critical)]", borderAccent: "before:bg-[var(--critical)]" },
+            { label: "Opted out", value: counts.stop, color: "text-[var(--ink-muted)]", accent: "bg-[var(--ink-muted)]", borderAccent: "before:bg-[var(--ink-muted)]" },
           ].map((s) => (
-            <Card key={s.label} className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-3">
-              <div className="flex items-center gap-1.5">
+            <Card key={s.label} className={cn(
+              "relative overflow-hidden rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-3",
+              "before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:content-['']",
+              s.borderAccent,
+            )}>
+              <div className="flex items-center gap-1.5 pl-1">
                 <span className={cn("size-1.5 rounded-full", s.accent)} />
-                <span className="text-[10px] uppercase tracking-[0.06em] text-[var(--ink-muted)]">{s.label}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">{s.label}</span>
               </div>
-              <div className={cn("mt-1.5 font-serif text-[22px] leading-none tabular-nums", s.color)}>
+              <div className={cn("mt-1.5 pl-1 font-serif text-[24px] leading-none tabular-nums", s.color)}>
                 {s.value}
               </div>
             </Card>
@@ -179,7 +183,10 @@ export default function ResponsesPage() {
                   exit={{ opacity: 0, y: -4 }}
                   transition={{ delay: i * 0.04, duration: 0.25 }}
                 >
-                  <Card className="group rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]">
+                  <Card className={cn(
+                    "group rounded-[8px] border border-l-[3px] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]",
+                    meta.border,
+                  )}>
                     <div className="flex items-start gap-3">
                       <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-[6px] border", meta.bg)}>
                         <Icon className={cn("size-3.5", meta.color)} />

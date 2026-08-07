@@ -122,10 +122,10 @@ export default function UsagePage() {
           )}
         </div>
 
-        <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-[var(--hairline)]">
           {loading
             ? Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="space-y-2">
+                <div key={i} className="space-y-2 lg:px-4">
                   <div className="h-2.5 w-24 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
                   <div className="h-3 w-32 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
                   <div className="h-1.5 w-full animate-pulse rounded-full bg-[var(--hairline)]" />
@@ -138,6 +138,7 @@ export default function UsagePage() {
                 return (
                   <motion.div
                     key={u.label}
+                    className={cn("lg:px-4", i === 0 && "lg:pl-0")}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.07, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
@@ -152,14 +153,14 @@ export default function UsagePage() {
                       )}
                     </div>
                     <div className="mt-1.5 flex items-baseline gap-1">
-                      <span className="font-mono text-[16px] tabular-nums text-[var(--ink-primary)]">
+                      <span className="font-mono text-[28px] font-semibold tabular-nums text-[var(--ink-primary)]">
                         {u.current.toLocaleString()}
                       </span>
                       <span className="text-[11px] text-[var(--ink-muted)]">
                         / {u.limit.toLocaleString()}
                       </span>
                     </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--canvas)]">
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--canvas)]">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${pct}%` }}
@@ -196,15 +197,15 @@ export default function UsagePage() {
                   >
                     <Card
                       className={cn(
-                        "group overflow-hidden rounded-[8px] bg-[var(--surface)] transition-all",
+                        "group overflow-hidden rounded-[8px] transition-all",
                         isCurrent
-                          ? "border-[var(--recovery-green)]/40 shadow-[0_0_0_1px_var(--recovery-green)]/10"
-                          : "border border-[var(--hairline)] hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]"
+                          ? "border-[var(--recovery-green)]/40 bg-[var(--surface)] shadow-[0_0_0_1px_var(--recovery-green)]/10"
+                          : "border border-[var(--hairline)] bg-[var(--canvas-elevated)] hover:border-[var(--hairline-strong)] hover:bg-[var(--surface-hover)]"
                       )}
                     >
                       <div className="p-5">
                         <div className="flex items-center justify-between">
-                          <span className="font-serif text-[18px] text-[var(--ink-primary)]">{plan.name}</span>
+                          <span className="text-[18px] font-semibold text-[var(--ink-primary)]">{plan.name}</span>
                           {isCurrent && (
                             <Badge className="rounded-[3px] text-[9px] bg-[var(--recovery-green)] text-white">
                               Current

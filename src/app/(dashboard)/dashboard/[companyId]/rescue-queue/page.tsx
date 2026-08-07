@@ -15,6 +15,11 @@ import {
   Wifi,
   MessageSquare,
   History,
+  CheckSquare,
+  Square,
+  Layers,
+  Archive,
+  Send,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
 import type { DemoQueueCandidate } from "@/lib/demo-fixtures";
+import { toast } from "sonner";
 
 type PriorityFilter = "all" | "urgent" | "high" | "medium";
 
@@ -35,6 +41,8 @@ export default function RescueQueuePage() {
   const [actionState, setActionState] = useState<Record<string, string>>({});
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
 
   const candidates = useMemo(() => {
     const list = bundle?.queueCandidates ?? [];
@@ -57,20 +65,98 @@ export default function RescueQueuePage() {
     setTimeout(() => setRefreshing(false), 800);
   }
 
+  function toggleBulkMode() {
+    setBulkMode((v) => !v);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(candidates.map((c) => c.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function bulkApprove() {
+    toast.success(`Approved ${selectedIds.size} interventions`, {
+      description: "Drafts queued for delivery to students.",
+    });
+    setActionState((prev) => {
+      const next = { ...prev };
+      selectedIds.forEach((id) => {
+        next[id] = "Approved — queued for delivery";
+      });
+      return next;
+    });
+    clearSelection();
+    setBulkMode(false);
+  }
+
+  function bulkSchedule() {
+    toast.success(`Scheduled ${selectedIds.size} interventions`, {
+      description: "Sending tomorrow at 9:00 AM local time.",
+    });
+    setActionState((prev) => {
+      const next = { ...prev };
+      selectedIds.forEach((id) => {
+        next[id] = "Scheduled — sending tomorrow at 9am";
+      });
+      return next;
+    });
+    clearSelection();
+    setBulkMode(false);
+  }
+
+  function bulkDismiss() {
+    toast.info(`Dismissed ${selectedIds.size} candidates`, {
+      description: "Added to cooldown list — will re-check in 7 days.",
+    });
+    setActionState((prev) => {
+      const next = { ...prev };
+      selectedIds.forEach((id) => {
+        next[id] = "Dismissed — added to cooldown list";
+      });
+      return next;
+    });
+    clearSelection();
+    setBulkMode(false);
+  }
+
   function priorityColor(priority: string) {
     return priority === "urgent"
-      ? "border-[var(--critical)]/30 text-[var(--critical)]"
+      ? "border-[var(--critical)]/30 text-[var(--critical)] bg-[var(--critical)]/5"
       : priority === "high"
-        ? "border-[var(--warning)]/30 text-[var(--warning)]"
-        : "border-[var(--info)]/30 text-[var(--info)]";
+        ? "border-[var(--warning)]/30 text-[var(--warning)] bg-[var(--warning)]/5"
+        : "border-[var(--info)]/30 text-[var(--info)] bg-[var(--info)]/5";
+  }
+
+  function priorityBorder(priority: string) {
+    return priority === "urgent"
+      ? "border-l-[var(--critical)]"
+      : priority === "high"
+        ? "border-l-[var(--warning)]"
+        : "border-l-[var(--info)]";
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 pb-24">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-serif text-[24px] text-[var(--ink-primary)]">Rescue Queue</h1>
+          <h1 className="font-serif text-[28px] leading-tight text-[var(--ink-primary)]">Rescue Queue</h1>
           <p className="mt-1 text-[13px] text-[var(--ink-secondary)]">
             {loading ? (
               <span className="inline-block h-3 w-32 animate-pulse rounded-[2px] bg-[var(--hairline)] align-middle" />
@@ -84,16 +170,31 @@ export default function RescueQueuePage() {
             )}
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleRefresh}
-          className="h-7 rounded-[6px] px-2 text-[11px] text-[var(--ink-muted)]"
-          aria-label="Refresh queue"
-        >
-          <RefreshCw className={cn("mr-1 size-3", refreshing && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={bulkMode ? "default" : "ghost"}
+            size="sm"
+            onClick={toggleBulkMode}
+            className={cn(
+              "h-7 rounded-[6px] px-2 text-[11px]",
+              bulkMode && "bg-[var(--ink-primary)] text-white"
+            )}
+            aria-label="Toggle bulk selection"
+          >
+            <Layers className="mr-1 size-3" />
+            {bulkMode ? "Exit bulk" : "Bulk select"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            className="h-7 rounded-[6px] px-2 text-[11px] text-[var(--ink-muted)]"
+            aria-label="Refresh queue"
+          >
+            <RefreshCw className={cn("mr-1 size-3", refreshing && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Error state */}
@@ -149,6 +250,25 @@ export default function RescueQueuePage() {
             </button>
           );
         })}
+        {bulkMode && candidates.length > 0 && (
+          <>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={selectAll}
+                className="text-[11px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+              >
+                Select all
+              </button>
+              <span className="text-[var(--hairline-strong)]">·</span>
+              <button
+                onClick={clearSelection}
+                className="text-[11px] font-medium text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)]"
+              >
+                Clear
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
@@ -171,6 +291,7 @@ export default function RescueQueuePage() {
             <AnimatePresence mode="popLayout">
               {candidates.map((c, i) => {
                 const isSelected = selectedId === c.id;
+                const isChecked = selectedIds.has(c.id);
                 return (
                   <motion.div
                     key={c.id}
@@ -182,51 +303,72 @@ export default function RescueQueuePage() {
                   >
                     <Card
                       className={cn(
-                        "cursor-pointer rounded-[8px] border bg-[var(--surface)] p-4 transition-all",
+                        "relative cursor-pointer rounded-[8px] border border-l-[3px] bg-[var(--surface)] p-4 transition-all",
+                        priorityBorder(c.priority),
                         isSelected
-                          ? "border-[var(--recovery-green)]/40 shadow-[0_0_0_1px_var(--recovery-green)]/20"
-                          : "border-[var(--hairline)] hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]",
+                          ? "shadow-[0_0_0_1px_var(--recovery-green)]"
+                          : "hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]",
+                        isChecked && "ring-1 ring-[var(--recovery-green)]/30"
                       )}
-                      onClick={() => setSelectedId(c.id)}
+                      onClick={() => bulkMode ? toggleSelected(c.id) : setSelectedId(c.id)}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="size-6 shrink-0 rounded-full bg-[var(--canvas-elevated)] font-mono text-[10px] font-medium leading-6 text-center text-[var(--ink-secondary)]">
-                              {c.initials}
-                            </span>
-                            <span className="text-[14px] font-medium text-[var(--ink-primary)]">
-                              {c.name}
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "rounded-[3px] text-[9px] capitalize",
-                                priorityColor(c.priority),
-                              )}
+                        <div className="flex min-w-0 flex-1 items-start gap-2">
+                          {bulkMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSelected(c.id);
+                              }}
+                              className="mt-0.5 shrink-0"
+                              aria-label={isChecked ? "Unselect" : "Select"}
                             >
-                              {c.priority}
-                            </Badge>
-                            {c.membershipStatus === "cancelling" && (
+                              {isChecked ? (
+                                <CheckSquare className="size-4 text-[var(--recovery-green)]" />
+                              ) : (
+                                <Square className="size-4 text-[var(--ink-muted)]" />
+                              )}
+                            </button>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="size-6 shrink-0 rounded-full bg-[var(--canvas-elevated)] font-mono text-[10px] font-medium leading-6 text-center text-[var(--ink-secondary)]">
+                                {c.initials}
+                              </span>
+                              <span className="text-[14px] font-semibold text-[var(--ink-primary)]">
+                                {c.name}
+                              </span>
                               <Badge
                                 variant="outline"
-                                className="rounded-[3px] text-[9px] border-[var(--critical)]/30 text-[var(--critical)]"
+                                className={cn(
+                                  "rounded-[3px] text-[9px] capitalize",
+                                  priorityColor(c.priority),
+                                )}
                               >
-                                Cancelling
+                                {c.priority}
                               </Badge>
-                            )}
-                            {c.membershipStatus === "trialing" && (
-                              <Badge
-                                variant="outline"
-                                className="rounded-[3px] text-[9px] border-[var(--info)]/30 text-[var(--info)]"
-                              >
-                                Trial
-                              </Badge>
-                            )}
+                              {c.membershipStatus === "cancelling" && (
+                                <Badge
+                                  variant="outline"
+                                  className="rounded-[3px] text-[9px] border-[var(--critical)]/30 text-[var(--critical)] bg-[var(--critical)]/5"
+                                >
+                                  Cancelling
+                                </Badge>
+                              )}
+                              {c.membershipStatus === "trialing" && (
+                                <Badge
+                                  variant="outline"
+                                  className="rounded-[3px] text-[9px] border-[var(--info)]/30 text-[var(--info)] bg-[var(--info)]/5"
+                                >
+                                  Trial
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="mt-1 text-[12px] text-[var(--ink-secondary)]">
+                              {c.trigger}
+                            </p>
                           </div>
-                          <p className="mt-0.5 text-[12px] text-[var(--ink-secondary)]">
-                            {c.trigger}
-                          </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                           <span className="font-mono text-[11px] tabular-nums text-[var(--ink-secondary)]">
@@ -242,7 +384,7 @@ export default function RescueQueuePage() {
                       </div>
 
                       {/* Meta row */}
-                      <div className="mt-2.5 flex items-center gap-2 text-[10px] text-[var(--ink-muted)]">
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[10px] text-[var(--ink-muted)]">
                         <span className="truncate">{c.course}</span>
                         <span>·</span>
                         <span>{c.daysInactive}d inactive</span>
@@ -257,12 +399,15 @@ export default function RescueQueuePage() {
                       </div>
 
                       {/* Progress bar */}
-                      <div className="mt-2 h-[2px] overflow-hidden rounded-full bg-[var(--hairline)]">
+                      <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-[var(--hairline)]">
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: `${Math.max(2, Math.min(100, c.progress))}%` }}
                           transition={{ duration: 0.6, ease: "easeOut", delay: i * 0.04 }}
-                          className="h-full rounded-full bg-[var(--recovery-green)]"
+                          className={cn(
+                            "h-full rounded-full",
+                            c.progress < 20 ? "bg-[var(--critical)]" : c.progress < 50 ? "bg-[var(--warning)]" : "bg-[var(--recovery-green)]"
+                          )}
                         />
                       </div>
 
@@ -309,6 +454,75 @@ export default function RescueQueuePage() {
           )}
         </div>
       </div>
+
+      {/* Bulk action bar */}
+      <AnimatePresence>
+        {bulkMode && selectedIds.size > 0 && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+            className="fixed inset-x-0 bottom-0 z-30 lg:pl-[228px]"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
+            <div className="mx-auto max-w-[1200px] px-4 pb-4">
+              <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--hairline-strong)] bg-[var(--ink-primary)] px-4 py-3 text-white shadow-[0_8px_32px_-8px_rgba(17,17,15,0.4)]">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-8 items-center justify-center rounded-[6px] bg-white/10">
+                    <CheckSquare className="size-4" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-medium">
+                      {selectedIds.size} selected
+                    </p>
+                    <p className="text-[11px] text-white/60">
+                      Choose an action to apply
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={bulkApprove}
+                    className="bg-[var(--recovery-green)] text-white hover:bg-[var(--recovery-green)]/90 h-8 px-3 text-[12px]"
+                  >
+                    <Send className="mr-1 size-3" />
+                    Approve all
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={bulkSchedule}
+                    variant="outline"
+                    className="h-8 border-white/20 bg-transparent px-3 text-[12px] text-white hover:bg-white/10 hover:text-white"
+                  >
+                    <Calendar className="mr-1 size-3" />
+                    Schedule
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={bulkDismiss}
+                    variant="outline"
+                    className="h-8 border-white/20 bg-transparent px-3 text-[12px] text-white hover:bg-white/10 hover:text-white"
+                  >
+                    <Archive className="mr-1 size-3" />
+                    Dismiss
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={clearSelection}
+                    variant="ghost"
+                    className="h-8 px-2 text-[12px] text-white/70 hover:bg-white/10 hover:text-white"
+                    aria-label="Clear selection"
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -323,7 +537,7 @@ function InspectorPanel({
   onAction: (action: string) => void;
 }) {
   return (
-    <Card className="sticky top-4 rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+    <Card className="sticky top-4 rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
       <motion.div
         key={candidate.id}
         initial={{ opacity: 0, x: 8 }}
@@ -342,10 +556,10 @@ function InspectorPanel({
               className={cn(
                 "rounded-[3px] text-[9px] capitalize",
                 candidate.priority === "urgent"
-                  ? "border-[var(--critical)]/30 text-[var(--critical)]"
+                  ? "border-[var(--critical)]/30 text-[var(--critical)] bg-[var(--critical)]/5"
                   : candidate.priority === "high"
-                    ? "border-[var(--warning)]/30 text-[var(--warning)]"
-                    : "border-[var(--info)]/30 text-[var(--info)]",
+                    ? "border-[var(--warning)]/30 text-[var(--warning)] bg-[var(--warning)]/5"
+                    : "border-[var(--info)]/30 text-[var(--info)] bg-[var(--info)]/5",
               )}
             >
               {candidate.priority}
@@ -455,7 +669,12 @@ function InspectorPanel({
           <Button
             size="sm"
             className="flex-1 rounded-[6px] text-[12px] bg-[var(--recovery-green)] hover:bg-[var(--recovery-green)]/90"
-            onClick={() => onAction("Approved — queued for delivery")}
+            onClick={() => {
+              onAction("Approved — queued for delivery");
+              toast.success("Intervention approved", {
+                description: "Draft queued for delivery to student.",
+              });
+            }}
           >
             <CheckCircle2 className="mr-1.5 size-3.5" /> Approve
           </Button>
@@ -463,7 +682,12 @@ function InspectorPanel({
             size="sm"
             variant="outline"
             className="flex-1 rounded-[6px] text-[12px]"
-            onClick={() => onAction("Scheduled — sending tomorrow at 9am")}
+            onClick={() => {
+              onAction("Scheduled — sending tomorrow at 9am");
+              toast.success("Intervention scheduled", {
+                description: "Sending tomorrow at 9:00 AM local time.",
+              });
+            }}
           >
             <Calendar className="mr-1.5 size-3.5" /> Schedule
           </Button>
@@ -471,7 +695,12 @@ function InspectorPanel({
             size="sm"
             variant="ghost"
             className="rounded-[6px] text-[12px]"
-            onClick={() => onAction("Dismissed — added to cooldown list")}
+            onClick={() => {
+              onAction("Dismissed — added to cooldown list");
+              toast.info("Candidate dismissed", {
+                description: "Added to cooldown — will re-check in 7 days.",
+              });
+            }}
             aria-label="Dismiss"
           >
             <X className="size-3.5" />

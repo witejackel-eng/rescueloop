@@ -1,5 +1,7 @@
 import { FloatingNav } from "@/components/marketing/floating-nav";
 import { RescueHero } from "@/components/marketing/hero/rescue-hero";
+import { TrustStrip } from "@/components/marketing/trust-strip";
+import { HeroPreview } from "@/components/marketing/hero-preview";
 import { OutcomeStrip } from "@/components/marketing/outcome-strip";
 import { FeatureRows } from "@/components/marketing/feature-rows";
 import { RevenueLeakageSection } from "@/components/marketing/revenue-leakage-section";
@@ -11,6 +13,7 @@ import { RoiCalculator } from "@/components/marketing/roi-calculator";
 import { PricingSection } from "@/components/marketing/pricing-section";
 import { FaqSection } from "@/components/marketing/faq-section";
 import { FinalCta } from "@/components/marketing/final-cta";
+import { ClosingCta } from "@/components/marketing/closing-cta";
 import { MarketingFooter } from "@/components/marketing/footer";
 
 export default function MarketingPage() {
@@ -18,6 +21,8 @@ export default function MarketingPage() {
     <main className="bg-[var(--canvas)]">
       <FloatingNav />
       <RescueHero />
+      <TrustStrip />
+      <HeroPreview />
       <OutcomeStrip />
       <FeatureRows />
       <RevenueLeakageSection />
@@ -29,6 +34,7 @@ export default function MarketingPage() {
       <PricingSection />
       <FaqSection />
       <FinalCta />
+      <ClosingCta />
       <MarketingFooter />
     </main>
   );

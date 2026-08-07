@@ -93,7 +93,7 @@ export default function PlaybooksPage() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
             <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex size-8 items-center justify-center rounded-[6px] bg-[var(--recovery-green)]/10">
+                <div className="flex size-9 items-center justify-center rounded-[8px] bg-[var(--recovery-green)]/10">
                   <BookOpen className="size-4 text-[var(--recovery-green)]" />
                 </div>
                 <div>
@@ -106,7 +106,7 @@ export default function PlaybooksPage() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
             <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex size-8 items-center justify-center rounded-[6px] bg-[var(--info)]/10">
+                <div className="flex size-9 items-center justify-center rounded-[8px] bg-[var(--info)]/10">
                   <CheckCircle2 className="size-4 text-[var(--info)]" />
                 </div>
                 <div>
@@ -121,7 +121,7 @@ export default function PlaybooksPage() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
             <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex size-8 items-center justify-center rounded-[6px] bg-[var(--warning)]/10">
+                <div className="flex size-9 items-center justify-center rounded-[8px] bg-[var(--warning)]/10">
                   <Users className="size-4 text-[var(--warning)]" />
                 </div>
                 <div>
@@ -136,7 +136,7 @@ export default function PlaybooksPage() {
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
             <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex size-8 items-center justify-center rounded-[6px] bg-[var(--ink-secondary)]/10">
+                <div className="flex size-9 items-center justify-center rounded-[8px] bg-[var(--ink-secondary)]/10">
                   <Zap className="size-4 text-[var(--ink-secondary)]" />
                 </div>
                 <div>
@@ -174,7 +174,7 @@ export default function PlaybooksPage() {
                   exit={{ opacity: 0, y: -12 }}
                   transition={{ delay: i * 0.06, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
                 >
-                  <Card className="group overflow-hidden rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]">
+                  <Card className="group overflow-hidden rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]">
                     <div className="p-5">
                       {/* Header row */}
                       <div className="flex items-start justify-between">
@@ -196,7 +196,7 @@ export default function PlaybooksPage() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h2 className="text-[15px] font-medium text-[var(--ink-primary)]">{p.name}</h2>
+                              <h2 className="text-[15px] font-semibold text-[var(--ink-primary)]">{p.name}</h2>
                               {!p.enabled && (
                                 <Badge variant="outline" className="rounded-[3px] text-[9px] border-[var(--ink-muted)]/30 text-[var(--ink-muted)]">
                                   Disabled
@@ -219,38 +219,38 @@ export default function PlaybooksPage() {
                       </div>
 
                       {/* Stats grid */}
-                      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
                         <div className="flex items-center gap-2">
                           <Clock className="size-3.5 text-[var(--ink-muted)]" />
                           <div>
-                            <span className="text-[10px] text-[var(--ink-muted)]">Cooldown</span>
-                            <p className="text-[12px] text-[var(--ink-primary)]">{p.cooldown}</p>
+                            <dt className="text-[10px] text-[var(--ink-muted)]">Cooldown</dt>
+                            <dd className="text-[12px] font-semibold text-[var(--ink-primary)]">{p.cooldown}</dd>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <Moon className="size-3.5 text-[var(--ink-muted)]" />
                           <div>
-                            <span className="text-[10px] text-[var(--ink-muted)]">Quiet hours</span>
-                            <p className="text-[12px] text-[var(--ink-primary)]">{p.quietHours}</p>
+                            <dt className="text-[10px] text-[var(--ink-muted)]">Quiet hours</dt>
+                            <dd className="text-[12px] font-semibold text-[var(--ink-primary)]">{p.quietHours}</dd>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <MessageSquare className="size-3.5 text-[var(--ink-muted)]" />
                           <div>
-                            <span className="text-[10px] text-[var(--ink-muted)]">Approval</span>
-                            <p className="text-[12px] text-[var(--ink-primary)] capitalize">{p.approvalBehavior}</p>
+                            <dt className="text-[10px] text-[var(--ink-muted)]">Approval</dt>
+                            <dd className="text-[12px] font-semibold capitalize text-[var(--ink-primary)]">{p.approvalBehavior}</dd>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <Users className="size-3.5 text-[var(--ink-muted)]" />
                           <div>
-                            <span className="text-[10px] text-[var(--ink-muted)]">Detected</span>
-                            <p className="font-mono text-[12px] tabular-nums text-[var(--ink-primary)]">
+                            <dt className="text-[10px] text-[var(--ink-muted)]">Detected</dt>
+                            <dd className="font-mono text-[12px] font-semibold tabular-nums text-[var(--ink-primary)]">
                               {p.studentsDetected} students
-                            </p>
+                            </dd>
                           </div>
                         </div>
-                      </div>
+                      </dl>
 
                       {/* Expand toggle */}
                       <button

@@ -13,6 +13,10 @@ import {
   Settings,
   Wifi,
   Link2,
+  Link,
+  Heart,
+  Key,
+  Activity,
   Bell,
   Shield,
   Clock,
@@ -99,10 +103,10 @@ export default function SettingsPage() {
           <h2 className="text-[14px] font-medium text-[var(--ink-primary)]">Connection</h2>
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="mt-5 divide-y divide-[var(--hairline)]">
           {loading ? (
             Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between">
+              <div key={i} className="flex items-center justify-between py-2.5">
                 <div className="h-2.5 w-32 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
                 <div className="h-2.5 w-24 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
               </div>
@@ -110,8 +114,9 @@ export default function SettingsPage() {
           ) : (
             <>
               {/* Whop Integration */}
-              <div className="group flex items-center justify-between">
+              <div className="group flex items-center justify-between py-2.5">
                 <div className="flex items-center gap-2">
+                  <Key className="size-3.5 text-[var(--ink-muted)]" />
                   <span className="text-[12px] text-[var(--ink-secondary)]">Whop Integration</span>
                   {whopDomain?.status === "healthy" ? (
                     <Badge variant="outline" className="rounded-[3px] text-[9px] border-[var(--recovery-green)]/30 text-[var(--recovery-green)]">
@@ -123,23 +128,29 @@ export default function SettingsPage() {
                     </Badge>
                   )}
                 </div>
-                <Button variant="ghost" size="sm" className="h-6 rounded-[4px] px-2 text-[10px] text-[var(--ink-muted)]">
+                <Button variant="outline" size="sm" className="h-7 rounded-[5px] px-2.5 text-[10px] text-[var(--ink-secondary)]">
                   <ExternalLink className="mr-1 size-3" />
                   Reconnect
                 </Button>
               </div>
 
               {/* Webhook URL */}
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] text-[var(--ink-secondary)]">Webhook URL</span>
-                <code className="rounded-[4px] bg-[var(--canvas)] px-2 py-0.5 font-mono text-[10px] text-[var(--ink-muted)]">
+              <div className="flex items-center justify-between gap-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <Link className="size-3.5 text-[var(--ink-muted)]" />
+                  <span className="text-[12px] text-[var(--ink-secondary)]">Webhook URL</span>
+                </div>
+                <code className="font-mono text-xs bg-[var(--canvas)] border border-[var(--hairline)] rounded-[6px] px-3 py-2 text-[var(--ink-secondary)]">
                   https://rescueloop.vercel.app/api/webhooks/whop
                 </code>
               </div>
 
               {/* Last sync */}
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] text-[var(--ink-secondary)]">Last successful sync</span>
+              <div className="flex items-center justify-between py-2.5">
+                <div className="flex items-center gap-2">
+                  <Activity className="size-3.5 text-[var(--ink-muted)]" />
+                  <span className="text-[12px] text-[var(--ink-secondary)]">Last successful sync</span>
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[12px] tabular-nums text-[var(--ink-primary)]">
                     {company?.lastSync ?? "—"}
@@ -153,8 +164,11 @@ export default function SettingsPage() {
               </div>
 
               {/* System health */}
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] text-[var(--ink-secondary)]">System health</span>
+              <div className="flex items-center justify-between py-2.5">
+                <div className="flex items-center gap-2">
+                  <Heart className="size-3.5 text-[var(--ink-muted)]" />
+                  <span className="text-[12px] text-[var(--ink-secondary)]">System health</span>
+                </div>
                 <div className="flex items-center gap-2">
                   <Badge
                     variant="outline"
@@ -188,9 +202,9 @@ export default function SettingsPage() {
           <h2 className="text-[14px] font-medium text-[var(--ink-primary)]">Automation</h2>
         </div>
 
-        <div className="mt-5 space-y-5">
+        <div className="mt-5 divide-y divide-[var(--hairline)]">
           {/* Approval mode toggle */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between py-2.5">
             <div>
               <span className="text-[12px] text-[var(--ink-secondary)]">Manual approval required</span>
               <p className="mt-0.5 text-[10px] text-[var(--ink-muted)]">
@@ -201,7 +215,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Auto-draft toggle */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between py-2.5">
             <div>
               <span className="text-[12px] text-[var(--ink-secondary)]">Auto-generate drafts</span>
               <p className="mt-0.5 text-[10px] text-[var(--ink-muted)]">
@@ -212,7 +226,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Notifications toggle */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between py-2.5">
             <div>
               <span className="text-[12px] text-[var(--ink-secondary)]">Notifications</span>
               <p className="mt-0.5 text-[10px] text-[var(--ink-muted)]">
@@ -223,7 +237,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Quiet hours */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between py-2.5">
             <div className="flex items-center gap-2">
               <Clock className="size-3.5 text-[var(--ink-muted)]" />
               <span className="text-[12px] text-[var(--ink-secondary)]">Quiet hours</span>
@@ -232,7 +246,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Default cooldown */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between py-2.5">
             <div className="flex items-center gap-2">
               <Shield className="size-3.5 text-[var(--ink-muted)]" />
               <span className="text-[12px] text-[var(--ink-secondary)]">Default cooldown</span>
@@ -251,14 +265,14 @@ export default function SettingsPage() {
           <h2 className="text-[14px] font-medium text-[var(--ink-primary)]">Detection Rules</h2>
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="mt-5 divide-y divide-[var(--hairline)]">
           {[
             { label: "Stall threshold", value: "7 days inactivity", icon: Clock },
             { label: "Renewal alert window", value: "5 days before renewal", icon: Bell },
             { label: "Max interventions per student", value: "3 per 30 days", icon: Shield },
             { label: "Progress threshold for stall", value: "< 20% completed", icon: Database },
           ].map((rule) => (
-            <div key={rule.label} className="flex items-center justify-between">
+            <div key={rule.label} className="flex items-center justify-between py-2.5">
               <div className="flex items-center gap-2">
                 <rule.icon className="size-3.5 text-[var(--ink-muted)]" />
                 <span className="text-[12px] text-[var(--ink-secondary)]">{rule.label}</span>

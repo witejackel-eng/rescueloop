@@ -160,33 +160,57 @@ Browser: Modern (WebRTC supported)`
       )}
 
       {/* Diagnostic Details Card */}
-      <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
-        <h2 className="text-[14px] font-medium text-[var(--ink-primary)]">System Information</h2>
-        <div className="mt-4 space-y-3">
+      <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--canvas-elevated)] p-5">
+        <h2 className="text-base font-semibold text-[var(--ink-primary)]">System Information</h2>
+        <div className="mt-4 divide-y divide-[var(--hairline)]">
           {loading ? (
             Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="flex justify-between">
+              <div key={i} className="grid grid-cols-2 items-center gap-4 py-2.5">
                 <div className="h-2.5 w-28 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
-                <div className="h-2.5 w-36 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
+                <div className="ml-auto h-2.5 w-36 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
               </div>
             ))
           ) : (
             <>
               {[
-                { label: "Release SHA", value: "abc1234", icon: Database },
-                { label: "Company ID", value: company?.id ?? "—", icon: Server },
-                { label: "Whop connection", value: company?.whopConnected ? "Connected" : "Disconnected", icon: Wifi },
-                { label: "Sync status", value: company?.systemHealth === "healthy" ? "Active" : "Degraded", icon: Activity },
-                { label: "Health", value: `${healthyCount}/${healthDomains.length} domains healthy`, icon: CheckCircle2 },
-                { label: "Plan", value: company ? `${company.plan} · $${company.planPrice}/mo` : "—", icon: Shield },
-                { label: "Last successful sync", value: company?.lastSync ?? "—", icon: Clock },
-              ].map(({ label, value, icon: Icon }) => (
-                <div key={label} className="flex items-center justify-between text-[12px]">
+                { label: "Release SHA", value: "abc1234", icon: Database, status: "neutral" as const },
+                { label: "Company ID", value: company?.id ?? "—", icon: Server, status: "neutral" as const },
+                { label: "Whop connection", value: company?.whopConnected ? "Connected" : "Disconnected", icon: Wifi, status: (company?.whopConnected ? "info" : "unhealthy") as const },
+                { label: "Sync status", value: company?.systemHealth === "healthy" ? "Active" : "Degraded", icon: Activity, status: (company?.systemHealth === "healthy" ? "healthy" : "degraded") as const },
+                { label: "Health", value: `${healthyCount}/${healthDomains.length} domains healthy`, icon: CheckCircle2, status: (healthyCount === healthDomains.length ? "healthy" : "degraded") as const },
+                { label: "Plan", value: company ? `${company.plan} · $${company.planPrice}/mo` : "—", icon: Shield, status: "neutral" as const },
+                { label: "Last successful sync", value: company?.lastSync ?? "—", icon: Clock, status: "neutral" as const },
+              ].map(({ label, value, icon: Icon, status }) => (
+                <div key={label} className="grid grid-cols-2 items-center gap-4 py-2.5 text-[12px]">
                   <div className="flex items-center gap-2 text-[var(--ink-muted)]">
                     <Icon className="size-3" />
                     {label}
                   </div>
-                  <span className="font-mono tabular-nums text-[var(--ink-primary)]">{value}</span>
+                  <div className="flex items-center justify-end gap-1.5">
+                    {status !== "neutral" && (
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full",
+                          status === "healthy" && "bg-[var(--recovery-green)]",
+                          status === "info" && "bg-[var(--info)]",
+                          status === "degraded" && "bg-[var(--warning)]",
+                          status === "unhealthy" && "bg-[var(--critical)]"
+                        )}
+                      />
+                    )}
+                    <span
+                      className={cn(
+                        "font-mono tabular-nums",
+                        status === "healthy" && "text-[var(--recovery-green)]",
+                        status === "info" && "text-[var(--info)]",
+                        status === "degraded" && "text-[var(--warning)]",
+                        status === "unhealthy" && "text-[var(--critical)]",
+                        status === "neutral" && "text-[var(--ink-primary)]"
+                      )}
+                    >
+                      {value}
+                    </span>
+                  </div>
                 </div>
               ))}
             </>
