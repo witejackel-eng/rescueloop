@@ -6,6 +6,12 @@
 //
 // The token is the only source of truth — the experienceId in the URL is
 // accepted but never trusted for authorization.
+//
+// WP05 enhancements:
+// - Checks for already-responded state and shows confirmation
+// - Passes the creator's edited message (if any) for display
+// - Uses enhanced non-enumerating token validation
+// - Never exposes churn/revenue/candidate ranking language
 
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -14,6 +20,7 @@ import { db } from "@/lib/db";
 import {
   RescueExperience,
   StudentLinkError,
+  AlreadyRespondedView,
 } from "@/components/rescueloop/student/rescue-experience";
 
 export const dynamic = "force-dynamic";
@@ -107,6 +114,17 @@ export default async function StudentRescuePage({
       organization: {
         select: { name: true, timezone: true },
       },
+      responses: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          responseType: true,
+          blockerType: true,
+          note: true,
+          createdAt: true,
+        },
+      },
     },
   });
 
@@ -118,6 +136,9 @@ export default async function StudentRescuePage({
   const course = courseState?.course;
   const membership = intervention.student.memberships[0];
 
+  // Check if the student has already responded
+  const existingResponse = intervention.responses[0];
+
   // Derive the "next lesson" info from the course state
   const lessonsCompleted = courseState?.lessonsCompleted ?? 0;
   const totalLessons = course?.lessonCount ?? courseState?.totalLessons ?? 0;
@@ -125,6 +146,23 @@ export default async function StudentRescuePage({
 
   // Estimated lesson duration (calm, honest phrasing — never a hard claim)
   const lessonDuration = "~10–15 minutes";
+
+  // The creator's message to the student — prefer the edited version if available
+  const creatorMessage = intervention.messageEdited ?? intervention.messagePreview;
+
+  // If the student has already responded, show the already-responded view
+  if (existingResponse) {
+    return (
+      <AlreadyRespondedView
+        responseType={existingResponse.responseType}
+        blockerType={existingResponse.blockerType}
+        studentName={intervention.student.name ?? "there"}
+        courseName={course?.name ?? "your course"}
+        creatorName={intervention.organization.name}
+        respondedAt={existingResponse.createdAt}
+      />
+    );
+  }
 
   return (
     <RescueExperience
@@ -139,7 +177,7 @@ export default async function StudentRescuePage({
       progressPercent={courseState?.progressPercent ?? 0}
       nextLessonIndex={nextLessonIndex}
       whySupport={intervention.trigger}
-      messagePreview={intervention.messagePreview}
+      messagePreview={creatorMessage}
       lessonDuration={lessonDuration}
       quietHours={[intervention.campaign.quietHoursStart, intervention.campaign.quietHoursEnd]}
     />

@@ -4,17 +4,15 @@
 // Uses the opaque student access token (NOT the companyId admin auth) — the
 // token carries the interventionId + studentId + organizationId.
 //
-// For each response type:
-//  - continue_course  → outcomeState "responded"
-//  - stuck            → outcomeState "responded" + blockerType recorded
-//                       (also creates a BlockerResponse row for analytics)
-//  - remind_later     → outcomeState "reminded_later" + ReminderRequest row
-//  - already_completed→ outcomeState "already_completed"
-//  - human_help       → outcomeState "requested_help" (high priority flag)
-//  - stop_reminders   → outcomeState "opted_out" + Suppression + revoke tokens
-//
-// Always writes an audit log entry. Sets intervention.state = "responded"
-// (or "stopped" for stop_reminders).
+// WP05 enhancements:
+// - Uses enhanced non-enumerating token validation via requireStudentInterventionAccess
+// - validateAndConsumeToken marks the token as consumed on first use
+// - stop_reminders → immediate Suppression + token revocation
+// - stuck → requires blockerType
+// - Updates intervention outcomeState based on response
+// - Records audit event
+// - Returns success with appropriate next-step info
+// - Never logs raw token values
 
 export const runtime = "nodejs";
 
@@ -22,7 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { recordAuditEvent } from "@/lib/audit";
-import { revokeStudentTokens } from "@/lib/crypto/student-access-tokens";
+import { revokeStudentTokens, validateAndConsumeToken } from "@/lib/crypto/student-access-tokens";
 import {
   requireStudentInterventionAccess,
   authErrorToResponse,
@@ -74,6 +72,37 @@ const OUTCOME_MAP: Record<
   stop_reminders: "opted_out",
 };
 
+// Next-step info returned to the student after response
+const NEXT_STEP_MAP: Record<
+  z.infer<typeof RespondSchema>["responseType"],
+  { message: string; canContinueCourse: boolean }
+> = {
+  continue_course: {
+    message: "Your spot is saved. The next lesson is ready whenever you are.",
+    canContinueCourse: true,
+  },
+  stuck: {
+    message: "We'll use this to send you the right help. You'll hear from us soon.",
+    canContinueCourse: true,
+  },
+  remind_later: {
+    message: "We'll send one gentle nudge at the time you chose. No pressure.",
+    canContinueCourse: true,
+  },
+  already_completed: {
+    message: "We've noted you've completed this. We won't send further reminders for it.",
+    canContinueCourse: false,
+  },
+  human_help: {
+    message: "Someone will reach out personally to help you move forward.",
+    canContinueCourse: true,
+  },
+  stop_reminders: {
+    message: "We won't send you any further messages about this course.",
+    canContinueCourse: false,
+  },
+};
+
 export async function POST(
   req: NextRequest,
   {
@@ -82,7 +111,7 @@ export async function POST(
     params: Promise<{ experienceId: string; token: string }>;
   },
 ) {
-  const { token } = await params;
+  const { token, experienceId } = await params;
 
   // ─── Rate limiting (10 req/min per token hash) ──────────────
   // We hash the token before using it as a rate-limit key.
@@ -102,6 +131,9 @@ export async function POST(
   );
   if (rateLimitRejection) return rateLimitRejection;
 
+  // ─── Token validation ───────────────────────────────────────
+  // Use the enhanced auth flow that validates token, expiry, revocation,
+  // tenant linkage, and suppression state.
   let access;
   try {
     access = await requireStudentInterventionAccess(token);
@@ -109,7 +141,20 @@ export async function POST(
     return authErrorToResponse(error);
   }
 
-  // Parse + validate the body
+  // ─── Mark token as consumed (one-time response) ────────────
+  // validateAndConsumeToken is idempotent — if already consumed, it
+  // returns successfully with consumedJustNow = false.
+  try {
+    await validateAndConsumeToken(token, { expectedExperienceId: experienceId });
+  } catch {
+    // Non-enumerating error — token is invalid/expired/revoked
+    return NextResponse.json(
+      { error: "Invalid or expired link" },
+      { status: 403 },
+    );
+  }
+
+  // ─── Parse + validate the body ──────────────────────────────
   let body: z.infer<typeof RespondSchema>;
   try {
     const json = await req.json();
@@ -124,7 +169,8 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // Cross-field validation
+  // ─── Cross-field validation ─────────────────────────────────
+  // If responseType is stuck, blockerType is required
   if (body.responseType === "stuck" && !body.blockerType) {
     return NextResponse.json(
       { error: "blockerType is required for a stuck response" },
@@ -132,7 +178,7 @@ export async function POST(
     );
   }
 
-  // Load the intervention
+  // ─── Load the intervention ──────────────────────────────────
   const intervention = await db.intervention.findUnique({
     where: { id: access.interventionId },
     select: {
@@ -203,7 +249,8 @@ export async function POST(
       });
     }
 
-    // 4. For "stop_reminders" — create a Suppression (organization scope)
+    // 4. For "stop_reminders" — immediately create a Suppression (organization scope)
+    //    No dark patterns — this is immediate and irrevocable from the student side.
     if (isStopReminders) {
       await tx.suppression.upsert({
         where: {
@@ -247,6 +294,8 @@ export async function POST(
   });
 
   // 6. For stop_reminders — revoke all pending student tokens (outside tx)
+  //    This ensures the student cannot use any other token to access
+  //    interventions from this organization.
   let revokedTokens = 0;
   if (isStopReminders) {
     revokedTokens = await revokeStudentTokens({
@@ -255,7 +304,7 @@ export async function POST(
     });
   }
 
-  // 7. Audit log
+  // 7. Audit log — never includes raw token or sensitive note content
   await recordAuditEvent({
     organizationId: intervention.organizationId,
     actorId: intervention.studentId,
@@ -274,14 +323,19 @@ export async function POST(
       remindInHours: body.remindInHours ?? null,
       revokedTokens,
       humanHelp: isHumanHelp,
+      noteProvided: !!body.note,
     },
   });
+
+  // 8. Return success with next-step info
+  const nextStep = NEXT_STEP_MAP[body.responseType];
 
   return NextResponse.json({
     ok: true,
     responseType: body.responseType,
     outcomeState,
     interventionState: result.updated.state,
+    nextStep,
     revokedTokens,
   });
 }
