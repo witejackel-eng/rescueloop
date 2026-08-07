@@ -115,6 +115,7 @@ enum OutcomeState {
 
 enum AttributionState {
   unattributed
+  observed
   strongly_associated
   confirmed
   estimated
@@ -788,7 +789,14 @@ model ValueEvent {
   // Reference to the source payment event that created this value event.
   // Unique constraint prevents one payment from creating duplicate value events.
   paymentEventId   String?          @unique
+  // Dispute/exclusion state — creator can dispute, exclude, or restore entries
+  excluded         Boolean          @default(false)
+  disputed         Boolean          @default(false)
+  disputeReason    String?
+  disputedAt       DateTime? @db.Timestamptz()
+  excludedAt       DateTime? @db.Timestamptz()
   createdAt        DateTime @db.Timestamptz()         @default(now())
+  updatedAt        DateTime @db.Timestamptz()         @updatedAt
 
   organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   intervention Intervention?         @relation(fields: [interventionId], references: [id])
@@ -796,6 +804,7 @@ model ValueEvent {
 
   @@index([organizationId, attributionLevel])
   @@index([interventionId])
+  @@index([organizationId, excluded])
   @@map("value_events")
 }
 

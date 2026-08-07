@@ -147,6 +147,11 @@ export const attributionMeta: Record<
     color: "bg-[#FEF3E2] text-[#D89222] border-[#F5E0C2]",
     description: "Modeled projection based on probability of retention. Not yet confirmed.",
   },
+  observed: {
+    label: "Observed",
+    color: "bg-[#F0F2EC] text-[#6A706A] border-[#E3E5DF]",
+    description: "An outcome was observed after intervention delivery. No monetary claim.",
+  },
 };
 
 export function relativeDay(dateStr: string): string {

@@ -1,6 +1,7 @@
 // /dashboard/[companyId]/value
 //
-// Canonical value/attribution page (WP-03). Attribution ledger + ROI.
+// Canonical value/attribution page (WP06). Attribution ledger + ROI.
+// Now wired up with the Value Ledger API and live data.
 //
 // FAIL-CLOSED: Calls requireCompanyAccess() at the top.
 
@@ -10,9 +11,8 @@ import {
   renderAccessDeniedError,
 } from "@/lib/auth/require-company-access";
 import { CompanyPageHeader } from "@/components/rescueloop/company/state-cards";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DollarSign } from "lucide-react";
+import { ValuePageClient } from "@/components/rescueloop/value/value-page-client";
 
 export const dynamic = "force-dynamic";
 
@@ -41,15 +41,7 @@ export default async function ValuePage({
         <Badge variant="outline" className="font-mono text-[11px]">Value</Badge>
       </CompanyPageHeader>
 
-      <Card>
-        <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-          <DollarSign className="size-8 text-[var(--ink-muted)]" />
-          <p className="text-[15px] font-medium text-[var(--ink-primary)]">Attribution & ROI</p>
-          <p className="max-w-sm text-[13px] leading-relaxed text-[var(--ink-secondary)]">
-            Value attribution will populate as rescue interventions lead to recovered memberships.
-          </p>
-        </CardContent>
-      </Card>
+      <ValuePageClient companyId={companyId} />
     </div>
   );
 }

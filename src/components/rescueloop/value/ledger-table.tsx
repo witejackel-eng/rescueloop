@@ -14,6 +14,7 @@ const SEGMENTS: { value: FilterTab; label: string }[] = [
   { value: "confirmed", label: "Confirmed" },
   { value: "strongly_associated", label: "Associated" },
   { value: "estimated", label: "Estimated" },
+  { value: "observed", label: "Observed" },
 ];
 
 interface LedgerTableProps {
@@ -38,6 +39,7 @@ export function LedgerTable({ events, selectedId, onSelect }: LedgerTableProps) 
       confirmed: byLevel("confirmed"),
       strongly_associated: byLevel("strongly_associated"),
       estimated: byLevel("estimated"),
+      observed: byLevel("observed"),
     } as Record<FilterTab, number>;
   }, [events]);
 
