@@ -21,6 +21,18 @@ import {
   Archive,
   Send,
   Download,
+  Users,
+  DollarSign,
+  TrendingUp,
+  Zap,
+  Target,
+  ArrowUpRight,
+  Mail,
+  Phone,
+  Sparkles,
+  Shield,
+  Flame,
+  Activity,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,12 +48,673 @@ type PriorityFilter = "all" | "urgent" | "high" | "medium";
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
 
+// Risk category mapping from trigger
+const TRIGGER_TO_RISK: Record<string, string> = {
+  "Mid-course stall": "course_stalled",
+  "Inactive near renewal": "churn_risk",
+  "Never started / stalled early": "engagement_drop",
+  "Review required": "payment_failure",
+};
+
+const RISK_CATEGORIES = ["churn_risk", "payment_failure", "engagement_drop", "course_stalled"] as const;
+const RISK_LABELS: Record<string, string> = {
+  churn_risk: "Churn Risk",
+  payment_failure: "Payment Failure",
+  engagement_drop: "Engagement Drop",
+  course_stalled: "Course Stalled",
+};
+const RISK_COLORS: Record<string, string> = {
+  churn_risk: "var(--critical)",
+  payment_failure: "var(--warning)",
+  engagement_drop: "var(--info)",
+  course_stalled: "var(--recovery-green)",
+};
+
+const PRIORITIES = ["urgent", "high", "medium", "low"] as const;
+const PRIORITY_BG: Record<string, string> = {
+  urgent: "var(--critical)",
+  high: "var(--warning)",
+  medium: "var(--info)",
+  low: "var(--recovery-green)",
+};
+
 // Pre-seeded saved views for demo
 const INITIAL_VIEWS: SavedView[] = [
   { id: "v1", name: "Urgent cancellations", filter: "urgent", count: 4, createdAt: "2d ago", starred: true },
   { id: "v2", name: "Renewal risk", filter: "high", count: 9, createdAt: "1w ago" },
 ];
 
+// ── Priority Heatmap ──────────────────────────────────────────
+function PriorityHeatmap({ candidates }: { candidates: DemoQueueCandidate[] }) {
+  const [hovered, setHovered] = useState<{ p: string; r: string } | null>(null);
+
+  const grid = useMemo(() => {
+    const m: Record<string, Record<string, number>> = {};
+    for (const p of PRIORITIES) {
+      m[p] = {};
+      for (const r of RISK_CATEGORIES) m[p][r] = 0;
+    }
+    for (const c of candidates) {
+      const risk = TRIGGER_TO_RISK[c.trigger] ?? "engagement_drop";
+      if (m[c.priority]?.[risk] !== undefined) {
+        m[c.priority][risk]++;
+      }
+    }
+    return m;
+  }, [candidates]);
+
+  const maxCount = useMemo(() => {
+    let mx = 0;
+    for (const p of PRIORITIES) for (const r of RISK_CATEGORIES) mx = Math.max(mx, grid[p][r]);
+    return mx || 1;
+  }, [grid]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+    >
+      <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Flame className="size-4 text-[var(--warning)]" />
+          <h3 className="font-serif text-[14px] text-[var(--ink-primary)]">Priority × Risk Heatmap</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[11px]">
+            <thead>
+              <tr>
+                <th className="min-w-[80px] pb-2 pr-2 text-left text-[9px] font-medium uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+                  Priority
+                </th>
+                {RISK_CATEGORIES.map((r) => (
+                  <th
+                    key={r}
+                    className="min-w-[80px] pb-2 text-center text-[9px] font-medium uppercase tracking-[0.06em] text-[var(--ink-muted)]"
+                  >
+                    {RISK_LABELS[r]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PRIORITIES.map((p, pi) => (
+                <motion.tr
+                  key={p}
+                  initial={{ opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: pi * 0.06, duration: 0.3 }}
+                >
+                  <td className="pr-2 py-1">
+                    <span
+                      className="inline-flex items-center gap-1 rounded-[3px] px-1.5 py-0.5 text-[10px] font-medium capitalize"
+                      style={{ color: PRIORITY_BG[p] }}
+                    >
+                      <span
+                        className="inline-block size-1.5 rounded-full"
+                        style={{ backgroundColor: PRIORITY_BG[p] }}
+                      />
+                      {p}
+                    </span>
+                  </td>
+                  {RISK_CATEGORIES.map((r) => {
+                    const count = grid[p][r];
+                    const intensity = count / maxCount;
+                    const isHovered = hovered?.p === p && hovered?.r === r;
+                    return (
+                      <td key={r} className="py-1 px-1 text-center">
+                        <motion.div
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: pi * 0.06 + 0.1, duration: 0.25, type: "spring", stiffness: 300 }}
+                          onMouseEnter={() => setHovered({ p, r })}
+                          onMouseLeave={() => setHovered(null)}
+                          className={cn(
+                            "relative mx-auto flex size-12 items-center justify-center rounded-[6px] font-mono text-[12px] tabular-nums transition-all cursor-default",
+                            count > 0 ? "text-white font-semibold" : "text-[var(--ink-muted)]",
+                          )}
+                          style={{
+                            backgroundColor:
+                              count > 0
+                                ? RISK_COLORS[r]
+                                : "var(--canvas)",
+                            opacity: count > 0 ? 0.15 + intensity * 0.85 : 1,
+                            transform: isHovered ? "scale(1.12)" : "scale(1)",
+                          }}
+                        >
+                          {count}
+                          {isHovered && count > 0 && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0 }}
+                              className="pointer-events-none absolute -top-8 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-[4px] bg-[var(--ink-primary)] px-2 py-0.5 text-[9px] text-white shadow-lg"
+                            >
+                              {count} candidate{count !== 1 ? "s" : ""} · {RISK_LABELS[r]} · {p}
+                            </motion.div>
+                          )}
+                        </motion.div>
+                      </td>
+                    );
+                  })}
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </motion.div>
+  );
+}
+
+// ── Queue Summary Stats Bar ───────────────────────────────────
+function QueueSummaryBar({ candidates }: { candidates: DemoQueueCandidate[] }) {
+  const stats = useMemo(() => {
+    const total = candidates.length;
+    const avgInactive = total > 0 ? (candidates.reduce((s, c) => s + c.daysInactive, 0) / total).toFixed(1) : "0";
+    const totalValue = candidates.reduce((s, c) => s + c.monthlyValue, 0);
+    // Recovery probability: higher for less inactive, higher progress, lower priority
+    const avgRecovery =
+      total > 0
+        ? (
+            candidates.reduce((s, c) => {
+              const base = c.priority === "urgent" ? 25 : c.priority === "high" ? 45 : c.priority === "medium" ? 65 : 80;
+              const progressBonus = c.progress * 0.3;
+              const inactivePenalty = c.daysInactive * 0.8;
+              return s + Math.min(95, Math.max(5, base + progressBonus - inactivePenalty));
+            }, 0) / total
+          ).toFixed(0)
+        : "0";
+    return { total, avgInactive, totalValue, avgRecovery };
+  }, [candidates]);
+
+  const items = [
+    {
+      icon: Users,
+      label: "Total Candidates",
+      value: String(stats.total),
+      color: "var(--ink-primary)",
+    },
+    {
+      icon: Clock,
+      label: "Avg Days Inactive",
+      value: stats.avgInactive,
+      color: "var(--warning)",
+    },
+    {
+      icon: DollarSign,
+      label: "Monthly Value at Risk",
+      value: `$${stats.totalValue.toLocaleString()}`,
+      color: "var(--critical)",
+    },
+    {
+      icon: TrendingUp,
+      label: "Avg Recovery Prob.",
+      value: `${stats.avgRecovery}%`,
+      color: "var(--recovery-green)",
+    },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+    >
+      {items.map((item, i) => (
+        <motion.div
+          key={item.label}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: i * 0.05, duration: 0.3 }}
+        >
+          <Card className="flex items-center gap-3 rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-3">
+            <div
+              className="flex size-9 shrink-0 items-center justify-center rounded-[6px]"
+              style={{ backgroundColor: `color-mix(in srgb, ${item.color} 10%, transparent)` }}
+            >
+              <item.icon className="size-4" style={{ color: item.color }} />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-[9px] font-medium uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+                {item.label}
+              </p>
+              <p className="font-mono text-[16px] font-semibold tabular-nums leading-tight text-[var(--ink-primary)]">
+                {item.value}
+              </p>
+            </div>
+          </Card>
+        </motion.div>
+      ))}
+    </motion.div>
+  );
+}
+
+// ── Risk Score Gauge ──────────────────────────────────────────
+function RiskScoreGauge({ score }: { score: number }) {
+  const radius = 36;
+  const circumference = 2 * Math.PI * radius;
+  const progress = (score / 100) * circumference;
+  const color =
+    score >= 75 ? "var(--critical)" : score >= 50 ? "var(--warning)" : score >= 25 ? "var(--info)" : "var(--recovery-green)";
+  const label = score >= 75 ? "Critical" : score >= 50 ? "Elevated" : score >= 25 ? "Moderate" : "Low";
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="relative size-24">
+        <svg viewBox="0 0 100 100" className="size-full -rotate-90">
+          {/* Background circle */}
+          <circle
+            cx="50" cy="50" r={radius}
+            fill="none"
+            stroke="var(--hairline)"
+            strokeWidth="6"
+          />
+          {/* Progress arc */}
+          <motion.circle
+            cx="50" cy="50" r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            initial={{ strokeDashoffset: circumference }}
+            animate={{ strokeDashoffset: circumference - progress }}
+            transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <motion.span
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="font-mono text-[20px] font-bold tabular-nums"
+            style={{ color }}
+          >
+            {score}
+          </motion.span>
+        </div>
+      </div>
+      <span
+        className="rounded-[3px] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.04em]"
+        style={{ color, backgroundColor: `color-mix(in srgb, ${color} 8%, transparent)` }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ── Mini Vertical Timeline ────────────────────────────────────
+function MiniTimeline({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return (
+      <p className="py-2 text-[11px] text-[var(--ink-muted)] italic">
+        No previous interactions recorded
+      </p>
+    );
+  }
+  return (
+    <div className="relative space-y-0">
+      {items.map((item, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0, x: -6 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: i * 0.08, duration: 0.25 }}
+          className="relative flex gap-3 pb-3"
+        >
+          {/* Timeline line + dot */}
+          <div className="flex flex-col items-center">
+            <div
+              className={cn(
+                "size-2.5 shrink-0 rounded-full border-2 border-[var(--surface)]",
+                i === 0 ? "bg-[var(--recovery-green)]" : "bg-[var(--ink-muted)]",
+              )}
+            />
+            {i < items.length - 1 && (
+              <div className="w-px flex-1 bg-[var(--hairline)]" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] leading-snug text-[var(--ink-secondary)]">
+              {item}
+            </p>
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+// ── Suggested Action Card ─────────────────────────────────────
+function SuggestedActionCard({
+  icon: Icon,
+  title,
+  description,
+  color,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      className="group flex w-full items-start gap-2.5 rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] p-2.5 text-left transition-all hover:border-[var(--hairline-strong)] hover:shadow-[0_2px_8px_-4px_rgba(17,17,15,0.08)]"
+    >
+      <div
+        className="flex size-7 shrink-0 items-center justify-center rounded-[4px]"
+        style={{ backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)` }}
+      >
+        <Icon className={cn("size-3.5")} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[12px] font-medium text-[var(--ink-primary)] group-hover:underline">{title}</p>
+        <p className="mt-0.5 text-[10px] leading-snug text-[var(--ink-muted)]">{description}</p>
+      </div>
+      <ArrowUpRight className="mt-0.5 size-3 shrink-0 text-[var(--ink-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+    </motion.button>
+  );
+}
+
+// ── Enhanced Inspector Panel ──────────────────────────────────
+function InspectorPanel({
+  candidate,
+  actionState,
+  onAction,
+}: {
+  candidate: DemoQueueCandidate;
+  actionState?: string;
+  onAction: (action: string) => void;
+}) {
+  // Compute risk score from candidate data
+  const riskScore = useMemo(() => {
+    const priorityBase = candidate.priority === "urgent" ? 75 : candidate.priority === "high" ? 55 : candidate.priority === "medium" ? 35 : 15;
+    const inactivePenalty = Math.min(20, candidate.daysInactive * 1.2);
+    const progressRelief = candidate.progress * 0.15;
+    return Math.min(99, Math.max(5, Math.round(priorityBase + inactivePenalty - progressRelief)));
+  }, [candidate]);
+
+  // Build timeline items from evidence + contactHistory
+  const timelineItems = useMemo(() => {
+    const items: string[] = [];
+    // Contact history first (most recent)
+    for (const h of candidate.contactHistory) items.push(h);
+    // Then evidence
+    for (const ev of candidate.evidence) items.push(ev);
+    return items;
+  }, [candidate]);
+
+  // Suggested actions
+  const suggestedActions = useMemo(() => {
+    const actions = [
+      {
+        icon: Mail,
+        title: "Send personal check-in",
+        description: "Draft a personalized message based on their progress and activity pattern.",
+        color: "var(--recovery-green)",
+        action: "Approved — queued for delivery",
+        toastTitle: "Intervention approved",
+        toastDesc: "Draft queued for delivery to student.",
+      },
+    ];
+
+    if (candidate.membershipStatus === "cancelling") {
+      actions.push({
+        icon: Phone,
+        title: "Schedule retention call",
+        description: "This student is cancelling — a personal call may retain them.",
+        color: "var(--critical)",
+        action: "Scheduled — retention call queued",
+        toastTitle: "Retention call scheduled",
+        toastDesc: "Call has been queued for the account owner.",
+      });
+    } else if (candidate.daysInactive > 10) {
+      actions.push({
+        icon: Zap,
+        title: "Send re-engagement nudge",
+        description: "Quick motivational message with a direct link to their next lesson.",
+        color: "var(--warning)",
+        action: "Scheduled — re-engagement nudge queued",
+        toastTitle: "Re-engagement scheduled",
+        toastDesc: "Nudge will be sent at optimal time.",
+      });
+    } else {
+      actions.push({
+        icon: Sparkles,
+        title: "Offer personalized help",
+        description: "Suggest a 1-on-1 session or alternative learning path based on their stall point.",
+        color: "var(--info)",
+        action: "Approved — help offer queued",
+        toastTitle: "Help offer approved",
+        toastDesc: "Personalized help message queued for delivery.",
+      });
+    }
+
+    actions.push({
+      icon: Shield,
+      title: "Add to cooldown watchlist",
+      description: "Pause interventions for 7 days and monitor for natural re-engagement.",
+      color: "var(--ink-muted)",
+      action: "Dismissed — added to cooldown list",
+      toastTitle: "Added to watchlist",
+      toastDesc: "Will re-check in 7 days for natural activity.",
+    });
+
+    return actions;
+  }, [candidate]);
+
+  const stagger = {
+    hidden: { opacity: 0, y: 8 },
+    show: (i: number) => ({
+      opacity: 1,
+      y: 0,
+      transition: { delay: i * 0.06, duration: 0.3, ease: "easeOut" as const },
+    }),
+  };
+
+  return (
+    <Card className="sticky top-4 rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+      <motion.div
+        key={candidate.id}
+        initial="hidden"
+        animate="show"
+        className="space-y-4"
+      >
+        {/* Header with risk gauge */}
+        <motion.div variants={stagger} custom={0} className="flex items-start gap-4">
+          <RiskScoreGauge score={riskScore} />
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-serif text-[18px] text-[var(--ink-primary)]">
+                {candidate.name}
+              </h2>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "rounded-[3px] text-[9px] capitalize",
+                  candidate.priority === "urgent"
+                    ? "border-[var(--critical)]/30 text-[var(--critical)] bg-[var(--critical)]/5"
+                    : candidate.priority === "high"
+                      ? "border-[var(--warning)]/30 text-[var(--warning)] bg-[var(--warning)]/5"
+                      : "border-[var(--info)]/30 text-[var(--info)] bg-[var(--info)]/5",
+                )}
+              >
+                {candidate.priority}
+              </Badge>
+            </div>
+            <p className="mt-0.5 text-[12px] text-[var(--ink-muted)]">
+              {candidate.course} · ${candidate.monthlyValue}/mo
+            </p>
+            <p className="mt-1 text-[11px] text-[var(--ink-secondary)]">
+              {candidate.trigger}
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Divider */}
+        <motion.div variants={stagger} custom={1} className="border-t border-[var(--hairline)]" />
+
+        {/* Status row */}
+        <motion.div variants={stagger} custom={2} className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-3 py-2">
+            <div className="text-[9px] uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+              Last activity
+            </div>
+            <div className="mt-0.5 font-mono tabular-nums text-[var(--ink-primary)]">
+              {candidate.lastActivity}
+            </div>
+          </div>
+          <div className="rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-3 py-2">
+            <div className="text-[9px] uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+              Progress
+            </div>
+            <div className="mt-0.5 font-mono tabular-nums text-[var(--ink-primary)]">
+              {candidate.progress}%
+            </div>
+          </div>
+          <div className="rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-3 py-2">
+            <div className="text-[9px] uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+              Renewal
+            </div>
+            <div className="mt-0.5 font-mono tabular-nums text-[var(--ink-primary)]">
+              {candidate.renewalDate}
+            </div>
+          </div>
+          <div className="rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-3 py-2">
+            <div className="text-[9px] uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+              Risk segment
+            </div>
+            <div className="mt-0.5 text-[var(--ink-primary)]">
+              {candidate.riskSegment}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Divider */}
+        <motion.div variants={stagger} custom={3} className="border-t border-[var(--hairline)]" />
+
+        {/* Interaction Timeline */}
+        <motion.div variants={stagger} custom={4}>
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+            <Activity className="size-3" /> Interaction Timeline
+          </span>
+          <div className="mt-2">
+            <MiniTimeline items={timelineItems} />
+          </div>
+        </motion.div>
+
+        {/* Divider */}
+        <motion.div variants={stagger} custom={5} className="border-t border-[var(--hairline)]" />
+
+        {/* Suggested Actions */}
+        <motion.div variants={stagger} custom={6}>
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+            <Target className="size-3" /> Suggested Actions
+          </span>
+          <div className="mt-2 space-y-2">
+            {suggestedActions.map((a, i) => (
+              <SuggestedActionCard
+                key={i}
+                icon={a.icon}
+                title={a.title}
+                description={a.description}
+                color={a.color}
+                onClick={() => {
+                  onAction(a.action);
+                  toast.success(a.toastTitle, { description: a.toastDesc });
+                }}
+              />
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Divider */}
+        <motion.div variants={stagger} custom={7} className="border-t border-[var(--hairline)]" />
+
+        {/* Draft message */}
+        <motion.div variants={stagger} custom={8}>
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">
+            <MessageSquare className="size-3" /> Draft message
+          </span>
+          <div className="mt-1.5 rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] p-3 text-[12px] leading-relaxed text-[var(--ink-secondary)]">
+            {candidate.draftMessage}
+          </div>
+        </motion.div>
+
+        {/* Action feedback */}
+        {actionState && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            className="overflow-hidden rounded-[4px] bg-[var(--recovery-green)]/10 px-3 py-2 text-[11px] text-[var(--recovery-green)]"
+          >
+            {actionState}
+          </motion.div>
+        )}
+
+        {/* Quick Actions */}
+        <motion.div variants={stagger} custom={9} className="flex gap-2">
+          <Button
+            size="sm"
+            className="flex-1 rounded-[6px] text-[12px] bg-[var(--recovery-green)] hover:bg-[var(--recovery-green)]/90"
+            onClick={() => {
+              onAction("Approved — queued for delivery");
+              toast.success("Intervention approved", {
+                description: "Draft queued for delivery to student.",
+              });
+            }}
+          >
+            <CheckCircle2 className="mr-1.5 size-3.5" /> Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 rounded-[6px] text-[12px]"
+            onClick={() => {
+              onAction("Scheduled — sending tomorrow at 9am");
+              toast.success("Intervention scheduled", {
+                description: "Sending tomorrow at 9:00 AM local time.",
+              });
+            }}
+          >
+            <Calendar className="mr-1.5 size-3.5" /> Schedule
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="rounded-[6px] text-[12px]"
+            onClick={() => {
+              onAction("Dismissed — added to cooldown list");
+              toast.info("Candidate dismissed", {
+                description: "Added to cooldown — will re-check in 7 days.",
+              });
+            }}
+            aria-label="Dismiss"
+          >
+            <X className="size-3.5" />
+          </Button>
+        </motion.div>
+
+        {/* Sync hint */}
+        <motion.div variants={stagger} custom={10} className="flex items-center gap-1.5 border-t border-[var(--hairline)] pt-3 text-[10px] text-[var(--ink-muted)]">
+          <Wifi className="size-3 text-[var(--recovery-green)]" />
+          <span>Demo mode — no real messages are sent to students.</span>
+        </motion.div>
+      </motion.div>
+    </Card>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────
 export default function RescueQueuePage() {
   const params = useParams<{ companyId: string }>();
   const { data: bundle, loading, error, refetch } = useCompanyDataBundle(params.companyId);
@@ -54,15 +727,16 @@ export default function RescueQueuePage() {
   const [savedViews, setSavedViews] = useState<SavedView[]>(INITIAL_VIEWS);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
 
+  const allCandidates = useMemo(() => bundle?.queueCandidates ?? [], [bundle?.queueCandidates]);
+
   const candidates = useMemo(() => {
-    const list = bundle?.queueCandidates ?? [];
     const filtered = priorityFilter === "all"
-      ? list
-      : list.filter((c) => c.priority === priorityFilter);
+      ? allCandidates
+      : allCandidates.filter((c) => c.priority === priorityFilter);
     return [...filtered].sort(
       (a, b) => (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
     );
-  }, [bundle?.queueCandidates, priorityFilter]);
+  }, [allCandidates, priorityFilter]);
 
   const selected = useMemo(
     () => candidates.find((c) => c.id === selectedId) ?? null,
@@ -284,6 +958,16 @@ export default function RescueQueuePage() {
         </Card>
       )}
 
+      {/* Queue Summary Stats Bar */}
+      {!loading && allCandidates.length > 0 && (
+        <QueueSummaryBar candidates={allCandidates} />
+      )}
+
+      {/* Priority Heatmap */}
+      {!loading && allCandidates.length > 0 && (
+        <PriorityHeatmap candidates={allCandidates} />
+      )}
+
       {/* Priority filter chips */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         <span className="flex shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--ink-muted)]">
@@ -292,8 +976,8 @@ export default function RescueQueuePage() {
         {(["all", "urgent", "high", "medium"] as PriorityFilter[]).map((p) => {
           const count =
             p === "all"
-              ? bundle?.queueCandidates?.length ?? 0
-              : bundle?.queueCandidates?.filter((c) => c.priority === p).length ?? 0;
+              ? allCandidates.length
+              : allCandidates.filter((c) => c.priority === p).length;
           const active = priorityFilter === p;
           return (
             <button
@@ -625,195 +1309,5 @@ export default function RescueQueuePage() {
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-function InspectorPanel({
-  candidate,
-  actionState,
-  onAction,
-}: {
-  candidate: DemoQueueCandidate;
-  actionState?: string;
-  onAction: (action: string) => void;
-}) {
-  return (
-    <Card className="sticky top-4 rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
-      <motion.div
-        key={candidate.id}
-        initial={{ opacity: 0, x: 8 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.25 }}
-        className="space-y-4"
-      >
-        {/* Header */}
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="font-serif text-[18px] text-[var(--ink-primary)]">
-              {candidate.name}
-            </h2>
-            <Badge
-              variant="outline"
-              className={cn(
-                "rounded-[3px] text-[9px] capitalize",
-                candidate.priority === "urgent"
-                  ? "border-[var(--critical)]/30 text-[var(--critical)] bg-[var(--critical)]/5"
-                  : candidate.priority === "high"
-                    ? "border-[var(--warning)]/30 text-[var(--warning)] bg-[var(--warning)]/5"
-                    : "border-[var(--info)]/30 text-[var(--info)] bg-[var(--info)]/5",
-              )}
-            >
-              {candidate.priority}
-            </Badge>
-          </div>
-          <p className="mt-0.5 text-[12px] text-[var(--ink-muted)]">
-            {candidate.course} · ${candidate.monthlyValue}/mo
-          </p>
-        </div>
-
-        {/* Status row */}
-        <div className="grid grid-cols-2 gap-2 text-[11px]">
-          <div className="rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-3 py-2">
-            <div className="text-[9px] uppercase tracking-[0.06em] text-[var(--ink-muted)]">
-              Last activity
-            </div>
-            <div className="mt-0.5 font-mono tabular-nums text-[var(--ink-primary)]">
-              {candidate.lastActivity}
-            </div>
-          </div>
-          <div className="rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-3 py-2">
-            <div className="text-[9px] uppercase tracking-[0.06em] text-[var(--ink-muted)]">
-              Progress
-            </div>
-            <div className="mt-0.5 font-mono tabular-nums text-[var(--ink-primary)]">
-              {candidate.progress}%
-            </div>
-          </div>
-          <div className="rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-3 py-2">
-            <div className="text-[9px] uppercase tracking-[0.06em] text-[var(--ink-muted)]">
-              Renewal
-            </div>
-            <div className="mt-0.5 font-mono tabular-nums text-[var(--ink-primary)]">
-              {candidate.renewalDate}
-            </div>
-          </div>
-          <div className="rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-3 py-2">
-            <div className="text-[9px] uppercase tracking-[0.06em] text-[var(--ink-muted)]">
-              Risk segment
-            </div>
-            <div className="mt-0.5 text-[var(--ink-primary)]">
-              {candidate.riskSegment}
-            </div>
-          </div>
-        </div>
-
-        {/* Evidence */}
-        <div>
-          <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">
-            <AlertTriangle className="size-3" /> Evidence
-          </span>
-          <ul className="mt-1.5 space-y-1">
-            {candidate.evidence.map((ev, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-2 text-[12px] text-[var(--ink-secondary)]"
-              >
-                <span className="mt-1.5 size-1 shrink-0 rounded-full bg-[var(--ink-muted)]" />
-                <span>{ev}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Contact history */}
-        {candidate.contactHistory.length > 0 && (
-          <div>
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">
-              <History className="size-3" /> Contact history
-            </span>
-            <ul className="mt-1.5 space-y-1">
-              {candidate.contactHistory.map((h, i) => (
-                <li
-                  key={i}
-                  className="rounded-[4px] bg-[var(--canvas)] px-2 py-1.5 text-[11px] text-[var(--ink-secondary)]"
-                >
-                  {h}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Draft message */}
-        <div>
-          <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">
-            <MessageSquare className="size-3" /> Draft message
-          </span>
-          <div className="mt-1.5 rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] p-3 text-[12px] leading-relaxed text-[var(--ink-secondary)]">
-            {candidate.draftMessage}
-          </div>
-        </div>
-
-        {/* Action feedback */}
-        {actionState && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            className="overflow-hidden rounded-[4px] bg-[var(--recovery-green)]/10 px-3 py-2 text-[11px] text-[var(--recovery-green)]"
-          >
-            {actionState}
-          </motion.div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            className="flex-1 rounded-[6px] text-[12px] bg-[var(--recovery-green)] hover:bg-[var(--recovery-green)]/90"
-            onClick={() => {
-              onAction("Approved — queued for delivery");
-              toast.success("Intervention approved", {
-                description: "Draft queued for delivery to student.",
-              });
-            }}
-          >
-            <CheckCircle2 className="mr-1.5 size-3.5" /> Approve
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="flex-1 rounded-[6px] text-[12px]"
-            onClick={() => {
-              onAction("Scheduled — sending tomorrow at 9am");
-              toast.success("Intervention scheduled", {
-                description: "Sending tomorrow at 9:00 AM local time.",
-              });
-            }}
-          >
-            <Calendar className="mr-1.5 size-3.5" /> Schedule
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="rounded-[6px] text-[12px]"
-            onClick={() => {
-              onAction("Dismissed — added to cooldown list");
-              toast.info("Candidate dismissed", {
-                description: "Added to cooldown — will re-check in 7 days.",
-              });
-            }}
-            aria-label="Dismiss"
-          >
-            <X className="size-3.5" />
-          </Button>
-        </div>
-
-        {/* Sync hint */}
-        <div className="flex items-center gap-1.5 border-t border-[var(--hairline)] pt-3 text-[10px] text-[var(--ink-muted)]">
-          <Wifi className="size-3 text-[var(--recovery-green)]" />
-          <span>Demo mode — no real messages are sent to students.</span>
-        </div>
-      </motion.div>
-    </Card>
   );
 }

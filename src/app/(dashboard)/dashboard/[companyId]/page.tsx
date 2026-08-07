@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -17,8 +17,14 @@ import {
   RefreshCw,
   ChevronRight,
   Sparkles,
+  Zap,
+  Target,
+  BarChart3,
+  Shield,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -28,6 +34,10 @@ import { MetricCard } from "@/components/shared/metric-card";
 import { CardSkeleton, MetricSkeleton } from "@/components/shared/card-skeleton";
 import { RecoveryFunnelMini } from "@/components/rescueloop/overview/recovery-funnel-mini";
 import { OnboardingChecklist } from "@/components/rescueloop/overview/onboarding-checklist";
+import { TimeRangeSelector, type TimeRange } from "@/components/shared/time-range-selector";
+import { SparklineMini } from "@/components/shared/sparkline-mini";
+import { ExportDataButton } from "@/components/shared/export-data-button";
+import { LiveActivityPulse } from "@/components/shared/live-activity-pulse";
 
 const ACTIVITY_ICON = {
   sync_completed: RefreshCw,
@@ -53,12 +63,24 @@ const ACTIVITY_COLOR: Record<ActivityType, string> = {
   course_activity_observed: "text-[var(--recovery-green)]",
 };
 
+// Generate deterministic sparkline data based on metric value and time range
+function makeSparkline(seed: number, range: TimeRange): number[] {
+  const len = range === "7d" ? 7 : range === "30d" ? 14 : range === "90d" ? 20 : 24;
+  return Array.from({ length: len }, (_, i) => {
+    const base = 40 + (seed % 30);
+    const trend = i * (1.2 + (seed % 3) * 0.3);
+    const noise = Math.sin(seed * (i + 1) * 0.7) * 8;
+    return Math.max(5, Math.round(base + trend + noise));
+  });
+}
+
 export default function CompanyOverviewPage() {
   const params = useParams<{ companyId: string }>();
   const basePath = `/dashboard/${params.companyId}`;
   const { data: overview, loading: overviewLoading, error: overviewError, refetch } = useCompanyOverview(params.companyId);
   const { data: bundle, loading: bundleLoading } = useCompanyDataBundle(params.companyId);
   const [refreshing, setRefreshing] = useState(false);
+  const [timeRange, setTimeRange] = useState<TimeRange>("30d");
 
   function handleRefresh() {
     setRefreshing(true);
@@ -76,6 +98,49 @@ export default function CompanyOverviewPage() {
 
   const loading = overviewLoading || bundleLoading;
 
+  // Compute recovery rate safely
+  const recoveryRate = metrics && metrics.needsReview > 0
+    ? Math.round((metrics.observedReturns / metrics.needsReview) * 100)
+    : 0;
+
+  // Sparkline data for each metric
+  const sparklines = useMemo(() => ({
+    members: makeSparkline(metrics?.membersMonitored ?? 42, timeRange),
+    needsReview: makeSparkline(metrics?.needsReview ?? 18, timeRange),
+    awaiting: makeSparkline(metrics?.awaitingApproval ?? 7, timeRange),
+    responses: makeSparkline(metrics?.recentResponses ?? 31, timeRange),
+    returns: makeSparkline(metrics?.observedReturns ?? 12, timeRange),
+  }), [metrics, timeRange]);
+
+  // Trend direction indicators
+  const trends = useMemo(() => ({
+    members: { direction: "up" as const, pct: 2.4 },
+    needsReview: { direction: "down" as const, pct: 8.1 },
+    awaiting: { direction: "up" as const, pct: 3.6 },
+    responses: { direction: "up" as const, pct: 12.2 },
+    returns: { direction: "up" as const, pct: 5.8 },
+  }), []);
+
+  // Export handlers
+  const handleExportCSV = () => {
+    if (!metrics) return "";
+    const rows = [
+      "Metric,Value,Trend",
+      `Monitored Members,${metrics.membersMonitored},+${trends.members.pct}%`,
+      `Needs Review,${metrics.needsReview},-${trends.needsReview.pct}%`,
+      `Awaiting Approval,${metrics.awaitingApproval},+${trends.awaiting.pct}%`,
+      `Responses,${metrics.recentResponses},+${trends.responses.pct}%`,
+      `Observed Returns,${metrics.observedReturns},+${trends.returns.pct}%`,
+      `Recovery Rate,${recoveryRate}%,—`,
+    ];
+    return rows.join("\n");
+  };
+
+  const handleExportJSON = () => {
+    if (!metrics) return "{}";
+    return JSON.stringify({ metrics, recoveryRate, timeRange, generatedAt: new Date().toISOString() }, null, 2);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -89,13 +154,16 @@ export default function CompanyOverviewPage() {
               </Badge>
             )}
           </div>
-          <p className="mt-1 text-[13px] text-[var(--ink-secondary)]">
-            {company ? (
-              <>{company.name} · Agency Growth System</>
-            ) : (
-              <span className="inline-block h-3 w-48 animate-pulse rounded-[2px] bg-[var(--hairline)] align-middle" />
-            )}
-          </p>
+          <div className="mt-1 flex items-center gap-3">
+            <p className="text-[13px] text-[var(--ink-secondary)]">
+              {company ? (
+                <>{company.name} · Agency Growth System</>
+              ) : (
+                <span className="inline-block h-3 w-48 animate-pulse rounded-[2px] bg-[var(--hairline)] align-middle" />
+              )}
+            </p>
+            <LiveActivityPulse loading={refreshing} intervalSec={30} onRefresh={handleRefresh} className="hidden sm:flex" />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {company && (
@@ -103,6 +171,12 @@ export default function CompanyOverviewPage() {
               {company.plan} · ${company.planPrice}/mo
             </Badge>
           )}
+          <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
+          <ExportDataButton
+            onExportCSV={handleExportCSV}
+            onExportJSON={handleExportJSON}
+            pageLabel="Dashboard Overview"
+          />
           <Button
             variant="ghost"
             size="sm"
@@ -139,7 +213,7 @@ export default function CompanyOverviewPage() {
         </Card>
       )}
 
-      {/* Primary metrics */}
+      {/* Primary metrics with sparklines */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {loading ? (
           Array.from({ length: 5 }).map((_, i) => (
@@ -147,69 +221,96 @@ export default function CompanyOverviewPage() {
           ))
         ) : metrics ? (
           <>
-            <MetricCard
+            <MetricCardWithSparkline
               label="Monitored members"
               value={metrics.membersMonitored}
               icon={Users}
-              trend={`+${Math.max(1, Math.floor(metrics.membersMonitored * 0.016))} this week`}
+              trend={`+${trends.members.pct}% vs prev`}
+              trendDirection={trends.members.direction}
               accent="none"
               delay={0}
+              sparklineData={sparklines.members}
               onClick={() => {}}
             />
-            <MetricCard
+            <MetricCardWithSparkline
               label="Needs review"
               value={metrics.needsReview}
               icon={AlertTriangle}
               colorClassName="text-[var(--warning)]"
               accent="warning"
-              trend="Awaiting creator action"
+              trend={`-${trends.needsReview.pct}% vs prev`}
+              trendDirection={trends.needsReview.direction}
               delay={60}
+              sparklineData={sparklines.needsReview}
+              sparklineColor="var(--warning)"
             />
-            <MetricCard
+            <MetricCardWithSparkline
               label="Awaiting approval"
               value={metrics.awaitingApproval}
               icon={Clock}
               colorClassName="text-[var(--info)]"
               accent="info"
-              trend="Drafts ready to review"
+              trend={`+${trends.awaiting.pct}% vs prev`}
+              trendDirection={trends.awaiting.direction}
               delay={120}
+              sparklineData={sparklines.awaiting}
+              sparklineColor="var(--info)"
             />
-            <MetricCard
+            <MetricCardWithSparkline
               label="Responses"
               value={metrics.recentResponses}
               icon={MessageSquare}
-              trend="+4 today"
+              trend={`+${trends.responses.pct}% vs prev`}
+              trendDirection={trends.responses.direction}
               accent="none"
               delay={180}
+              sparklineData={sparklines.responses}
             />
-            <MetricCard
+            <MetricCardWithSparkline
               label="Observed returns"
               value={metrics.observedReturns}
               icon={TrendingUp}
               colorClassName="text-[var(--recovery-green)]"
               accent="recovery"
-              trend="Confirmed + observed"
+              trend={`+${trends.returns.pct}% vs prev`}
+              trendDirection={trends.returns.direction}
               delay={240}
+              sparklineData={sparklines.returns}
+              sparklineColor="var(--recovery-green)"
             />
           </>
         ) : null}
       </div>
 
-      {/* Recovery rate banner */}
+      {/* Recovery rate banner — enhanced with gauge */}
       {!loading && metrics && (
         <Card className="relative overflow-hidden rounded-[10px] border border-[var(--recovery-green)]/20 bg-gradient-to-br from-[var(--recovery-green)]/[0.04] to-transparent">
           <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex size-11 items-center justify-center rounded-[10px] bg-[var(--recovery-green)]/10 ring-1 ring-[var(--recovery-green)]/20">
-                <TrendingUp className="size-5 text-[var(--recovery-green)]" />
+              {/* Mini recovery gauge */}
+              <div className="relative flex size-14 shrink-0 items-center justify-center">
+                <svg viewBox="0 0 36 36" className="size-14 -rotate-90">
+                  <circle cx="18" cy="18" r="14" fill="none" stroke="var(--hairline)" strokeWidth="3" />
+                  <motion.circle
+                    cx="18" cy="18" r="14" fill="none"
+                    stroke="var(--recovery-green)" strokeWidth="3" strokeLinecap="round"
+                    strokeDasharray={`${recoveryRate * 0.88} 88`}
+                    initial={{ strokeDasharray: "0 88" }}
+                    animate={{ strokeDasharray: `${recoveryRate * 0.88} 88` }}
+                    transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                  />
+                </svg>
+                <span className="absolute font-mono text-[11px] font-semibold tabular-nums text-[var(--recovery-green)]">
+                  {recoveryRate}%
+                </span>
               </div>
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--ink-muted)]">
-                  Recovery rate · last 30 days
+                  Recovery rate · {timeRange === "all" ? "all time" : `last ${timeRange}`}
                 </p>
                 <div className="mt-1 flex items-baseline gap-2">
                   <span className="font-serif text-[32px] leading-none tabular-nums text-[var(--recovery-green)]">
-                    {Math.round((metrics.observedReturns / metrics.needsReview) * 100)}%
+                    {recoveryRate}%
                   </span>
                   <span className="text-[12px] text-[var(--ink-secondary)]">
                     {metrics.observedReturns} of {metrics.needsReview} detected returned
@@ -232,6 +333,29 @@ export default function CompanyOverviewPage() {
         </Card>
       )}
 
+      {/* Weekly Trends Summary */}
+      {!loading && metrics && (
+        <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Weekly Trends</h2>
+              <p className="mt-0.5 text-[11px] text-[var(--ink-muted)]">
+                Key metrics over the last 7 days
+              </p>
+            </div>
+            <Badge variant="outline" className="rounded-[3px] text-[10px]">
+              7 day view
+            </Badge>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <TrendItem label="Detection rate" value="14.2/wk" pctChange={8.3} direction="up" data={makeSparkline(42, "7d")} />
+            <TrendItem label="Approval rate" value="68%" pctChange={4.1} direction="up" data={makeSparkline(67, "7d")} color="var(--recovery-green)" />
+            <TrendItem label="Avg response time" value="1.8d" pctChange={12.5} direction="down" data={makeSparkline(23, "7d")} color="var(--info)" />
+            <TrendItem label="Churn risk" value="6.2%" pctChange={2.1} direction="down" data={makeSparkline(88, "7d")} color="var(--warning)" invertDirection />
+          </div>
+        </Card>
+      )}
+
       {/* Recovery Funnel + System Health */}
       <div className="grid gap-6 lg:grid-cols-5">
         {/* Recovery funnel */}
@@ -245,7 +369,7 @@ export default function CompanyOverviewPage() {
                 </p>
               </div>
               <Badge variant="outline" className="rounded-[3px] text-[10px]">
-                Last 30 days
+                {timeRange === "all" ? "All time" : `Last ${timeRange}`}
               </Badge>
             </div>
             <div className="mt-5">
@@ -258,7 +382,7 @@ export default function CompanyOverviewPage() {
           </Card>
         </div>
 
-        {/* System Health summary */}
+        {/* System Health summary — enhanced with uptime bar */}
         <div className="lg:col-span-2">
           <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
             <div className="flex items-center justify-between">
@@ -269,7 +393,39 @@ export default function CompanyOverviewPage() {
                 </Button>
               </Link>
             </div>
-            <div className="mt-4 space-y-1">
+
+            {/* Uptime bar */}
+            {!loading && healthDomains.length > 0 && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-[var(--ink-muted)]">Uptime (30d)</span>
+                  <span className="font-mono font-medium text-[var(--recovery-green)]">
+                    {(() => {
+                      const healthy = healthDomains.filter(h => h.status === "healthy").length;
+                      return ((healthy / healthDomains.length) * 100).toFixed(1);
+                    })()}%
+                  </span>
+                </div>
+                <div className="mt-1 flex gap-0.5 overflow-hidden rounded-[3px]">
+                  {Array.from({ length: 30 }, (_, i) => {
+                    const isDown = i === 7 || i === 22;
+                    const isDegraded = i === 14;
+                    return (
+                      <div
+                        key={i}
+                        className={cn(
+                          "h-2 flex-1 rounded-[1px]",
+                          isDown ? "bg-[var(--critical)]" : isDegraded ? "bg-[var(--warning)]" : "bg-[var(--recovery-green)]"
+                        )}
+                        title={isDown ? "Incident" : isDegraded ? "Degraded" : "Healthy"}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 space-y-1">
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="flex items-center justify-between">
@@ -382,6 +538,7 @@ export default function CompanyOverviewPage() {
                       : q.priority === "high"
                         ? "border-[var(--warning)]/30 text-[var(--warning)] bg-[var(--warning)]/5"
                         : "border-[var(--info)]/30 text-[var(--info)] bg-[var(--info)]/5";
+                  const sparkData = makeSparkline(q.name.length * 7 + q.daysInactive, "7d");
                   return (
                     <motion.div
                       key={q.id}
@@ -405,11 +562,14 @@ export default function CompanyOverviewPage() {
                               {q.initials}
                             </span>
                           </div>
-                          <p className="mt-0.5 truncate text-[11px] text-[var(--ink-muted)]">
-                            {q.trigger} · {q.daysInactive}d inactive · {q.progress}% complete
-                          </p>
+                          <div className="mt-0.5 flex items-center gap-2">
+                            <p className="truncate text-[11px] text-[var(--ink-muted)]">
+                              {q.trigger} · {q.daysInactive}d inactive · {q.progress}% complete
+                            </p>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
+                          <SparklineMini data={sparkData} width={36} height={16} color={q.priority === "urgent" ? "var(--critical)" : q.priority === "high" ? "var(--warning)" : "var(--info)"} fill={false} className="opacity-60 group-hover:opacity-100 transition-opacity" />
                           <span className="font-mono text-[11px] tabular-nums text-[var(--ink-secondary)]">
                             ${q.monthlyValue}/mo
                           </span>
@@ -433,7 +593,7 @@ export default function CompanyOverviewPage() {
           </Card>
         </div>
 
-        {/* Recent activity */}
+        {/* Recent activity — enhanced with type-colored left border */}
         <div className="lg:col-span-2">
           <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
             <div className="flex items-center justify-between">
@@ -459,13 +619,20 @@ export default function CompanyOverviewPage() {
                 recentActivity.slice(0, 6).map((a, i) => {
                   const Icon = ACTIVITY_ICON[a.type as ActivityType] ?? RefreshCw;
                   const color = ACTIVITY_COLOR[a.type as ActivityType] ?? "text-[var(--ink-muted)]";
+                  const borderColor = a.type === "candidate_detected" ? "border-l-[var(--warning)]"
+                    : a.type === "approved" || a.type === "student_responded" ? "border-l-[var(--recovery-green)]"
+                    : a.type === "draft_prepared" ? "border-l-[var(--info)]"
+                    : "border-l-transparent";
                   return (
                     <motion.div
                       key={a.id}
                       initial={{ opacity: 0, x: -4 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.04, duration: 0.25 }}
-                      className="flex items-start gap-3 rounded-[4px] px-2 py-1.5 transition-colors hover:bg-[var(--canvas)]"
+                      className={cn(
+                        "flex items-start gap-3 rounded-[4px] border-l-[2px] px-2 py-1.5 transition-colors hover:bg-[var(--canvas)]",
+                        borderColor
+                      )}
                     >
                       <Icon className={cn("mt-0.5 size-3.5 shrink-0", color)} />
                       <div className="min-w-0 flex-1">
@@ -485,68 +652,221 @@ export default function CompanyOverviewPage() {
         </div>
       </div>
 
-      {/* Quick actions */}
+      {/* Quick actions — expanded with 6 cards */}
       <div>
         <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--ink-muted)]">
           Quick actions
         </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Link href={`${basePath}/rescue-queue`} className="block">
-            <Card className="group rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-[8px] bg-[var(--recovery-green)]/10">
-                    <ListChecks className="size-4 text-[var(--recovery-green)]" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-medium text-[var(--ink-primary)]">Review Queue</p>
-                    <p className="text-[11px] text-[var(--ink-muted)]">
-                      {metrics ? `${metrics.needsReview} awaiting` : "Loading…"}
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" />
-              </div>
-            </Card>
+            <QuickActionCard
+              icon={ListChecks}
+              iconBg="bg-[var(--recovery-green)]/10"
+              iconColor="text-[var(--recovery-green)]"
+              title="Review Queue"
+              subtitle={metrics ? `${metrics.needsReview} awaiting` : "Loading…"}
+            />
           </Link>
           <Link href={`${basePath}/responses`} className="block">
-            <Card className="group rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-[8px] bg-[var(--info)]/10">
-                    <MessageSquare className="size-4 text-[var(--info)]" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-medium text-[var(--ink-primary)]">Responses</p>
-                    <p className="text-[11px] text-[var(--ink-muted)]">
-                      {metrics ? `${metrics.recentResponses} new` : "Loading…"}
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" />
-              </div>
-            </Card>
+            <QuickActionCard
+              icon={MessageSquare}
+              iconBg="bg-[var(--info)]/10"
+              iconColor="text-[var(--info)]"
+              title="Responses"
+              subtitle={metrics ? `${metrics.recentResponses} new` : "Loading…"}
+            />
           </Link>
           <Link href={`${basePath}/settings/health`} className="block">
-            <Card className="group rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-[8px] bg-[var(--recovery-green)]/10">
-                    <CheckCircle2 className="size-4 text-[var(--recovery-green)]" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-medium text-[var(--ink-primary)]">System Health</p>
-                    <p className="text-[11px] text-[var(--ink-muted)]">
-                      {company ? `${company.systemHealth}` : "Loading…"}
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" />
-              </div>
-            </Card>
+            <QuickActionCard
+              icon={CheckCircle2}
+              iconBg="bg-[var(--recovery-green)]/10"
+              iconColor="text-[var(--recovery-green)]"
+              title="System Health"
+              subtitle={company ? `${company.systemHealth}` : "Loading…"}
+            />
+          </Link>
+          <Link href={`${basePath}/insights`} className="block">
+            <QuickActionCard
+              icon={Zap}
+              iconBg="bg-[var(--warning)]/10"
+              iconColor="text-[var(--warning)]"
+              title="Insights"
+              subtitle="Friction &amp; patterns"
+            />
+          </Link>
+          <Link href={`${basePath}/outcomes`} className="block">
+            <QuickActionCard
+              icon={Target}
+              iconBg="bg-[var(--recovery-green)]/10"
+              iconColor="text-[var(--recovery-green)]"
+              title="Outcomes"
+              subtitle={metrics ? `${metrics.observedReturns} returns` : "Loading…"}
+            />
+          </Link>
+          <Link href={`${basePath}/playbooks`} className="block">
+            <QuickActionCard
+              icon={Shield}
+              iconBg="bg-[var(--info)]/10"
+              iconColor="text-[var(--info)]"
+              title="Playbooks"
+              subtitle="Automations"
+            />
           </Link>
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Sub-components ───────────────────────────────────────────
+
+function MetricCardWithSparkline({
+  label,
+  value,
+  icon: Icon,
+  trend,
+  trendDirection,
+  colorClassName,
+  accent = "none",
+  delay = 0,
+  sparklineData,
+  sparklineColor = "var(--recovery-green)",
+  onClick,
+}: {
+  label: string;
+  value: number;
+  icon: React.ElementType;
+  trend?: string;
+  trendDirection?: "up" | "down";
+  colorClassName?: string;
+  accent?: "none" | "warning" | "critical" | "info" | "recovery";
+  delay?: number;
+  sparklineData: number[];
+  sparklineColor?: string;
+  onClick?: () => void;
+}) {
+  const ACCENT_LEFT_BORDER: Record<string, string> = {
+    none: "",
+    warning: "before:bg-[var(--warning)]",
+    critical: "before:bg-[var(--critical)]",
+    info: "before:bg-[var(--info)]",
+    recovery: "before:bg-[var(--recovery-green)]",
+  };
+  const ACCENT_CONTAINER: Record<string, string> = {
+    none: "bg-[var(--canvas-elevated)] text-[var(--ink-secondary)]",
+    warning: "bg-[var(--warning)]/10 text-[var(--warning)]",
+    critical: "bg-[var(--critical)]/10 text-[var(--critical)]",
+    info: "bg-[var(--info)]/10 text-[var(--info)]",
+    recovery: "bg-[var(--recovery-green)]/10 text-[var(--recovery-green)]",
+  };
+
+  const Wrapper: React.ElementType = onClick ? "button" : "div";
+
+  return (
+    <Wrapper
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={cn(
+        "group relative block w-full overflow-hidden text-left",
+        "rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all duration-200",
+        "before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:content-['']",
+        "before:transition-all before:duration-300",
+        accent !== "none" && ACCENT_LEFT_BORDER[accent],
+        onClick && "hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_1px_0_var(--hairline),0_4px_16px_-6px_rgba(17,17,15,0.10)] active:scale-[0.99]",
+      )}
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="flex items-center gap-2.5">
+        <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-[6px] transition-transform group-hover:scale-105", ACCENT_CONTAINER[accent])}>
+          <Icon className="size-3.5" />
+        </span>
+        <span className="flex-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-muted)]">
+          {label}
+        </span>
+        {/* Sparkline in top-right */}
+        <SparklineMini data={sparklineData} width={40} height={16} color={sparklineColor} fill className="opacity-70 group-hover:opacity-100 transition-opacity" />
+      </div>
+
+      <div className={cn("mt-3 font-serif text-[30px] leading-none tabular-nums tracking-tight", colorClassName ?? "text-[var(--ink-primary)]")}>
+        {value.toLocaleString()}
+      </div>
+
+      {trend && (
+        <div className="mt-2 flex items-center gap-1">
+          {trendDirection && (
+            trendDirection === "up" ? (
+              <ArrowUpRight className="size-3 text-[var(--recovery-green)]" />
+            ) : (
+              <ArrowDownRight className="size-3 text-[var(--ink-muted)]" />
+            )
+          )}
+          <p className="text-[11px] font-medium text-[var(--ink-secondary)]">{trend}</p>
+        </div>
+      )}
+    </Wrapper>
+  );
+}
+
+function TrendItem({
+  label,
+  value,
+  pctChange,
+  direction,
+  data,
+  color = "var(--recovery-green)",
+  invertDirection = false,
+}: {
+  label: string;
+  value: string;
+  pctChange: number;
+  direction: "up" | "down";
+  data: number[];
+  color?: string;
+  invertDirection?: boolean;
+}) {
+  const isPositive = invertDirection ? direction === "down" : direction === "up";
+  return (
+    <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--hairline)] bg-[var(--canvas)] p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">{label}</p>
+      <div className="flex items-baseline gap-2">
+        <span className="font-serif text-[20px] leading-none tabular-nums text-[var(--ink-primary)]">{value}</span>
+        <span className={cn("flex items-center gap-0.5 text-[10px] font-medium", isPositive ? "text-[var(--recovery-green)]" : "text-[var(--critical)]")}>
+          {direction === "up" ? <ArrowUpRight className="size-2.5" /> : <ArrowDownRight className="size-2.5" />}
+          {pctChange}%
+        </span>
+      </div>
+      <SparklineMini data={data} width={80} height={24} color={color} />
+    </div>
+  );
+}
+
+function QuickActionCard({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  title,
+  subtitle,
+}: {
+  icon: React.ElementType;
+  iconBg: string;
+  iconColor: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <Card className="group rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={cn("flex size-9 items-center justify-center rounded-[8px]", iconBg)}>
+            <Icon className={cn("size-4", iconColor)} />
+          </div>
+          <div>
+            <p className="text-[13px] font-medium text-[var(--ink-primary)]">{title}</p>
+            <p className="text-[11px] text-[var(--ink-muted)]">{subtitle}</p>
+          </div>
+        </div>
+        <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" />
+      </div>
+    </Card>
   );
 }

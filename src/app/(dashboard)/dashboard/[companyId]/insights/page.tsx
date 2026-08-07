@@ -10,6 +10,14 @@ import {
   Users,
   TrendingUp,
   Activity,
+  Gauge,
+  TrendingDown,
+  Zap,
+  Flame,
+  AlertOctagon,
+  Frown,
+  Meh,
+  Smile,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +28,46 @@ import { CardSkeleton } from "@/components/shared/card-skeleton";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { PlaybookRecommender } from "@/components/rescueloop/insights/playbook-recommender";
 
+// ── Risk score derivation from member data ─────────────────────
+function deriveRiskScore(member: {
+  status: string;
+  progress: number;
+  membership: string;
+  suppressed: boolean;
+}): number {
+  let score = 0;
+  // Status contribution
+  if (member.status === "needs_attention") score += 40;
+  else if (member.status === "paused_reminders") score += 50;
+  else if (member.status === "responded") score += 15;
+  else score += 5; // active
+  // Progress contribution (lower progress = higher risk)
+  score += Math.round((100 - member.progress) * 0.35);
+  // Membership contribution
+  if (member.membership === "cancelling") score += 20;
+  else if (member.membership === "cancelled") score += 25;
+  else if (member.membership === "paused_membership") score += 15;
+  // Suppressed penalty
+  if (member.suppressed) score += 10;
+  return Math.min(100, Math.max(0, score));
+}
+
+const RISK_BINS = [
+  { label: "0–20", min: 0, max: 20, color: "bg-[var(--recovery-green)]", textColor: "text-[var(--recovery-green)]" },
+  { label: "21–40", min: 21, max: 40, color: "bg-[#5A9E6F]", textColor: "text-[#5A9E6F]" },
+  { label: "41–60", min: 41, max: 60, color: "bg-[var(--warning)]", textColor: "text-[var(--warning)]" },
+  { label: "61–80", min: 61, max: 80, color: "bg-[#D4652A]", textColor: "text-[#D4652A]" },
+  { label: "81–100", min: 81, max: 100, color: "bg-[var(--critical)]", textColor: "text-[var(--critical)]" },
+];
+
+// ── Severity icon for friction points ──────────────────────────
+function severityConfig(stallRate: number) {
+  if (stallRate >= 20) return { icon: Flame, color: "text-[var(--critical)]", bg: "bg-[var(--critical)]/10", barColor: "bg-[var(--critical)]" };
+  if (stallRate >= 15) return { icon: AlertOctagon, color: "text-[var(--warning)]", bg: "bg-[var(--warning)]/10", barColor: "bg-[var(--warning)]" };
+  if (stallRate >= 10) return { icon: AlertTriangle, color: "text-[#D4652A]", bg: "bg-[#D4652A]/10", barColor: "bg-[#D4652A]" };
+  return { icon: Zap, color: "text-[var(--info)]", bg: "bg-[var(--info)]/10", barColor: "bg-[var(--info)]" };
+}
+
 export default function InsightsPage() {
   const params = useParams<{ companyId: string }>();
   const reduced = useReducedMotion();
@@ -29,6 +77,7 @@ export default function InsightsPage() {
   const responsePatterns = bundle?.responsePatterns;
   const activation = bundle?.activationPatterns;
   const metrics = bundle?.overview?.metrics;
+  const members = bundle?.members ?? [];
 
   const maxStallRate = useMemo(
     () => Math.max(...friction.map((f) => f.stallRate), 1),
@@ -48,6 +97,38 @@ export default function InsightsPage() {
       { label: "Stop reminders", value: responsePatterns.stopReminders, color: "bg-[var(--ink-muted)]" },
     ];
   }, [responsePatterns, responseTotal]);
+
+  // ── Risk score distribution ─────────────────────────────────
+  const riskDistribution = useMemo(() => {
+    if (members.length === 0) return RISK_BINS.map((b) => ({ ...b, count: 0, pct: 0 }));
+    const scores = members.map(deriveRiskScore);
+    return RISK_BINS.map((bin) => {
+      const count = scores.filter((s) => s >= bin.min && s <= bin.max).length;
+      return { ...bin, count, pct: Math.round((count / members.length) * 100) };
+    });
+  }, [members]);
+
+  const maxDistCount = useMemo(() => Math.max(...riskDistribution.map((d) => d.count), 1), [riskDistribution]);
+
+  // ── Top 5 friction points ───────────────────────────────────
+  const topFriction = useMemo(
+    () => [...friction].sort((a, b) => b.stallRate - a.stallRate).slice(0, 5),
+    [friction],
+  );
+
+  // ── Recovery velocity (simulated from outcomes + funnel) ────
+  const recoveryVelocity = useMemo(() => {
+    if (!bundle) return { days: 0, trend: 0 };
+    // Derived from funnel: (Detected → Resumed) ratio gives recovery speed
+    const funnel = bundle.overview.recoveryFunnel;
+    const detected = funnel.find((f) => f.stage === "Detected")?.count ?? 1;
+    const resumed = funnel.find((f) => f.stage === "Resumed")?.count ?? 0;
+    // Average days from detection to resolution (simulated)
+    const recoveryRate = resumed / detected;
+    const avgDays = Math.round(14 - recoveryRate * 10); // higher rate → faster
+    const trend = recoveryRate > 0.25 ? 1 : recoveryRate > 0.15 ? 0 : -1; // improving / stable / declining
+    return { days: Math.max(2, avgDays), trend };
+  }, [bundle]);
 
   return (
     <div className="space-y-5">
@@ -120,8 +201,222 @@ export default function InsightsPage() {
         <PlaybookRecommender />
       )}
 
+      {/* ── NEW: Risk Score Distribution + Recovery Velocity row ── */}
+      {!loading && members.length > 0 && (
+        <div className="grid gap-5 lg:grid-cols-5">
+          {/* Risk Score Distribution */}
+          <div className="lg:col-span-3">
+            <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+              <div className="flex items-center gap-2">
+                <div className="flex size-7 items-center justify-center rounded-[6px] bg-[var(--canvas-elevated)]">
+                  <Smile className="size-3.5 text-[var(--recovery-green)]" />
+                </div>
+                <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Risk Score Distribution</h2>
+                <Badge variant="outline" className="ml-auto rounded-[3px] text-[10px]">
+                  {members.length} students
+                </Badge>
+              </div>
+              <p className="mt-1 text-[11px] text-[var(--ink-muted)]">
+                Student risk segmentation across the monitored population
+              </p>
+
+              <div className="mt-5 space-y-3">
+                {riskDistribution.map((bin, i) => {
+                  const barWidth = (bin.count / maxDistCount) * 100;
+                  const faceIcon = bin.min >= 61 ? Frown : bin.min >= 41 ? Meh : Smile;
+                  const FaceIcon = faceIcon;
+                  return (
+                    <div key={bin.label} className="group">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="flex items-center gap-2 text-[var(--ink-secondary)]">
+                          <FaceIcon className={cn("size-3", bin.textColor)} />
+                          <span className="font-mono tabular-nums">{bin.label}</span>
+                        </span>
+                        <span className="font-mono tabular-nums text-[var(--ink-muted)]">
+                          {bin.count} · {bin.pct}%
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-[8px] overflow-hidden rounded-[3px] bg-[var(--hairline)]">
+                        <motion.div
+                          initial={reduced ? false : { width: 0 }}
+                          animate={{ width: `${barWidth}%` }}
+                          transition={{ duration: 0.7, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
+                          className={cn("h-full rounded-[3px]", bin.color)}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-4 text-[10px] text-[var(--ink-muted)]">
+                Scores derived from activity, progress, and membership signals
+              </p>
+            </Card>
+          </div>
+
+          {/* Recovery Velocity */}
+          <div className="lg:col-span-2">
+            <Card className="relative overflow-hidden rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+              <div className="flex items-center gap-2">
+                <div className="flex size-7 items-center justify-center rounded-[6px] bg-[var(--recovery-green)]/10">
+                  <Gauge className="size-3.5 text-[var(--recovery-green)]" />
+                </div>
+                <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Recovery Velocity</h2>
+              </div>
+              <p className="mt-1 text-[11px] text-[var(--ink-muted)]">
+                Avg. time from detection to resolution
+              </p>
+
+              <div className="mt-5 flex items-end gap-3">
+                <span className="font-serif text-[42px] leading-none tabular-nums text-[var(--ink-primary)]">
+                  {recoveryVelocity.days}
+                </span>
+                <span className="mb-1 text-[13px] text-[var(--ink-secondary)]">days</span>
+                <div className={cn(
+                  "mb-1.5 ml-auto flex items-center gap-1 rounded-[3px] px-2 py-0.5 text-[10px] font-semibold",
+                  recoveryVelocity.trend > 0
+                    ? "bg-[var(--recovery-green)]/10 text-[var(--recovery-green)]"
+                    : recoveryVelocity.trend < 0
+                      ? "bg-[var(--critical)]/10 text-[var(--critical)]"
+                      : "bg-[var(--warning)]/10 text-[var(--warning)]",
+                )}>
+                  {recoveryVelocity.trend > 0 && <TrendingUp className="size-3" />}
+                  {recoveryVelocity.trend === 0 && <TrendingDown className="size-3" />}
+                  {recoveryVelocity.trend < 0 && <TrendingDown className="size-3" />}
+                  {recoveryVelocity.trend > 0 ? "Improving" : recoveryVelocity.trend === 0 ? "Stable" : "Declining"}
+                </div>
+              </div>
+
+              {/* Speedometer-style visual */}
+              <div className="mt-4 relative h-[6px] overflow-hidden rounded-full bg-[var(--hairline)]">
+                <motion.div
+                  initial={reduced ? false : { width: 0 }}
+                  animate={{ width: `${Math.min(100, (14 - recoveryVelocity.days) / 12 * 100)}%` }}
+                  transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+                  className={cn(
+                    "h-full rounded-full",
+                    recoveryVelocity.trend > 0 ? "bg-[var(--recovery-green)]" : recoveryVelocity.trend === 0 ? "bg-[var(--warning)]" : "bg-[var(--critical)]",
+                  )}
+                />
+                <div className="absolute inset-y-0 left-1/2 w-px bg-[var(--hairline-strong)]" />
+              </div>
+              <div className="mt-1.5 flex justify-between text-[9px] text-[var(--ink-muted)]">
+                <span>Slow (14d)</span>
+                <span>Fast (2d)</span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-[6px] bg-[var(--canvas)] p-2.5">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">Detection rate</p>
+                  <p className="mt-1 font-mono text-[14px] tabular-nums text-[var(--ink-primary)]">
+                    {metrics?.needsReview ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-[6px] bg-[var(--canvas)] p-2.5">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">Resumed</p>
+                  <p className="mt-1 font-mono text-[14px] tabular-nums text-[var(--recovery-green)]">
+                    {metrics?.observedReturns ?? 0}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ── NEW: Top Friction Points Card ── */}
+      {!loading && topFriction.length > 0 && (
+        <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+          <div className="flex items-center gap-2">
+            <div className="flex size-7 items-center justify-center rounded-[6px] bg-[var(--warning)]/10">
+              <Flame className="size-3.5 text-[var(--warning)]" />
+            </div>
+            <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Top Friction Points</h2>
+            <Badge variant="outline" className="ml-auto rounded-[3px] text-[10px]">
+              Top {topFriction.length}
+            </Badge>
+          </div>
+          <p className="mt-1 text-[11px] text-[var(--ink-muted)]">
+            Highest stall concentration lessons ranked by severity
+          </p>
+
+          <div className="mt-5 space-y-3">
+            {topFriction.map((f, i) => {
+              const sev = severityConfig(f.stallRate);
+              const SevIcon = sev.icon;
+              const barPct = (f.stallRate / maxStallRate) * 100;
+              const avgPct = (f.courseAverage / maxStallRate) * 100;
+              return (
+                <motion.div
+                  key={f.lesson}
+                  initial={reduced ? false : { opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.4, delay: i * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                  className="group rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] p-3 transition-colors hover:bg-[var(--canvas-elevated)]"
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Severity icon */}
+                    <div className={cn("flex size-7 shrink-0 items-center justify-center rounded-[6px]", sev.bg)}>
+                      <SevIcon className={cn("size-3.5", sev.color)} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-[13px] font-medium text-[var(--ink-primary)]">
+                            {f.lesson}
+                          </span>
+                          <p className="mt-0.5 text-[11px] text-[var(--ink-muted)]">
+                            {f.affectedStudents} students · Course avg: {f.courseAverage}%
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <span className={cn("font-serif text-[20px] tabular-nums", sev.color)}>
+                            {f.stallRate}%
+                          </span>
+                          <p className={cn("text-[10px]", sev.color)}>
+                            {(f.stallRate / f.courseAverage).toFixed(1)}× avg
+                          </p>
+                        </div>
+                      </div>
+                      {/* Animated bars */}
+                      <div className="mt-2.5 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="w-10 shrink-0 font-mono text-[9px] uppercase text-[var(--ink-muted)]">stall</span>
+                          <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-[var(--hairline)]">
+                            <motion.div
+                              initial={reduced ? false : { width: 0 }}
+                              animate={{ width: `${barPct}%` }}
+                              transition={{ duration: 0.6, delay: i * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                              className={cn("h-full rounded-full", sev.barColor)}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-10 shrink-0 font-mono text-[9px] uppercase text-[var(--ink-muted)]">avg</span>
+                          <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-[var(--hairline)]">
+                            <motion.div
+                              initial={reduced ? false : { width: 0 }}
+                              animate={{ width: `${avgPct}%` }}
+                              transition={{ duration: 0.6, delay: i * 0.06 + 0.1, ease: [0.16, 1, 0.3, 1] }}
+                              className="h-full rounded-full bg-[var(--ink-muted)]/50"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+          <p className="mt-4 text-[10px] text-[var(--ink-muted)]">
+            Severity: <span className="text-[var(--critical)]">Critical ≥20%</span> · <span className="text-[var(--warning)]">High ≥15%</span> · <span className="text-[#D4652A]">Medium ≥10%</span> · <span className="text-[var(--info)]">Low &lt;10%</span>
+          </p>
+        </Card>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-5">
-        {/* Friction chart */}
+        {/* Friction chart (original) */}
         <div className="lg:col-span-3">
           {loading ? (
             <CardSkeleton rows={5} />
