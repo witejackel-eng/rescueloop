@@ -243,13 +243,6 @@ jobs:
           SENTRY_DSN: ""
           RESCUELOOP_INTERNAL_TOKEN: "ci-fixture-internal-token-padding-32"
 
-      - name: Prepare standalone server assets
-        run: |
-          # Next.js standalone output requires static & public assets
-          # to be copied into .next/standalone for the server to serve them.
-          cp -r .next/static .next/standalone/.next/static
-          cp -r public .next/standalone/public
-
       - name: Run E2E tests
         run: bunx playwright test
         env:

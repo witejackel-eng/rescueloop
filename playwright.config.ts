@@ -9,8 +9,7 @@ import { defineConfig, devices } from '@playwright/test';
  * - 30s test timeout, 5s expect timeout
  * - Screenshots on failure only, trace on first retry, video on failure
  * - Brand evidence screenshots saved to test-results/brand-evidence/
- * - In CI: starts standalone server via `node .next/standalone/server.js`
- *   (next start does NOT work with output: standalone)
+ * - In CI: starts server via `bun run start` (normal Next.js server)
  */
 
 export default defineConfig({
@@ -42,7 +41,7 @@ export default defineConfig({
 
   webServer: {
     command: process.env.CI
-      ? 'node .next/standalone/server.js'
+      ? 'bun run start'
       : 'bun run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
