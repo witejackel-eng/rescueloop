@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { PlaybookRecommender } from "@/components/rescueloop/insights/playbook-recommender";
 
 export default function InsightsPage() {
   const params = useParams<{ companyId: string }>();
@@ -112,6 +113,11 @@ export default function InsightsPage() {
             );
           })}
         </div>
+      )}
+
+      {/* AI Playbook Recommendations */}
+      {!loading && metrics && (
+        <PlaybookRecommender />
       )}
 
       <div className="grid gap-5 lg:grid-cols-5">

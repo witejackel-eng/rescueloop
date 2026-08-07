@@ -20,6 +20,7 @@ import {
   Layers,
   Archive,
   Send,
+  Download,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,12 +28,19 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
+import { SavedViews, type SavedView } from "@/components/shared/saved-views";
 import type { DemoQueueCandidate } from "@/lib/demo-fixtures";
 import { toast } from "sonner";
 
 type PriorityFilter = "all" | "urgent" | "high" | "medium";
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+// Pre-seeded saved views for demo
+const INITIAL_VIEWS: SavedView[] = [
+  { id: "v1", name: "Urgent cancellations", filter: "urgent", count: 4, createdAt: "2d ago", starred: true },
+  { id: "v2", name: "Renewal risk", filter: "high", count: 9, createdAt: "1w ago" },
+];
 
 export default function RescueQueuePage() {
   const params = useParams<{ companyId: string }>();
@@ -43,6 +51,8 @@ export default function RescueQueuePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
+  const [savedViews, setSavedViews] = useState<SavedView[]>(INITIAL_VIEWS);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
 
   const candidates = useMemo(() => {
     const list = bundle?.queueCandidates ?? [];
@@ -151,6 +161,65 @@ export default function RescueQueuePage() {
         : "border-l-[var(--info)]";
   }
 
+  function handleSelectView(view: SavedView) {
+    setPriorityFilter(view.filter as PriorityFilter);
+    setActiveViewId(view.id);
+    toast.success(`Applied view: ${view.name}`, {
+      description: `${view.count} students match this view.`,
+    });
+  }
+
+  function handleSaveView(name: string) {
+    const newView: SavedView = {
+      id: `v${Date.now()}`,
+      name,
+      filter: priorityFilter,
+      count: candidates.length,
+      createdAt: "just now",
+    };
+    setSavedViews((prev) => [...prev, newView]);
+    setActiveViewId(newView.id);
+  }
+
+  function handleDeleteView(id: string) {
+    setSavedViews((prev) => prev.filter((v) => v.id !== id));
+    if (activeViewId === id) setActiveViewId(null);
+  }
+
+  function handleToggleStar(id: string) {
+    setSavedViews((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, starred: !v.starred } : v)),
+    );
+  }
+
+  function handleExportCSV() {
+    const headers = ["Name", "Course", "Priority", "Trigger", "Days Inactive", "Progress", "Monthly Value"];
+    const rows = candidates.map((c) => [
+      c.name,
+      c.course,
+      c.priority,
+      c.trigger,
+      String(c.daysInactive),
+      `${c.progress}%`,
+      `$${c.monthlyValue}`,
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rescue-queue-${priorityFilter}-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success("Export ready", {
+      description: `Exported ${candidates.length} students to CSV.`,
+    });
+  }
+
   return (
     <div className="space-y-5 pb-24">
       {/* Header */}
@@ -230,7 +299,10 @@ export default function RescueQueuePage() {
             <button
               key={p}
               type="button"
-              onClick={() => setPriorityFilter(p)}
+              onClick={() => {
+                setPriorityFilter(p);
+                setActiveViewId(null);
+              }}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] capitalize transition-all",
                 active
@@ -269,7 +341,31 @@ export default function RescueQueuePage() {
             </div>
           </>
         )}
+        {!bulkMode && candidates.length > 0 && (
+          <button
+            onClick={handleExportCSV}
+            className="ml-auto flex shrink-0 items-center gap-1 text-[11px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+            aria-label="Export current view as CSV"
+          >
+            <Download className="size-3" />
+            Export CSV
+          </button>
+        )}
       </div>
+
+      {/* Saved Views */}
+      {!bulkMode && (
+        <SavedViews
+          views={savedViews}
+          activeViewId={activeViewId}
+          onSelect={handleSelectView}
+          onSave={handleSaveView}
+          onDelete={handleDeleteView}
+          onToggleStar={handleToggleStar}
+          currentFilterLabel={priorityFilter === "all" ? "All priorities" : `${priorityFilter} priority`}
+          currentCount={candidates.length}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-5">
         {/* Queue list */}
@@ -445,11 +541,16 @@ export default function RescueQueuePage() {
               }
             />
           ) : (
-            <Card className="flex h-40 items-center justify-center rounded-[8px] border border-dashed border-[var(--hairline)] bg-[var(--canvas)] text-[13px] text-[var(--ink-muted)]">
-              <div className="text-center">
-                <Clock className="mx-auto size-5 text-[var(--ink-muted)]" />
-                <p className="mt-2">Select a candidate to view details</p>
+            <Card className="flex h-64 flex-col items-center justify-center rounded-[10px] border-2 border-dashed border-[var(--hairline-strong)] bg-[var(--canvas-elevated)] text-center">
+              <div className="flex size-14 items-center justify-center rounded-full bg-[var(--surface)] ring-1 ring-[var(--hairline)]">
+                <Clock className="size-6 text-[var(--ink-muted)]" />
               </div>
+              <p className="mt-4 text-[13px] font-medium text-[var(--ink-secondary)]">
+                Select a candidate to view details
+              </p>
+              <p className="mt-1 text-[11px] text-[var(--ink-muted)]">
+                Evidence, contact history, and draft messages will appear here.
+              </p>
             </Card>
           )}
         </div>

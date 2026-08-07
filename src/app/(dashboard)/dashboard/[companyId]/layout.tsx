@@ -326,7 +326,7 @@ export default function CompanyDashboardLayout({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1200px] px-4 py-6 lg:px-8 lg:py-8">
+          <div className="mx-auto w-full max-w-[1200px] px-4 py-6 pb-16 lg:px-8 lg:py-8 lg:pb-20">
             {children}
             {/* Closure footer */}
             <DashboardFooter />

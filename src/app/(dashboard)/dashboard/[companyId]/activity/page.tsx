@@ -151,10 +151,13 @@ export default function ActivityPage() {
             </Badge>
           </div>
           <div className="relative">
-            {/* Vertical timeline line */}
-            <div className="absolute left-[19px] top-2 bottom-2 w-px bg-[var(--hairline)]" aria-hidden />
+            {/* Vertical timeline rail — proper 2px line through icon centers */}
+            <div
+              className="absolute left-[23px] top-3 bottom-3 w-[2px] rounded-full bg-[var(--hairline)]"
+              aria-hidden
+            />
 
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <AnimatePresence mode="popLayout">
                 {events.map((e, i) => {
                   const meta = EVENT_META[e.type];
@@ -167,29 +170,30 @@ export default function ActivityPage() {
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 4 }}
                       transition={{ delay: i * 0.03, duration: 0.2 }}
-                      className="group relative flex items-start gap-3 rounded-[6px] px-2 py-2 transition-colors hover:bg-[var(--canvas)]"
+                      className="group relative flex items-start gap-3 rounded-[8px] px-2 py-2 transition-colors hover:bg-[var(--canvas)]"
                     >
+                      {/* Uniform 48px circular icon container */}
                       <div className={cn(
-                        "relative z-10 flex size-10 shrink-0 items-center justify-center rounded-[8px] border bg-[var(--surface)] ring-2 ring-[var(--surface)]",
-                        "border-[var(--hairline)] group-hover:border-[var(--hairline-strong)]",
+                        "relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full border-2 bg-[var(--surface)]",
+                        "border-[var(--hairline)] group-hover:border-[var(--hairline-strong)] group-hover:shadow-sm transition-all",
                       )}>
                         <Icon className={cn("size-4", meta.color)} />
                       </div>
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 pt-1">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <span className="text-[13px] font-medium text-[var(--ink-primary)]">
                               {e.detail}
                             </span>
-                            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--ink-muted)]">
-                              <span className="text-[var(--ink-secondary)]">{e.actor}</span>
-                              <span>·</span>
+                            <p className="mt-0.5 flex items-center gap-1.5 text-[11px]">
+                              <span className="font-medium text-[var(--ink-secondary)]">{e.actor}</span>
+                              <span className="text-[var(--ink-muted)]">·</span>
                               <Badge variant="outline" className="rounded-[2px] text-[9px]">
                                 {meta.label}
                               </Badge>
                             </p>
                           </div>
-                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--ink-muted)]">
+                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--ink-secondary)]">
                             {e.timestamp}
                           </span>
                         </div>
