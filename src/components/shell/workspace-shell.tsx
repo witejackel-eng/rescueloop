@@ -43,6 +43,7 @@ import { useDemoStore } from "@/features/demo-engine/demo-store";
 import { useUnresolvedNotificationCount } from "@/features/demo-engine/demo-store";
 import { AutomationStateBadge } from "@/components/shell/automation-badge";
 import { NotificationPanel } from "@/components/shell/notification-panel";
+import { CommandPalette } from "@/components/interaction/command-palette";
 import { COMPANY, COURSE, LAST_SYNC } from "@/lib/mock-data";
 
 const NAV_ITEMS = [
@@ -69,6 +70,10 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const setCommandPaletteOpen = useDemoStore((s) => s.setCommandPaletteOpen);
   const unresolvedCount = useUnresolvedNotificationCount();
   const isPaused = automationState === "paused";
+
+  // Detect company-scoped routes so the command palette navigates correctly.
+  const companyMatch = pathname.match(/^\/dashboard\/([^/]+)/);
+  const commandPaletteBasePath = companyMatch ? `/dashboard/${companyMatch[1]}` : undefined;
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--canvas)]">
@@ -354,6 +359,9 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <NotificationPanel onClose={() => setNotifOpen(false)} />
         </SheetContent>
       </Sheet>
+
+      {/* Command palette — route-aware (uses company basePath on /dashboard/[companyId]/...). */}
+      <CommandPalette basePath={commandPaletteBasePath} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { CompanyDataBundle, CompanyContext, CompanyOverview } from "@/lib/company-data";
 
 // ── Generic fetch hook with loading/error states ─────────────
@@ -19,10 +19,16 @@ export function useCompanyFetch<T>(
   const [data, setData] = useState<T | null>(fallback);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const requestIdRef = useRef(0);
+  // Track whether we've ever kicked off a fetch for this (companyId, path)
+  // pair so we don't double-fetch on re-renders.
+  const fetchedKeyRef = useRef<string | null>(null);
 
-  const fetchData = useCallback(() => {
-    setLoading(true);
-    setError(null);
+  // Core fetch routine — only schedules async state updates, never
+  // calls setState synchronously. Safe to invoke from effects.
+  const runFetch = useCallback(() => {
+    const reqId = ++requestIdRef.current;
 
     fetch(`/api/dashboard/${companyId}${path}`)
       .then((res) => {
@@ -30,24 +36,38 @@ export function useCompanyFetch<T>(
         return res.json();
       })
       .then((json) => {
+        if (!mountedRef.current || reqId !== requestIdRef.current) return;
         setData(json.data as T);
+        setError(null);
         setLoading(false);
       })
       .catch((err) => {
+        if (!mountedRef.current || reqId !== requestIdRef.current) return;
         setError(err instanceof Error ? err.message : "Unknown error");
         setLoading(false);
       });
   }, [companyId, path]);
 
-  // Initial fetch via refetch pattern to satisfy lint rules
-  // The actual data fetching is triggered by the consumer calling refetch()
-  // or by the initial mount which calls fetchData below
-  if (loading && data === fallback && error === null) {
-    // Trigger initial fetch on first render
-    Promise.resolve().then(fetchData);
-  }
+  useEffect(() => {
+    mountedRef.current = true;
+    const key = `${companyId}:${path}`;
+    if (fetchedKeyRef.current !== key) {
+      fetchedKeyRef.current = key;
+      runFetch();
+    }
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [runFetch, companyId, path]);
 
-  return { data, loading, error, refetch: fetchData };
+  // Manual refetch — called from event handlers, so synchronous setState is fine.
+  const refetch = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    runFetch();
+  }, [runFetch]);
+
+  return { data, loading, error, refetch };
 }
 
 // ── Company context hook ─────────────────────────────────────

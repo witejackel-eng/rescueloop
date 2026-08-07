@@ -70,7 +70,7 @@ export function DemoPlaybooksSection() {
                     />
                     <button
                       type="button"
-                      onClick={handleSaveCooldown}
+                      onClick={() => handleSaveCooldown(pb.id)}
                       className="text-[12px] text-[var(--recovery-green)] hover:underline"
                     >
                       Save

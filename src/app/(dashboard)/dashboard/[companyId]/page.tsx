@@ -1,57 +1,79 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import {
   Users,
   AlertTriangle,
   Clock,
   MessageSquare,
   TrendingUp,
-  Activity,
-  Heart,
   ListChecks,
   ArrowRight,
   Wifi,
   CheckCircle2,
   AlertCircle,
+  RefreshCw,
+  ChevronRight,
 } from "lucide-react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { motion } from "framer-motion";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { useCompanyOverview, useCompanyContext } from "@/hooks/use-company-data";
+import { useCompanyDataBundle } from "@/hooks/use-company-data";
+import { MetricCard } from "@/components/shared/metric-card";
+import { CardSkeleton, MetricSkeleton } from "@/components/shared/card-skeleton";
+import { RecoveryFunnelMini } from "@/components/rescueloop/overview/recovery-funnel-mini";
 
-const METRICS = [
-  { label: "Monitored members", value: "742", icon: Users, trend: "+12 this week" },
-  { label: "Needs review", value: "23", icon: AlertTriangle, color: "text-[var(--warning)]" },
-  { label: "Awaiting approval", value: "5", icon: Clock, color: "text-[var(--info)]" },
-  { label: "Responses", value: "18", icon: MessageSquare, trend: "+4 today" },
-  { label: "Observed returns", value: "12", icon: TrendingUp, color: "text-[var(--recovery-green)]" },
-];
+const ACTIVITY_ICON = {
+  sync_completed: RefreshCw,
+  candidate_detected: AlertTriangle,
+  draft_prepared: ListChecks,
+  approved: CheckCircle2,
+  creator_edited: MessageSquare,
+  student_opened: Users,
+  student_responded: MessageSquare,
+  course_activity_observed: TrendingUp,
+} as const;
 
-const QUEUE_PREVIEW = [
-  { name: "Maya Thompson", trigger: "Mid-course stall", urgency: "High", inactive: "8 days" },
-  { name: "Devon Park", trigger: "Inactive near renewal", urgency: "Urgent", inactive: "14 days" },
-  { name: "Sara Klein", trigger: "Never started", urgency: "Medium", inactive: "21 days" },
-];
+type ActivityType = keyof typeof ACTIVITY_ICON;
 
-const RECENT_ACTIVITY = [
-  { event: "Student responded", detail: "Maya T. chose 'Continue course'", time: "2 min ago" },
-  { event: "Candidate detected", detail: "Jamal W. stalled at Lesson 7", time: "8 min ago" },
-  { event: "Draft approved", detail: "Message to Sara K. sent", time: "15 min ago" },
-  { event: "Sync completed", detail: "742 members, 8 courses", time: "23 min ago" },
-];
-
-const HEALTH_DOMAINS = [
-  { name: "Whop connection", status: "healthy" },
-  { name: "Membership sync", status: "healthy" },
-  { name: "Course activity", status: "healthy" },
-  { name: "Webhooks", status: "degraded" },
-  { name: "Jobs", status: "healthy" },
-];
+const ACTIVITY_COLOR: Record<ActivityType, string> = {
+  sync_completed: "text-[var(--ink-muted)]",
+  candidate_detected: "text-[var(--warning)]",
+  draft_prepared: "text-[var(--info)]",
+  approved: "text-[var(--recovery-green)]",
+  creator_edited: "text-[var(--ink-secondary)]",
+  student_opened: "text-[var(--info)]",
+  student_responded: "text-[var(--recovery-green)]",
+  course_activity_observed: "text-[var(--recovery-green)]",
+};
 
 export default function CompanyOverviewPage() {
   const params = useParams<{ companyId: string }>();
   const basePath = `/dashboard/${params.companyId}`;
+  const { data: overview, loading: overviewLoading, error: overviewError, refetch } = useCompanyOverview(params.companyId);
+  const { data: bundle, loading: bundleLoading } = useCompanyDataBundle(params.companyId);
+  const [refreshing, setRefreshing] = useState(false);
+
+  function handleRefresh() {
+    setRefreshing(true);
+    refetch();
+    setTimeout(() => setRefreshing(false), 800);
+  }
+
+  const metrics = overview?.metrics;
+  const recoveryFunnel = overview?.recoveryFunnel ?? [];
+  const recentActivity = overview?.recentActivity ?? [];
+  const queueCandidates = bundle?.queueCandidates?.slice(0, 4) ?? [];
+  const healthDomains = bundle?.company?.healthDomains ?? [];
+  const usage = bundle?.usage;
+  const company = bundle?.company;
+
+  const loading = overviewLoading || bundleLoading;
 
   return (
     <div className="space-y-6">
@@ -60,70 +82,133 @@ export default function CompanyOverviewPage() {
         <div>
           <h1 className="font-serif text-[24px] text-[var(--ink-primary)]">Dashboard</h1>
           <p className="mt-1 text-[13px] text-[var(--ink-secondary)]">
-            Creator Growth Lab · Agency Growth System
+            {company ? (
+              <>
+                {company.name} · Agency Growth System
+              </>
+            ) : (
+              <span className="inline-block h-3 w-48 animate-pulse rounded-[2px] bg-[var(--hairline)] align-middle" />
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="rounded-[3px] text-[10px] border-[var(--recovery-green)]/30 text-[var(--recovery-green)]">
-            <Wifi className="mr-1 size-3" /> Connected
-          </Badge>
-          <Badge variant="outline" className="rounded-[3px] text-[10px]">Growth · $59/mo</Badge>
+          {company?.whopConnected && (
+            <Badge variant="outline" className="rounded-[3px] text-[10px] border-[var(--recovery-green)]/30 text-[var(--recovery-green)]">
+              <Wifi className="mr-1 size-3" /> Connected
+            </Badge>
+          )}
+          {company && (
+            <Badge variant="outline" className="rounded-[3px] text-[10px]">
+              {company.plan} · ${company.planPrice}/mo
+            </Badge>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            className="h-7 rounded-[6px] px-2 text-[11px] text-[var(--ink-muted)]"
+            aria-label="Refresh data"
+          >
+            <RefreshCw className={cn("mr-1 size-3", refreshing && "animate-spin")} />
+            Refresh
+          </Button>
         </div>
       </div>
 
+      {/* Error state */}
+      {overviewError && (
+        <Card className="border-[var(--critical)]/30 bg-[var(--critical-light)]/30 p-4">
+          <div className="flex items-center gap-2 text-[12px] text-[var(--critical)]">
+            <AlertCircle className="size-4" />
+            <span>Failed to load dashboard: {overviewError}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRefresh}
+              className="ml-auto h-6 rounded-[4px] px-2 text-[11px] text-[var(--critical)]"
+            >
+              Retry
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Primary metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {METRICS.map((m) => (
-          <Card key={m.label} className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
-            <div className="flex items-center gap-2 text-[var(--ink-muted)]">
-              <m.icon className="size-3.5" />
-              <span className="text-[10px] font-medium uppercase tracking-[0.06em]">{m.label}</span>
-            </div>
-            <div className={`mt-2 font-serif text-[28px] leading-none ${m.color ?? "text-[var(--ink-primary)]"}`}>
-              {m.value}
-            </div>
-            {m.trend && (
-              <p className="mt-1.5 text-[10px] text-[var(--ink-muted)]">{m.trend}</p>
-            )}
-          </Card>
-        ))}
+        {loading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <MetricSkeleton key={i} />
+          ))
+        ) : metrics ? (
+          <>
+            <MetricCard
+              label="Monitored members"
+              value={metrics.membersMonitored}
+              icon={Users}
+              trend={`+${Math.max(1, Math.floor(metrics.membersMonitored * 0.016))} this week`}
+              delay={0}
+              onClick={() => {}}
+            />
+            <MetricCard
+              label="Needs review"
+              value={metrics.needsReview}
+              icon={AlertTriangle}
+              colorClassName="text-[var(--warning)]"
+              accent="warning"
+              trend="Awaiting creator action"
+              delay={60}
+            />
+            <MetricCard
+              label="Awaiting approval"
+              value={metrics.awaitingApproval}
+              icon={Clock}
+              colorClassName="text-[var(--info)]"
+              accent="info"
+              trend="Drafts ready to review"
+              delay={120}
+            />
+            <MetricCard
+              label="Responses"
+              value={metrics.recentResponses}
+              icon={MessageSquare}
+              trend="+4 today"
+              delay={180}
+            />
+            <MetricCard
+              label="Observed returns"
+              value={metrics.observedReturns}
+              icon={TrendingUp}
+              colorClassName="text-[var(--recovery-green)]"
+              accent="recovery"
+              trend="Confirmed + observed"
+              delay={240}
+            />
+          </>
+        ) : null}
       </div>
 
+      {/* Recovery Funnel + System Health */}
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* Rescue Queue preview */}
+        {/* Recovery funnel */}
         <div className="lg:col-span-3">
           <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
             <div className="flex items-center justify-between">
-              <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Rescue Queue</h2>
-              <Link href={`${basePath}/rescue-queue`}>
-                <Button variant="ghost" size="sm" className="text-[12px] text-[var(--ink-secondary)]">
-                  View all <ArrowRight className="ml-1 size-3" />
-                </Button>
-              </Link>
+              <div>
+                <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Recovery Pulse</h2>
+                <p className="mt-0.5 text-[11px] text-[var(--ink-muted)]">
+                  From detected risk to retained membership
+                </p>
+              </div>
+              <Badge variant="outline" className="rounded-[3px] text-[10px]">
+                Last 30 days
+              </Badge>
             </div>
-            <div className="mt-4 space-y-3">
-              {QUEUE_PREVIEW.map((q) => (
-                <div
-                  key={q.name}
-                  className="flex items-center justify-between rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-4 py-3"
-                >
-                  <div>
-                    <span className="text-[13px] font-medium text-[var(--ink-primary)]">{q.name}</span>
-                    <p className="mt-0.5 text-[11px] text-[var(--ink-muted)]">{q.trigger} · {q.inactive} inactive</p>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "rounded-[3px] text-[10px]",
-                      q.urgency === "Urgent" && "border-[var(--critical)]/30 text-[var(--critical)]",
-                      q.urgency === "High" && "border-[var(--warning)]/30 text-[var(--warning)]",
-                      q.urgency === "Medium" && "border-[var(--info)]/30 text-[var(--info)]",
-                    )}
-                  >
-                    {q.urgency}
-                  </Badge>
-                </div>
-              ))}
+            <div className="mt-5">
+              {loading ? (
+                <div className="h-[150px] animate-pulse rounded-[6px] bg-[var(--hairline)]" />
+              ) : (
+                <RecoveryFunnelMini stages={recoveryFunnel} />
+              )}
             </div>
           </Card>
         </div>
@@ -140,82 +225,248 @@ export default function CompanyOverviewPage() {
               </Link>
             </div>
             <div className="mt-4 space-y-2.5">
-              {HEALTH_DOMAINS.map((h) => (
-                <div key={h.name} className="flex items-center justify-between text-[12px]">
-                  <span className="text-[var(--ink-secondary)]">{h.name}</span>
-                  {h.status === "healthy" ? (
-                    <span className="flex items-center gap-1 text-[var(--recovery-green)]">
-                      <CheckCircle2 className="size-3" /> Healthy
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="h-2.5 w-32 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
+                    <div className="h-2.5 w-16 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
+                  </div>
+                ))
+              ) : (
+                healthDomains.slice(0, 6).map((h) => (
+                  <div
+                    key={h.domain}
+                    className="group flex items-center justify-between text-[12px] transition-colors"
+                    title={h.details ?? h.message}
+                  >
+                    <span className="text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)]">
+                      {h.domain}
                     </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-[var(--warning)]">
-                      <AlertCircle className="size-3" /> Degraded
-                    </span>
-                  )}
+                    {h.status === "healthy" ? (
+                      <span className="flex items-center gap-1 text-[var(--recovery-green)]">
+                        <CheckCircle2 className="size-3" /> Healthy
+                      </span>
+                    ) : h.status === "degraded" ? (
+                      <span className="flex items-center gap-1 text-[var(--warning)]">
+                        <AlertCircle className="size-3" /> Degraded
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[var(--critical)]">
+                        <AlertCircle className="size-3" /> Down
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            {usage && (
+              <div className="mt-4 border-t border-[var(--hairline)] pt-3">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-[var(--ink-muted)]">Plan usage</span>
+                  <span className="font-mono text-[var(--ink-secondary)]">
+                    {usage.membersUsed}/{usage.membersLimit}
+                  </span>
                 </div>
-              ))}
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--canvas)]">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(100, (usage.membersUsed / usage.membersLimit) * 100)}%` }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                    className="h-full rounded-full bg-[var(--recovery-green)]"
+                  />
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      {/* Rescue Queue preview + Recent activity */}
+      <div className="grid gap-6 lg:grid-cols-5">
+        {/* Rescue Queue preview */}
+        <div className="lg:col-span-3">
+          <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Rescue Queue</h2>
+              <Link href={`${basePath}/rescue-queue`}>
+                <Button variant="ghost" size="sm" className="text-[12px] text-[var(--ink-secondary)]">
+                  View all <ArrowRight className="ml-1 size-3" />
+                </Button>
+              </Link>
+            </div>
+            <div className="mt-4 space-y-2">
+              {loading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-[58px] animate-pulse rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)]"
+                  />
+                ))
+              ) : queueCandidates.length === 0 ? (
+                <div className="rounded-[6px] border border-dashed border-[var(--hairline)] bg-[var(--canvas)] px-4 py-8 text-center">
+                  <p className="text-[12px] text-[var(--ink-muted)]">
+                    No students currently need review.
+                  </p>
+                </div>
+              ) : (
+                queueCandidates.map((q, i) => {
+                  const priorityColor =
+                    q.priority === "urgent"
+                      ? "border-[var(--critical)]/30 text-[var(--critical)]"
+                      : q.priority === "high"
+                        ? "border-[var(--warning)]/30 text-[var(--warning)]"
+                        : "border-[var(--info)]/30 text-[var(--info)]";
+                  return (
+                    <motion.div
+                      key={q.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05, duration: 0.3 }}
+                    >
+                      <Link
+                        href={`${basePath}/rescue-queue`}
+                        className="group flex items-center justify-between rounded-[6px] border border-[var(--hairline)] bg-[var(--canvas)] px-4 py-3 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_1px_0_var(--hairline)]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-medium text-[var(--ink-primary)]">
+                              {q.name}
+                            </span>
+                            <span className="font-mono text-[10px] text-[var(--ink-muted)]">
+                              {q.initials}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 truncate text-[11px] text-[var(--ink-muted)]">
+                            {q.trigger} · {q.daysInactive}d inactive · {q.progress}% complete
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[11px] tabular-nums text-[var(--ink-secondary)]">
+                            ${q.monthlyValue}/mo
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "rounded-[3px] text-[10px] capitalize",
+                              priorityColor,
+                            )}
+                          >
+                            {q.priority}
+                          </Badge>
+                          <ChevronRight className="size-3.5 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" />
+                        </div>
+                      </Link>
+                    </motion.div>
+                  );
+                })
+              )}
+            </div>
+          </Card>
+        </div>
+
+        {/* Recent activity */}
+        <div className="lg:col-span-2">
+          <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Recent Activity</h2>
+              <Link href={`${basePath}/activity`}>
+                <Button variant="ghost" size="sm" className="text-[12px] text-[var(--ink-secondary)]">
+                  All <ArrowRight className="ml-1 size-3" />
+                </Button>
+              </Link>
+            </div>
+            <div className="mt-4 space-y-3">
+              {loading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="size-3.5 shrink-0 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-2.5 w-3/4 animate-pulse rounded-[2px] bg-[var(--hairline)]" />
+                      <div className="h-2 w-full animate-pulse rounded-[2px] bg-[var(--hairline)]" />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                recentActivity.slice(0, 6).map((a, i) => {
+                  const Icon = ACTIVITY_ICON[a.type as ActivityType] ?? RefreshCw;
+                  const color = ACTIVITY_COLOR[a.type as ActivityType] ?? "text-[var(--ink-muted)]";
+                  return (
+                    <motion.div
+                      key={a.id}
+                      initial={{ opacity: 0, x: -4 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.04, duration: 0.25 }}
+                      className="flex items-start gap-3"
+                    >
+                      <Icon className={cn("mt-0.5 size-3.5 shrink-0", color)} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-medium text-[var(--ink-primary)]">
+                          {a.detail}
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-[var(--ink-muted)]">
+                          {a.actor} · {a.timestamp}
+                        </p>
+                      </div>
+                    </motion.div>
+                  );
+                })
+              )}
             </div>
           </Card>
         </div>
       </div>
 
-      {/* Recent activity + actions */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
-            <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Recent Activity</h2>
-            <div className="mt-4 space-y-3">
-              {RECENT_ACTIVITY.map((a, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <Activity className="mt-0.5 size-3.5 shrink-0 text-[var(--ink-muted)]" />
-                  <div className="min-w-0 flex-1">
-                    <span className="text-[12px] font-medium text-[var(--ink-primary)]">{a.event}</span>
-                    <p className="text-[11px] text-[var(--ink-muted)]">{a.detail}</p>
-                  </div>
-                  <span className="shrink-0 text-[10px] text-[var(--ink-muted)]">{a.time}</span>
+      {/* Quick actions */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Link href={`${basePath}/rescue-queue`} className="block">
+          <Card className="group rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <ListChecks className="size-4 text-[var(--recovery-green)]" />
+                <div>
+                  <p className="text-[12px] font-medium text-[var(--ink-primary)]">Review Queue</p>
+                  <p className="text-[10px] text-[var(--ink-muted)]">
+                    {metrics ? `${metrics.needsReview} awaiting` : "Loading…"}
+                  </p>
                 </div>
-              ))}
+              </div>
+              <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" />
             </div>
           </Card>
-        </div>
-
-        <div className="lg:col-span-2 space-y-3">
-          <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
-            <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Quick Actions</h2>
-            <div className="mt-4 space-y-2">
-              <Link href={`${basePath}/rescue-queue`} className="block">
-                <Button variant="outline" className="w-full justify-start rounded-[6px] text-[12px]">
-                  <ListChecks className="mr-2 size-3.5" /> Review Rescue Queue (23)
-                </Button>
-              </Link>
-              <Link href={`${basePath}/responses`} className="block">
-                <Button variant="outline" className="w-full justify-start rounded-[6px] text-[12px]">
-                  <MessageSquare className="mr-2 size-3.5" /> View Responses (18)
-                </Button>
-              </Link>
-              <Link href={`${basePath}/settings/health`} className="block">
-                <Button variant="outline" className="w-full justify-start rounded-[6px] text-[12px]">
-                  <Heart className="mr-2 size-3.5" /> View System Health
-                </Button>
-              </Link>
+        </Link>
+        <Link href={`${basePath}/responses`} className="block">
+          <Card className="group rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <MessageSquare className="size-4 text-[var(--info)]" />
+                <div>
+                  <p className="text-[12px] font-medium text-[var(--ink-primary)]">Responses</p>
+                  <p className="text-[10px] text-[var(--ink-muted)]">
+                    {metrics ? `${metrics.recentResponses} new` : "Loading…"}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" />
             </div>
           </Card>
-
-          <Card className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
-            <div className="flex items-center justify-between text-[12px]">
-              <span className="text-[var(--ink-secondary)]">Usage</span>
-              <span className="text-[var(--ink-primary)]">742 / 1,000 members</span>
-            </div>
-            <div className="mt-2 h-1.5 rounded-full bg-[var(--canvas)]">
-              <div className="h-full w-[74%] rounded-full bg-[var(--recovery-green)]" />
+        </Link>
+        <Link href={`${basePath}/settings/health`} className="block">
+          <Card className="group rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="size-4 text-[var(--recovery-green)]" />
+                <div>
+                  <p className="text-[12px] font-medium text-[var(--ink-primary)]">System Health</p>
+                  <p className="text-[10px] text-[var(--ink-muted)]">
+                    {company ? `${company.systemHealth}` : "Loading…"}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" />
             </div>
           </Card>
-        </div>
+        </Link>
       </div>
     </div>
   );
-}
-
-function cn(...inputs: (string | undefined | false)[]) {
-  return inputs.filter(Boolean).join(" ");
 }

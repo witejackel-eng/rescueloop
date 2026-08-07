@@ -17,11 +17,13 @@ import {
   Settings,
   CreditCard,
   HelpCircle,
-  Link2,
   Menu,
   ChevronDown,
   Wifi,
   RefreshCw,
+  Bell,
+  Search,
+  Command as CommandIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -32,13 +34,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { RescueLoopMark } from "@/components/brand/logo";
+import { useDemoStore, useUnresolvedNotificationCount } from "@/features/demo-engine/demo-store";
+import { NotificationPanel } from "@/components/shell/notification-panel";
 
 // ── Navigation ────────────────────────────────────────────────
 const PRIMARY_NAV = [
@@ -69,6 +67,9 @@ export default function CompanyDashboardLayout({
   const companyId = params.companyId;
   const basePath = `/dashboard/${companyId}`;
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const setCommandPaletteOpen = useDemoStore((s) => s.setCommandPaletteOpen);
+  const unresolvedCount = useUnresolvedNotificationCount();
 
   const isActive = (href: string) => {
     const full = `${basePath}${href}`;
@@ -114,16 +115,23 @@ export default function CompanyDashboardLayout({
                 href={`${basePath}${item.href}`}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex items-center gap-2.5 px-4 py-2 transition-colors",
+                  "group relative flex items-center gap-2.5 px-4 py-2 transition-colors",
                   active
                     ? "text-[var(--ink-primary)]"
                     : "text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--canvas)]",
                 )}
               >
                 {active && (
-                  <span className="absolute -left-px top-1/2 h-4 w-[2px] -translate-y-1/2 bg-[var(--recovery-green)]" />
+                  <motion.span
+                    layoutId="dash-nav-active"
+                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                    className="absolute -left-px top-1/2 h-4 w-[2px] -translate-y-1/2 bg-[var(--recovery-green)]"
+                  />
                 )}
-                <Icon className="size-4 shrink-0" />
+                <Icon className={cn(
+                  "size-4 shrink-0 transition-transform group-hover:scale-105",
+                  active && "text-[var(--recovery-green)]",
+                )} />
                 <span className="text-[13px]">{item.label}</span>
               </Link>
             );
@@ -141,16 +149,23 @@ export default function CompanyDashboardLayout({
                 href={`${basePath}${item.href}`}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex items-center gap-2.5 px-4 py-2 transition-colors",
+                  "group relative flex items-center gap-2.5 px-4 py-2 transition-colors",
                   active
                     ? "text-[var(--ink-primary)]"
                     : "text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--canvas)]",
                 )}
               >
                 {active && (
-                  <span className="absolute -left-px top-1/2 h-4 w-[2px] -translate-y-1/2 bg-[var(--recovery-green)]" />
+                  <motion.span
+                    layoutId="dash-nav-active"
+                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                    className="absolute -left-px top-1/2 h-4 w-[2px] -translate-y-1/2 bg-[var(--recovery-green)]"
+                  />
                 )}
-                <Icon className="size-4 shrink-0" />
+                <Icon className={cn(
+                  "size-4 shrink-0 transition-transform group-hover:scale-105",
+                  active && "text-[var(--recovery-green)]",
+                )} />
                 <span className="text-[13px]">{item.label}</span>
               </Link>
             );
@@ -189,6 +204,19 @@ export default function CompanyDashboardLayout({
             <span className="text-[13px] text-[var(--ink-secondary)]">Creator Growth Lab</span>
           </div>
 
+          {/* Command palette trigger */}
+          <button
+            onClick={() => setCommandPaletteOpen(true)}
+            className="ml-2 hidden items-center gap-2 rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] px-2.5 py-1.5 text-[12px] text-[var(--ink-muted)] transition-colors hover:border-[var(--hairline-strong)] hover:text-[var(--ink-secondary)] md:flex"
+            aria-label="Open command palette"
+          >
+            <Search className="size-3.5" />
+            <span>Search…</span>
+            <kbd className="flex items-center gap-0.5 rounded border border-[var(--hairline)] bg-[var(--canvas-elevated)] px-1 py-px font-mono text-[10px]">
+              <CommandIcon className="size-2.5" />K
+            </kbd>
+          </button>
+
           <div className="ml-auto flex items-center gap-2">
             <Badge variant="outline" className="rounded-[3px] text-[10px] border-[var(--recovery-green)]/30 text-[var(--recovery-green)]">
               <Wifi className="mr-1 size-3" />
@@ -197,6 +225,22 @@ export default function CompanyDashboardLayout({
             <Badge variant="outline" className="rounded-[3px] text-[10px]">
               Growth plan
             </Badge>
+
+            {/* Notifications */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative size-9 rounded-[8px] text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]"
+              onClick={() => setNotifOpen(true)}
+              aria-label={`Notifications${unresolvedCount > 0 ? `, ${unresolvedCount} unresolved` : ""}`}
+            >
+              <Bell className="size-[18px]" />
+              {unresolvedCount > 0 && (
+                <span className="absolute right-1.5 top-1.5 flex size-4 items-center justify-center rounded-full bg-[var(--critical)] font-mono text-[9px] font-semibold text-white">
+                  {unresolvedCount}
+                </span>
+              )}
+            </Button>
           </div>
         </header>
 
@@ -239,6 +283,13 @@ export default function CompanyDashboardLayout({
               );
             })}
           </nav>
+        </SheetContent>
+      </Sheet>
+
+      {/* Notification sheet */}
+      <Sheet open={notifOpen} onOpenChange={setNotifOpen}>
+        <SheetContent side="right" className="w-full border-l border-[var(--hairline)] p-0 sm:max-w-md">
+          <NotificationPanel onClose={() => setNotifOpen(false)} />
         </SheetContent>
       </Sheet>
 
