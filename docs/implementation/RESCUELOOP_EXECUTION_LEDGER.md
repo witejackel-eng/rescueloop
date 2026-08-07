@@ -466,3 +466,60 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
   owner, acceptance criteria, rationale, remediation plan
 - Visual baselines are OS-specific; committing non-Linux baselines causes CI failures
 - This is tracked debt, not silently deleted coverage
+
+---
+
+## WP-01B–WP-03 REMEDIATION: Complete and Restore Deployability
+
+**Status:** ✅ COMPLETE (per remediation gates)
+
+**Commit:** `87617d7 fix(platform): complete WP01B-WP03 and restore deployability`
+
+**Branch:** `integration/rescueloop-v1`
+
+### Remediation Evidence
+
+| # | Gate | Result | Evidence |
+|---|------|--------|----------|
+| 1 | Repository contamination removed | ✅ | .env, .zscripts, agent-ctx, tool-results, upload, examples, tests, db, worklog.md, Caddyfile untracked; `git ls-files` confirms clean |
+| 2 | Root .env not tracked | ✅ | `git ls-files .env` returns empty |
+| 3 | One package manager | ✅ | Bun only; package-lock.json deleted; `packageManager: "bun@1.3.14"` in package.json; `vercel.json` installCommand |
+| 4 | Clean frozen install | ✅ | `bun install --frozen-lockfile` succeeds |
+| 5 | Node runtime deterministic | ✅ | `engines.node: "22.x"`, `.nvmrc: 22`, Vercel `NODE_VERSION: "22"` |
+| 6 | Sentry compatible with Next.js 16 | ✅ | `@sentry/nextjs@10.69.0` (peer includes `^16.0.0-0`) |
+| 7 | No unresolved dependency conflicts | ✅ | Clean install with zero peer warnings |
+| 8 | One root `/` route | ✅ | `src/app/page.tsx` deleted; `src/app/(marketing)/page.tsx` is canonical; build confirms `/` route |
+| 9 | Marketing homepage preserved | ✅ | `(marketing)/page.tsx` unchanged with all sections |
+| 10 | Closing Signal hero replaces generic orbit | ✅ | `closing-signal-visual.tsx` tells product story: signal→review→approve→support→close→evidence |
+| 11 | Header passes required widths | ✅ | 4 primary links at >=1366px; Safety/FAQ in Resources dropdown; Private Pilot → /private-pilot |
+| 12 | Favicon/brand assets exist | ✅ | All 11 brand assets verified in `public/brand/`; manifest at `/brand-manifest.json` |
+| 13 | OG/Twitter metadata | ✅ | Root layout.tsx has canonical title, description, og:image, twitter:card=summary_large_image, apple-touch-icon, manifest |
+| 14 | WP-02 primitives wired | ✅ | FocusManager, LiveRegion, MobileSafeArea, MutationFeedback, CommandPalette, ShellInteractionWrapper in active shells |
+| 15 | No dead app-shell architecture | ✅ | AppShell deleted; workspace-shell + connected-shell consume shell-core |
+| 16 | Canonical /dashboard route family | ✅ | 12 routes: page, onboarding, rescue-queue, students, responses, playbooks, insights, value, activity, sync, usage, settings |
+| 17 | Legacy /companies redirects | ✅ | 11 legacy routes use `redirect()` to canonical /dashboard equivalents |
+| 18 | Auth fails closed | ✅ | `require-company-access` guard; connected mode never falls to fixture; test passes |
+| 19 | Onboarding state machine works | ✅ | 7-step machine tested; all transitions verified |
+| 20 | No notification during onboarding | ✅ | `no-notification-during-onboarding.test.ts` proves notification provider never called |
+| 21 | Prisma migration history | ✅ | Schema = postgresql; new `20260807000000_add_onboarding_progress` migration; 134 DateTime fields have @db.Timestamptz |
+| 22 | Lint clean | ✅ | 0 errors, 1 warning (window.location.href in student blocker) |
+| 23 | Typecheck clean | ✅ | `tsc --noEmit` passes |
+| 24 | Unit tests | ✅ | 488 passed across 17 test files |
+| 25 | Contract tests | ✅ | 67 passed |
+| 26 | Production build | ✅ | `next build` succeeds; all routes compile |
+| 27 | Gitleaks | ✅ | No leaks found |
+| 28 | WP-04 NOT started | ✅ | No WP-04 code committed |
+
+### Files Changed Summary
+
+- **Deleted:** 95 files (contamination + obsolete (dashboard) group + AppShell + package-lock.json)
+- **Added:** 9 files (shell-core, closing-signal-visual, connected-command-palette, playbooks route, auth guard, 3 test files, Prisma migration)
+- **Modified:** 52 files (shells, header, hero, footer, routes, CI, package.json, schema, etc.)
+
+### Remaining Tracked Debt
+
+- E2E tests require a running PostgreSQL + built server (not run locally in this sandbox)
+- Integration tests require PostgreSQL (CI validates)
+- Vercel deployment status: pending GitHub Actions + Vercel auto-deploy from push
+- Visual screenshot capture: requires deployed preview URL (not available in sandbox)
+- `window.location.href` warning in student-rescue blocker page (1 lint warning)
