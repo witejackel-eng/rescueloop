@@ -121,7 +121,8 @@ export function SyncStep({
       return;
     }
 
-    setPolling(true);
+    // Defer setPolling to avoid synchronous setState in effect body
+    const timeout = setTimeout(() => setPolling(true), 0);
     const interval = setInterval(() => {
       // In a real implementation, this would fetch from an API
       // that reads the persisted sync progress from the DB
@@ -129,6 +130,7 @@ export function SyncStep({
     }, 3000);
 
     return () => {
+      clearTimeout(timeout);
       clearInterval(interval);
       setPolling(false);
     };
