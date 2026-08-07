@@ -15,7 +15,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-// Primary navigation links — always shown in desktop center nav
+// Primary navigation links — always shown in desktop center nav at >=960px.
 const PRIMARY_LINKS = [
   { label: "Product", href: "#product" },
   { label: "How it works", href: "#process" },
@@ -23,7 +23,7 @@ const PRIMARY_LINKS = [
   { label: "Pricing", href: "#pricing" },
 ];
 
-// Secondary links — moved to Resources dropdown + footer (NOT in center nav)
+// Secondary links — moved to Resources dropdown + footer (NOT in center nav).
 const SECONDARY_LINKS = [
   { label: "Safety", href: "#safety" },
   { label: "FAQ", href: "#faq" },
@@ -74,45 +74,65 @@ export function FloatingNav() {
 
   return (
     <>
-      <motion.div
+      <motion.header
         initial={false}
         animate={{
-          width: scrolled ? "min(calc(100% - 32px), 1180px)" : "100%",
-          marginTop: scrolled ? 16 : 0,
-          marginLeft: scrolled ? "auto" : 0,
-          marginRight: scrolled ? "auto" : 0,
-          borderRadius: scrolled ? 14 : 0,
+          height: scrolled ? 56 : 64,
         }}
         transition={reduced ? { duration: 0.15 } : springLayout}
         className={cn(
           "fixed inset-x-0 top-0 z-50",
           scrolled
-            ? "border border-[var(--hairline)] bg-[var(--canvas)]/90 backdrop-blur-xl shadow-[0_4px_24px_rgba(17,17,15,0.06)]"
-            : "border-b border-[var(--hairline-subtle)] bg-[var(--canvas)]/60 backdrop-blur-sm",
+            ? "border-b border-[var(--hairline)] bg-[var(--canvas)]/85 backdrop-blur-xl shadow-[0_1px_0_rgba(17,17,15,0.04),0_4px_16px_rgba(17,17,15,0.05)]"
+            : "border-b border-[var(--hairline-subtle)] bg-[var(--canvas)]/70 backdrop-blur-sm",
         )}
-        style={{ ["--site-header-height" as string]: scrolled ? "52px" : "64px" }}
+        style={{ ["--site-header-height" as string]: scrolled ? "56px" : "64px" }}
+        data-scrolled={scrolled ? "true" : "false"}
+        data-header-region="root"
       >
-        {/* Grid: brand | nav | CTA — three predictable regions */}
+        {/*
+          Robust 3-region header.
+
+          We deliberately use `flex justify-between` instead of CSS Grid.
+          When the desktop <nav> is `display:none` below 960px, the flex
+          container sees only two children (brand on the left, CTA region
+          on the right) and `justify-between` keeps both pinned to the
+          far edges — the mobile menu trigger is always anchored at the
+          FAR RIGHT and there is never a "huge empty gap" between the
+          logo and the trigger.
+
+          The center <nav> is `hidden compact:flex` so at >=960px it
+          appears between brand and CTAs and `flex-1 justify-center`
+          centers it inside the available space.
+
+          The CTA region is `shrink-0` so it never collapses; the
+          desktop CTAs (Private pilot + Explore demo) are
+          `hidden compact:inline-flex` and the mobile trigger is
+          `compact:hidden`, guaranteeing exactly one right-side
+          control at every viewport width.
+        */}
         <div
-          className="grid items-center px-4 sm:px-6"
-          style={{
-            height: scrolled ? 52 : 64,
-            gridTemplateColumns: "max-content minmax(0, 1fr) max-content",
-            gap: "1rem",
-          }}
+          className="mx-auto flex h-full max-w-[1400px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8"
+          data-header-region="bar"
         >
-          {/* ── Brand (never shrinks) ── */}
-          <motion.div animate={{ scale: scrolled ? 0.92 : 1 }} transition={springLayout} className="shrink-0">
+          {/* ── LEFT: Brand (never shrinks) ── */}
+          <motion.div
+            animate={{ scale: scrolled ? 0.92 : 1 }}
+            transition={springLayout}
+            className="shrink-0"
+            data-header-region="brand"
+          >
             <Link href="/" aria-label="RescueLoop home">
               <RescueLoopLogo context="marketing" compact={scrolled} />
             </Link>
           </motion.div>
 
-          {/* ── Desktop navigation: 4 primary links + Resources dropdown ── */}
+          {/* ── CENTER: Desktop navigation (4 primary links + Resources dropdown) ── */}
           <nav
-            className="hidden items-center justify-center compact:flex"
+            className="hidden flex-1 items-center justify-center compact:flex"
             aria-label="Marketing navigation"
-            style={{ gap: "clamp(1rem, 2vw, 1.75rem)" }}
+            style={{ gap: "clamp(0.875rem, 1.6vw, 1.5rem)" }}
+            data-header-region="primary-nav"
           >
             {PRIMARY_LINKS.map((link) => (
               <a
@@ -129,7 +149,7 @@ export function FloatingNav() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="group flex items-center gap-0.5 whitespace-nowrap text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none"
+                  className="group flex items-center gap-0.5 whitespace-nowrap text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--rl-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--canvas)]"
                   aria-label="Resources"
                 >
                   Resources
@@ -151,21 +171,34 @@ export function FloatingNav() {
             </DropdownMenu>
           </nav>
 
-          {/* ── CTA region (never shrinks) ── */}
-          <div className="flex shrink-0 items-center gap-2">
+          {/* ── RIGHT: CTA region (never shrinks; exactly one right-side control at every width) ── */}
+          <div
+            className="flex shrink-0 items-center gap-2"
+            data-header-region="cta"
+          >
+            {/* Private pilot — desktop only */}
+            <Link
+              href="/private-pilot"
+              className="hidden items-center whitespace-nowrap rounded-[8px] border border-[var(--hairline)] px-3.5 py-2 text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:border-[var(--hairline-strong)] hover:text-[var(--ink-primary)] compact:inline-flex"
+            >
+              Private pilot
+            </Link>
+
+            {/* Explore demo — primary dark CTA, desktop only */}
             <Link
               href="/overview"
+              data-testid="header-explore-demo"
               className="hidden items-center gap-1.5 whitespace-nowrap rounded-[8px] bg-[var(--ink-primary)] px-3.5 py-2 text-[13px] font-medium text-white transition-transform press compact:inline-flex"
             >
               Explore demo
               <ArrowRight className="size-3.5" />
             </Link>
 
-            {/* Mobile menu trigger — below compact (1180px) */}
+            {/* Mobile menu trigger — below compact (960px). Always far-right. */}
             <button
               ref={mobileTriggerRef}
               onClick={() => setMobileOpen(true)}
-              className="flex size-9 items-center justify-center rounded-[8px] border border-[var(--hairline)] text-[var(--ink-primary)] compact:hidden"
+              className="flex size-9 items-center justify-center rounded-[8px] border border-[var(--hairline)] text-[var(--ink-primary)] transition-colors hover:border-[var(--hairline-strong)] compact:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--rl-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--canvas)]"
               aria-label="Open menu"
               aria-expanded={mobileOpen}
               aria-controls="mobile-menu"
@@ -174,7 +207,7 @@ export function FloatingNav() {
             </button>
           </div>
         </div>
-      </motion.div>
+      </motion.header>
 
       {/* Mobile full-screen menu */}
       <AnimatePresence>
@@ -194,7 +227,7 @@ export function FloatingNav() {
               <RescueLoopLogo />
               <button
                 onClick={closeMobile}
-                className="flex size-9 items-center justify-center rounded-[8px] border border-[var(--hairline)]"
+                className="flex size-9 items-center justify-center rounded-[8px] border border-[var(--hairline)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--rl-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--canvas)]"
                 aria-label="Close menu"
               >
                 <X className="size-5" />
@@ -223,9 +256,10 @@ export function FloatingNav() {
                 <Link
                   href="/overview"
                   onClick={closeMobile}
+                  data-testid="mobile-explore-demo"
                   className="flex items-center justify-center gap-1.5 rounded-[10px] bg-[var(--ink-primary)] px-4 py-3 text-[15px] font-medium text-white"
                 >
-                  Explore interactive demo
+                  Explore demo
                   <ArrowRight className="size-4" />
                 </Link>
                 <Link

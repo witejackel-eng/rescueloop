@@ -53,9 +53,10 @@ export function FinalCta() {
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Link
                     href="/overview"
+                    data-testid="final-cta-explore-demo"
                     className="press group inline-flex items-center justify-center gap-2 rounded-[10px] bg-[var(--ink-primary)] px-6 py-3.5 text-[14px] font-medium text-white"
                   >
-                    Explore interactive demo
+                    Explore demo
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
                   </Link>
                   <Link

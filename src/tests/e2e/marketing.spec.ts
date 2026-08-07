@@ -4,14 +4,18 @@ import { test, expect } from '@playwright/test';
  * Marketing page E2E tests.
  *
  * The marketing page uses a FloatingNav (client component) with:
- * - Desktop nav at lg+ (1024px+) with aria-label="Marketing navigation"
- * - Mobile menu trigger below lg with aria-label="Open menu"
- * - Hero CTA links to /overview
+ * - Desktop nav at compact+ (960px+) with aria-label="Marketing navigation"
+ * - Mobile menu trigger below compact (960px) with aria-label="Open menu"
+ * - Hero CTA links to /overview (which redirects to the fixture dashboard)
  * - Pricing section has id="pricing"
  * - FAQ section has id="faq"
  * - Footer has links to /legal/privacy and /legal/terms
  *
  * Uses stable accessible roles and locators — no CSS selector lists.
+ *
+ * Comprehensive header responsive coverage lives in
+ * `header-responsive.spec.ts`. This file keeps the higher-level
+ * marketing-page smoke tests.
  */
 
 const VIEWPORTS = [
@@ -32,8 +36,8 @@ test.describe('Marketing Home Page', () => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       // Wait for client-side hydration
       await page.waitForTimeout(500);
-      // At lg+ (1024px+): desktop nav visible. Below: mobile menu button visible.
-      if (vp.width >= 1024) {
+      // At compact+ (960px+): desktop nav visible. Below: mobile menu button visible.
+      if (vp.width >= 960) {
         const desktopNav = page.locator('nav[aria-label="Marketing navigation"]');
         await expect(desktopNav).toBeVisible({ timeout: 10_000 });
       } else {
@@ -55,13 +59,20 @@ test.describe('Marketing Home Page', () => {
     await expect(mobileNav).not.toBeVisible({ timeout: 5_000 });
   });
 
-  test('hero CTA navigates to /overview', async ({ page }) => {
+  test('hero CTA navigates to /overview which redirects to the demo', async ({ page }) => {
     // Use a stable role-based locator: link pointing to /overview
     const heroCta = page.locator('a[href="/overview"]').first();
     await expect(heroCta).toBeVisible({ timeout: 10_000 });
     await heroCta.click();
-    await page.waitForURL(/\/overview/, { timeout: 15_000 });
-    expect(page.url()).toContain('/overview');
+
+    // /overview is a server-side redirect to /dashboard/co_fixture_cgl.
+    // Wait for the redirect chain to settle on the dashboard URL.
+    await page.waitForURL(/\/dashboard\/co_fixture_cgl/, { timeout: 15_000 });
+    expect(page.url()).toContain('/dashboard/co_fixture_cgl');
+
+    // The destination must render the workspace shell, not an error page.
+    const desktopNav = page.locator('nav[aria-label="Workspace navigation"]');
+    await expect(desktopNav).toBeAttached({ timeout: 15_000 });
   });
 
   test('pricing section is visible', async ({ page }) => {
