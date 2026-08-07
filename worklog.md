@@ -836,3 +836,39 @@ Created canonical `/dashboard/[companyId]` route group and redirected all legacy
 - Every connected route validates Whop token + company admin
 - Connected routes never render fixture data (only fixture mode does)
 - "Nothing will be sent" safety promise shown throughout onboarding
+
+---
+Task ID: 3 (WP-03 Onboarding First Value)
+Agent: main
+Task: Implement install-to-first-value Whop onboarding journey
+
+Work Log:
+- Synced RescueLoop repo codebase (WP-01B + WP-02) into local project
+- Adapted Prisma schema for SQLite (removed @db.Timestamptz, @db.Text, String[])
+- Pushed schema to SQLite and generated Prisma client
+- Launched parallel subagents for WP-03 implementation:
+  - Task 3b: Canonical /dashboard/[companyId] routes + legacy redirects
+  - Task 3c-3d: Onboarding state machine, permission diagnostics, course mapping, sync progress
+  - Task 3e-3f: Threshold/candidate preview, first-value completion, fixture/connected separation
+- Fixed server-only import issues (split sync-progress into types + server modules)
+- Fixed "Cannot access 'advanceStep' before initialization" runtime error
+- Verified page loads (200), onboarding wizard renders, diagnostics API works
+- Updated execution ledger with WP-03 completion evidence
+- Committed locally: feat(onboarding): deliver install-to-first-value Whop journey (SHA: 302b0f3)
+- Push to GitHub failed: token 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 returns 401 Bad credentials
+
+Stage Summary:
+- 12 canonical dashboard routes created under /dashboard/[companyId]
+- Legacy /companies/[companyId] routes redirect to /dashboard/[companyId]
+- Onboarding state machine: entry → access_check → mapping → first_sync → threshold → preview → complete
+- Permission diagnostics: 10 categories, safe IDs, no secrets
+- Course mapping with zero-course state
+- First sync with resume: 8 stages, persisted progress, stale detection
+- Threshold/candidate preview with configurable threshold
+- First-value completion with Closing Signal confirmation
+- Fixture/connected separation with mode guard
+- Privacy-safe analytics: 14 allowlisted events
+- OnboardingProgress model added to Prisma schema
+- Lint: 0 errors (1 pre-existing warning)
+- Dev server: compiling and serving correctly
+- Push blocked: invalid GitHub token
