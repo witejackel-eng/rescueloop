@@ -51,7 +51,7 @@ const NAV_ITEMS = [
   { href: "/students", label: "Students", icon: Users },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/insights", label: "Insights", icon: BarChart3 },
-  { href: "/value", label: "Value", icon: DollarSign },
+  { href: "/value", label: "Outcomes", icon: DollarSign },
   { href: "/internal", label: "Internal", icon: Shield },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];

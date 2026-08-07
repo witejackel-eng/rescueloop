@@ -1,13 +1,15 @@
 // RescueLoop — Production Domain Schema
-// PX01–PX07 domain models
+// Safe base lineage: ded8ef7b — PostgreSQL preserved
+// PX01–PX07 additive domain models
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  directUrl         = env("DIRECT_URL")
 }
 
 // ── Core ─────────────────────────────────────────────────────
@@ -30,6 +32,305 @@ model Organization {
   status      String   @default("active") // active | suspended | cancelled
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String   @default("member") // owner | admin | member
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@unique([organizationId, userId])
+}
+
+model WhopInstallation {
+  id             String   @id @default(cuid())
+  organizationId String
+  whopUserId     String?
+  permissions    String   @default("{}") // JSON
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+}
+
+model IntegrationCredential {
+  id             String   @id @default(cuid())
+  organizationId String
+  provider       String   // whop | stripe | posthog
+  credentialRef  String   // encrypted reference, never stored raw
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Product {
+  id             String   @id @default(cuid())
+  organizationId String
+  whopProductId  String?
+  name           String
+  type           String   @default("course") // course | membership | bundle
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Course {
+  id             String   @id @default(cuid())
+  organizationId String
+  productId      String?
+  whopCourseId   String?
+  title          String
+  moduleCount    Int      @default(0)
+  lessonCount    Int      @default(0)
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Student {
+  id             String   @id @default(cuid())
+  organizationId String
+  whopUserId     String?
+  email          String?
+  name           String?
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Membership {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  productId      String?
+  status         String   @default("active") // active | cancelled | expired
+  startedAt      DateTime @default(now())
+  cancelledAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  student      Student     @relation(fields: [studentId], references: [id])
+}
+
+model Enrollment {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  courseId       String
+  status         String   @default("active")
+  progress       Float    @default(0)
+  lastActivityAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  student      Student     @relation(fields: [studentId], references: [id])
+  course       Course      @relation(fields: [courseId], references: [id])
+}
+
+model StudentCourseState {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  courseId       String
+  currentLesson  Int      @default(0)
+  totalLessons   Int      @default(0)
+  stalledAt      DateTime?
+  lastActivityAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, studentId, courseId])
+}
+
+model ProgressEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  courseId       String
+  eventType      String   // lesson_completed | module_completed | stall_detected | resumed
+  lessonIndex    Int?
+  metadata       String?  // JSON
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+}
+
+model Campaign {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  triggerType    String   // never_started | early_stall | mid_course_stall | renewal_review
+  criteria       String   @default("{}") // JSON
+  messageTemplate String  @default("")
+  cooldownDays   Int      @default(7)
+  quietHours     Int      @default(0)
+  approvalMode   String   @default("manual") // manual | auto
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Intervention {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  campaignId     String?
+  status         String   @default("draft") // draft | pending_approval | approved | sent | dismissed
+  triggerReason  String
+  messageBody    String?
+  approvedBy     String?
+  approvedAt     DateTime?
+  sentAt         DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  student      Student     @relation(fields: [studentId], references: [id])
+}
+
+model DeliveryAttempt {
+  id             String   @id @default(cuid())
+  interventionId String
+  channel        String   @default("whop_dm")
+  status         String   @default("pending") // pending | sent | delivered | failed
+  providerRef    String?
+  attemptedAt    DateTime @default(now())
+  completedAt    DateTime?
+}
+
+model StudentResponse {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  interventionId String?
+  responseType   String   // continue_course | need_help | blocked | stop_reminders
+  freeText       String?
+  respondedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+}
+
+model BlockerResponse {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  blockerType    String   // lack_of_time | material_difficult | technical_issue | personal | motivation | other
+  note           String?
+  respondedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+}
+
+model Suppression {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  reason         String   @default("student_request")
+  suppressedAt   DateTime @default(now())
+  createdAt      DateTime @default(now())
+}
+
+model WebhookReceipt {
+  id             String   @id @default(cuid())
+  organizationId String?
+  provider       String
+  eventType      String
+  payload        String   // JSON
+  status         String   @default("received") // received | processed | failed | dead_letter
+  processedAt    DateTime?
+  createdAt      DateTime @default(now())
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String?
+  action         String
+  actor          String
+  actorRole      String?  // creator | operator | system
+  targetType     String?
+  targetId       String?
+  result         String   // success | failed | pending | idempotent_noop
+  details        String?  // JSON (sanitized)
+  createdAt      DateTime @default(now())
+}
+
+model SyncExecution {
+  id             String   @id @default(cuid())
+  organizationId String
+  type           String   // full | incremental | reconciliation
+  status         String   @default("pending") // pending | running | completed | failed
+  stage          String   @default("initialized")
+  processedCount Int      @default(0)
+  totalCount     Int      @default(0)
+  error          String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model SyncCheckpoint {
+  id             String   @id @default(cuid())
+  organizationId String
+  cursor         String   // opaque cursor for incremental sync
+  entity         String   // members | courses | progress
+  checkedAt      DateTime @default(now())
+}
+
+model OnboardingProgress {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  currentStep    String   @default("connect_whop")
+  completed      Boolean  @default(false)
+  data           String   @default("{}") // JSON
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model SubscriptionEntitlement {
+  id             String   @id @default(cuid())
+  organizationId String
+  plan           String   @default("rescue")
+  memberLimit    Int      @default(250)
+  memberCount    Int      @default(0)
+  status         String   @default("active")
+  startedAt      DateTime @default(now())
+  expiresAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model DataExportRequest {
+  id             String   @id @default(cuid())
+  organizationId String
+  status         String   @default("pending") // pending | processing | completed | failed
+  format         String   @default("csv")
+  requestUrl     String?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+}
+
+model DataDeletionRequest {
+  id             String   @id @default(cuid())
+  organizationId String
+  status         String   @default("pending") // pending | processing | completed | failed
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
 }
 
 // ── PX01: Async Trust UX ─────────────────────────────────────
@@ -56,62 +357,51 @@ model Operation {
 // ── PX02: System Health ──────────────────────────────────────
 
 model HealthCheck {
-  id        String   @id @default(cuid())
-  orgId     String
-  domain    String   // whop | permissions | membership_sync | course_activity | webhooks | jobs | notifications | billing | data_freshness
-  status    String   // healthy | degraded | unhealthy | unknown
-  details   String?
-  impact    String?
-  dataSafe  Boolean  @default(true)
-  retrying  Boolean  @default(false)
-  actionRequired Boolean @default(false)
-  checkedAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  orgId          String
+  domain         String   // whop | permissions | membership_sync | course_activity | webhooks | jobs | notifications | billing | data_freshness
+  status         String   // healthy | degraded | unhealthy | unknown
+  details        String?
+  impact         String?
+  dataSafe       Boolean  @default(true)
+  retrying       Boolean  @default(false)
+  actionRequired Boolean  @default(false)
+  checkedAt      DateTime @default(now())
 }
 
 // ── PX03: Exception Operations ───────────────────────────────
 
 model ExceptionRecord {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   orgId       String
-  type        String   // permission_failure | stalled_sync | dead_letter | billing_issue | webhook_lag | high_cost
-  severity    String   @default("medium") // low | medium | high | critical
-  status      String   @default("open") // open | investigating | resolving | resolved
+  type        String    // permission_failure | stalled_sync | dead_letter | billing_issue | webhook_lag | high_cost
+  severity    String    @default("medium") // low | medium | high | critical
+  status      String    @default("open") // open | investigating | resolving | resolved
   message     String
-  details     String?  // JSON
+  details     String?   // JSON
   resolvedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model AuditEntry {
-  id        String   @id @default(cuid())
-  orgId     String?
-  action    String
-  actor     String   // operator email or system
-  target    String?  // what was acted on
-  result    String   // success | failed | pending | idempotent_noop
-  details   String?  // JSON
-  createdAt DateTime @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 // ── PX04: Self-Healing ───────────────────────────────────────
 
 model DiagnosticRecord {
-  id              String   @id @default(cuid())
-  orgId           String?
-  diagnosticId    String   @unique // unique traceable ID
-  errorType       String
-  errorCode       String?
-  message         String
-  context         String?  // JSON (sanitized, no secrets/PII)
-  recoveryStatus  String   @default("none") // none | in_progress | succeeded | failed | max_retries_exceeded
+  id               String    @id @default(cuid())
+  orgId            String?
+  diagnosticId     String    @unique // unique traceable ID
+  errorType        String
+  errorCode        String?
+  message          String
+  context          String?   // JSON (sanitized, no secrets/PII)
+  recoveryStatus   String    @default("none") // none | in_progress | succeeded | failed | max_retries_exceeded
   recoveryStrategy String?
-  retryCount      Int      @default(0)
-  maxRetries      Int      @default(3)
-  nextRetryAt     DateTime?
-  resolvedAt      DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  retryCount       Int       @default(0)
+  maxRetries       Int       @default(3)
+  nextRetryAt      DateTime?
+  resolvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 // ── PX05: Cost Guardrails ────────────────────────────────────
@@ -141,20 +431,20 @@ model FunnelEvent {
 }
 
 model ReferralAttribution {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   orgId       String
-  source      String   // organic | partner | content | ad | referral | whop_marketplace
+  source      String    // organic | partner | content | ad | referral | whop_marketplace
   medium      String?
   campaign    String?
   convertedAt DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 }
 
 model CaseStudyConsent {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   orgId       String
-  granted     Boolean  @default(false)
+  granted     Boolean   @default(false)
   grantedAt   DateTime?
   revokedAt   DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 }

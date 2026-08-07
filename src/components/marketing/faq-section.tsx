@@ -15,7 +15,7 @@ interface QA {
 const ITEMS: QA[] = [
   {
     q: "Does RescueLoop guarantee retained revenue?",
-    a: "No. RescueLoop surfaces at-risk members and coordinates interventions, but retention depends on the student and the course. We tag every recovered dollar with the strongest evidence we can defend — confirmed, strongly associated, or estimated — and never merge them into a single inflated number.",
+    a: "No. RescueLoop surfaces at-risk members and coordinates interventions, but retention depends on the student and the course. We attribute every outcome using evidence tiers — confirmed, strongly associated, or estimated — and never merge them into a single inflated number.",
   },
   {
     q: "How is recovered revenue attributed?",
@@ -51,7 +51,7 @@ const ITEMS: QA[] = [
   },
   {
     q: "Which plan fits my course?",
-    a: "Rescue fits a single course under 250 members where activation is the main problem. Growth fits creators with multiple courses and renewal exposure up to ~1,000 members. Scale fits established communities that need cancellation rescue and confirmed payment attribution. Move up only when the next risk surface is actually on your plate.",
+    a: "Rescue fits a single course under 250 members where activation is the main problem. Growth fits creators with multiple courses and renewal exposure up to ~1,000 members. Scale fits established communities that need cancellation intervention and evidence-tiered recovery attribution. Move up only when the next risk surface is actually on your plate.",
   },
 ];
 

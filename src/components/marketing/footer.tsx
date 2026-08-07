@@ -6,28 +6,29 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
     title: "Product",
     links: [
       { label: "Overview", href: "/overview" },
-      { label: "Rescue queue", href: "/rescue-queue" },
-      { label: "Campaigns", href: "/campaigns" },
-      { label: "Insights", href: "/insights" },
-      { label: "Value ledger", href: "/value" },
+      { label: "Rescue queue", href: "/overview" },
+      { label: "Insights", href: "/overview" },
+      { label: "Outcomes", href: "/overview" },
+      { label: "Student view", href: "/student-rescue" },
     ],
   },
   {
-    title: "Company",
+    title: "Demo",
     links: [
-      { label: "Onboarding", href: "/onboarding" },
-      { label: "Live demo", href: "/overview" },
-      { label: "Settings", href: "/settings" },
-      { label: "Student view", href: "/student-rescue" },
+      { label: "Interactive demo", href: "/overview" },
+      { label: "Rescue Queue demo", href: "/overview" },
+      { label: "Members demo", href: "/overview" },
+      { label: "Playbooks demo", href: "/overview" },
+      { label: "System Health demo", href: "/overview" },
     ],
   },
   {
     title: "Legal",
     links: [
-      { label: "Privacy", href: "#" },
-      { label: "Terms", href: "#" },
-      { label: "Data processing", href: "#" },
-      { label: "Security", href: "#" },
+      { label: "Privacy", href: "/legal/privacy" },
+      { label: "Terms", href: "/legal/terms" },
+      { label: "Data processing", href: "/legal/data-processing" },
+      { label: "Security", href: "/legal/security" },
     ],
   },
 ];
@@ -41,7 +42,7 @@ export function MarketingFooter() {
           <div className="flex flex-col gap-4">
             <RescueLoopLogo />
             <p className="max-w-[34ch] text-[13px] leading-relaxed text-[var(--ink-secondary)]">
-              A student-success and revenue-recovery operating system for Whop
+              A student-success and recovery operating system for Whop
               course creators. Detect, intervene, attribute.
             </p>
             <div className="inline-flex w-fit items-center gap-2 rounded-[4px] border border-[var(--hairline)] bg-[var(--surface)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--ink-muted)]">

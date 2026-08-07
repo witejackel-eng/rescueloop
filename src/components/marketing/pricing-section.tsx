@@ -40,7 +40,7 @@ const PLANS: Plan[] = [
       "Basic friction insights",
       "Weekly value report",
     ],
-    excludes: ["Renewal rescue", "Cancellation rescue", "Multi-team"],
+    excludes: ["Renewal intervention", "Cancellation intervention", "Multi-team"],
     valueLogic: "One $49/month member retained for three months represents $147 in subscription value.",
   },
   {
@@ -60,7 +60,7 @@ const PLANS: Plan[] = [
       "Team action queue",
       "Expanded Value Ledger",
     ],
-    excludes: ["Cancellation rescue", "Confirmed payment attribution", "Control groups"],
+    excludes: ["Cancellation intervention", "Evidence-tiered recovery attribution", "Control groups"],
     valueLogic: "Two $79/month members retained for three months represent $474 in subscription value.",
     featured: true,
   },
@@ -70,12 +70,12 @@ const PLANS: Plan[] = [
     price: 119,
     tagline: "Established communities, full attribution.",
     whoFor: "Established communities up to ~2,500 members and a small team.",
-    problemItHandles: "Defensible revenue recovery with cancellation rescue and confirmed attribution.",
+    problemItHandles: "Defensible recovery attribution with cancellation intervention and evidence-tiered attribution.",
     economicValue: "A single high-value retention saves more than the annual plan cost.",
     includes: [
       "Up to ~2,500 members",
-      "Cancellation rescue",
-      "Confirmed payment attribution",
+      "Cancellation intervention",
+      "Evidence-tiered recovery attribution",
       "Multiple team users",
       "Advanced simulation + control groups",
       "Data export",
@@ -254,7 +254,7 @@ export function PricingSection() {
               Reference point
             </div>
             <p className="mt-2 text-[13px] leading-snug text-[var(--ink-secondary)]">
-              In the live demo workspace, {formatCurrency(237)} confirmed and{" "}
+              In the interactive demo workspace, {formatCurrency(237)} confirmed and{" "}
               {formatCurrency(711)} estimated value were recovered against a{" "}
               {formatCurrency(29)}/month plan — an 8.2× confirmed value-to-cost ratio.
             </p>
