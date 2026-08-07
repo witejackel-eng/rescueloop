@@ -30,25 +30,33 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
 .env*
+!.env.example
 
 # vercel
 .vercel
 
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-local-*
-.claude
-.z-ai-config
+
+# logs
 *.log
 dev.log
-dev.out.log
-test
-prompt
-
 server.log
-# Skills directory
+
+# RescueLoop — exclude scaffold artifacts not part of the product
+/upload/
+/examples/
+/tests/
+/download/
+/mini-services/
+/db/
+/.zscripts/
+/.claude
+/.z-ai-config
 /skills/
+/prompt
+/tool-results/
+/worklog.md

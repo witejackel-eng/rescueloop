@@ -10,6 +10,10 @@ const config: Config = {
   ],
   theme: {
   	extend: {
+                screens: {
+                        'compact': '1180px',
+                        'full': '1366px',
+                },
   		colors: {
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',

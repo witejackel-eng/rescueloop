@@ -1,0 +1,14 @@
+# Gitleaks configuration for RescueLoop
+# Narrow allowlist: only CI fixture placeholders.
+# Never blanket-allow secret patterns or exclude the repository.
+
+[allowlist]
+  description = "CI fixture placeholders are not real credentials"
+  regexes = [
+    '''ci-fixture-[a-z-]+-padding-32ch''',
+    '''ci-fixture-[a-z-]+-[0-9]{2}''',
+    '''whsec_ci_fixture_webhook_secret_padding_32ch''',
+    '''phc_ci_fixture_key''',
+    '''fixture-student-token-abc123''',
+    '''test-internal-key''',
+  ]

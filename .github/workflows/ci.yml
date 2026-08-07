@@ -1,0 +1,375 @@
+# RescueLoop — Production-grade CI pipeline
+# All jobs use fixture environment variables — no real Whop credentials required.
+# STRICT MODE: No false-green patterns (|| true, || echo "passing").
+# Every step genuinely fails on errors.
+# Security gate is genuinely blocking — no blanket audit suppression.
+# Prisma migrations are validated via `prisma migrate deploy` on empty DB.
+
+name: CI
+
+on:
+  push:
+    branches: [main, next, feat/*, integration/*]
+  pull_request:
+    branches: [main, next]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# ─── Fixture environment (shared across all jobs) ───────────────
+env:
+  NODE_ENV: test
+  RESCUELOOP_FIXTURE_MODE: "true"
+  NEXT_PUBLIC_WHOP_APP_ID: "ci-fixture-app-id"
+  NEXT_PUBLIC_POSTHOG_KEY: "phc_ci_fixture_key"
+  NEXT_PUBLIC_POSTHOG_HOST: "https://us.posthog.com"
+  WHOP_API_KEY: "ci-fixture-whop-api-key"
+  WHOP_WEBHOOK_SECRET: "whsec_ci_fixture_webhook_secret_padding_32ch"
+  APP_URL: "http://localhost:3000"
+  CRON_SECRET: "ci-fixture-cron-secret-padding-32ch"
+  INNGEST_EVENT_KEY: "ci-fixture-inngest-event-key"
+  JOB_PROVIDER_SECRET: "ci-fixture-job-provider-secret-32"
+  STUDENT_LINK_SIGNING_SECRET: "ci-fixture-student-link-signing-32ch"
+  SENTRY_DSN: ""
+  RESCUELOOP_INTERNAL_TOKEN: "ci-fixture-internal-token-padding-32"
+  DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/rescueloop_test"
+
+jobs:
+  # ─── Job 1: Lint & Typecheck ───────────────────────────────────
+  lint-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+  # ─── Job 2: Unit Tests ────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run unit tests
+        run: bun run test
+
+  # ─── Job 3: PostgreSQL Integration Tests ──────────────────────
+  integration-tests:
+    name: Integration Tests (PostgreSQL)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rescueloop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/rescueloop_test"
+      DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/rescueloop_test"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Prisma generate
+        run: bunx prisma generate
+
+      - name: Deploy migrations to test database
+        run: bunx prisma migrate deploy
+
+      - name: Run integration tests
+        run: bun run test:integration
+
+  # ─── Job 4: Provider Contract Tests ───────────────────────────
+  contract-tests:
+    name: Provider Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run contract tests
+        run: bun run test:contracts
+
+  # ─── Job 5: Production Build ──────────────────────────────────
+  production-build:
+    name: Production Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prisma generate
+        run: bunx prisma generate
+
+      - name: Build Next.js
+        run: bun run build
+        env:
+          DATABASE_URL: "postgresql://placeholder:placeholder@placeholder:5432/placeholder"
+          NEXT_PUBLIC_WHOP_APP_ID: "ci-fixture-app-id"
+          NEXT_PUBLIC_POSTHOG_KEY: "phc_ci_fixture_key"
+          NEXT_PUBLIC_POSTHOG_HOST: "https://us.posthog.com"
+          WHOP_API_KEY: "ci-fixture-whop-api-key"
+          WHOP_WEBHOOK_SECRET: "whsec_ci_fixture_webhook_secret_padding_32ch"
+          APP_URL: "http://localhost:3000"
+          CRON_SECRET: "ci-fixture-cron-secret-padding-32ch"
+          INNGEST_EVENT_KEY: "ci-fixture-inngest-event-key"
+          JOB_PROVIDER_SECRET: "ci-fixture-job-provider-secret-32"
+          STUDENT_LINK_SIGNING_SECRET: "ci-fixture-student-link-signing-32ch"
+          SENTRY_DSN: ""
+          RESCUELOOP_INTERNAL_TOKEN: "ci-fixture-internal-token-padding-32"
+          RESCUELOOP_FIXTURE_MODE: "true"
+
+  # ─── Job 6: Playwright E2E ────────────────────────────────────
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rescueloop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/rescueloop_test"
+      DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/rescueloop_test"
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Prisma generate
+        run: bunx prisma generate
+
+      - name: Deploy migrations to test database
+        run: bunx prisma migrate deploy
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build Next.js for E2E
+        run: bun run build
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/rescueloop_test"
+          RESCUELOOP_FIXTURE_MODE: "true"
+          NEXT_PUBLIC_WHOP_APP_ID: "ci-fixture-app-id"
+          NEXT_PUBLIC_POSTHOG_KEY: "phc_ci_fixture_key"
+          NEXT_PUBLIC_POSTHOG_HOST: "https://us.posthog.com"
+          WHOP_API_KEY: "ci-fixture-whop-api-key"
+          WHOP_WEBHOOK_SECRET: "whsec_ci_fixture_webhook_secret_padding_32ch"
+          APP_URL: "http://localhost:3000"
+          CRON_SECRET: "ci-fixture-cron-secret-padding-32ch"
+          INNGEST_EVENT_KEY: "ci-fixture-inngest-event-key"
+          JOB_PROVIDER_SECRET: "ci-fixture-job-provider-secret-32"
+          STUDENT_LINK_SIGNING_SECRET: "ci-fixture-student-link-signing-32ch"
+          SENTRY_DSN: ""
+          RESCUELOOP_INTERNAL_TOKEN: "ci-fixture-internal-token-padding-32"
+
+      - name: Prepare standalone server assets
+        run: |
+          # Next.js standalone output requires static & public assets
+          # to be copied into .next/standalone for the server to serve them.
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+
+      - name: Run E2E tests
+        run: bunx playwright test
+        env:
+          RESCUELOOP_FIXTURE_MODE: "true"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/rescueloop_test"
+          RESCUELOOP_INTERNAL_TOKEN: "ci-fixture-internal-token-padding-32"
+
+      - name: Upload WP-01 brand evidence screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescueloop-wp01-brand-evidence
+          path: test-results/brand-evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload test artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
+  # ─── Job 7: Security ─────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      # ── Secret scan with gitleaks ──
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.21.2"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+
+      - name: Run gitleaks secret scan
+        run: gitleaks detect --source . --verbose --no-git
+
+      # ── Dependency audit (genuinely blocking) ──
+      # Uses the TypeScript audit parser (scripts/audit-parser.ts) instead of
+      # the fragile shell while-read state machine. The parser correctly handles
+      # Bun's audit output format regardless of line ordering within sections.
+      # Exit 1 = direct critical/high vulnerability found (blocking).
+      # Exit 0 = no direct critical/high (transitive-only reported as warnings).
+      - name: Audit parser tests
+        run: bun vitest run scripts/audit-parser.test.ts
+
+      - name: Dependency audit
+        run: bun audit 2>&1 | bun run scripts/audit-parser.ts
+
+      # ── "as any" cast check (fails on production source) ──
+      - name: Check for "as any" casts in production code
+        run: |
+          # Production source: exclude test/mock files and comment-only lines
+          PROD_COUNT=$(grep -rn "as any" --include="*.ts" --include="*.tsx" src/ \
+            | grep -v '\.test\.' \
+            | grep -v '\.mock\.' \
+            | grep -v '__mocks__' \
+            | grep -v '// .*as any' \
+            | grep -v 'replaces `as any`' \
+            | grep -v 'instead of `as any`' \
+            | grep -v '^\s*//' \
+            | grep -v ':.*//.*as any' \
+            | wc -l)
+
+          # Test-only count (informational)
+          TEST_COUNT=$(grep -rn "as any" --include="*.ts" --include="*.tsx" src/ \
+            | grep '\.test\.' \
+            | wc -l)
+
+          echo "Production 'as any' count: $PROD_COUNT"
+          echo "Test-only 'as any' count: $TEST_COUNT"
+
+          if [ "$PROD_COUNT" -gt 0 ]; then
+            echo "::error::Found $PROD_COUNT 'as any' casts in production source code:"
+            grep -rn "as any" --include="*.ts" --include="*.tsx" src/ \
+              | grep -v '\.test\.' \
+              | grep -v '\.mock\.' \
+              | grep -v '__mocks__' \
+              | grep -v '// .*as any' \
+              | grep -v 'replaces `as any`' \
+              | grep -v 'instead of `as any`' \
+              | grep -v '^\s*//' \
+              | grep -v ':.*//.*as any'
+            exit 1
+          fi
+
+          echo "No 'as any' casts in production source — clean ($TEST_COUNT in test files only)"
+
+      - name: Check .env is not tracked
+        run: |
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo "::error::.env file is tracked by git — remove it immediately"
+            exit 1
+          else
+            echo ".env is not tracked — clean"
+          fi
+
+      - name: Check for tracked env files with secrets
+        run: |
+          tracked_env=$(git ls-files '*.env' '*.env.local' '*.env.production' 2>/dev/null) || tracked_env=""
+          if [ -n "$tracked_env" ]; then
+            echo "::error::Secret env files are tracked by git: $tracked_env"
+            exit 1
+          else
+            echo "No secret env files tracked — clean"
+          fi
