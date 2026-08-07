@@ -2,10 +2,7 @@
 //
 // Single source of truth for the nav items rendered inside ConnectedShell.
 // Every href ALWAYS includes companyId so a creator inside
-// /dashboard/[companyId]/... is never sent to a demo route.
-//
-// WP-03: Canonical routes are now under /dashboard/[companyId]/.
-// The legacy /companies/[companyId]/* paths redirect to /dashboard/.
+// /companies/[companyId]/... is never sent to a demo route.
 //
 // This module is safe to import from both client and server components
 // (no "server-only" import, no server-only APIs).
@@ -53,9 +50,9 @@ export interface ConnectedNavItem {
 export const CONNECTED_NAV_ITEMS: ConnectedNavItem[] = [
   {
     key: "overview",
-    label: "Dashboard",
+    label: "Overview",
     icon: LayoutDashboard,
-    segment: "",
+    segment: "overview",
     description: "Recovery pulse + system status",
     mobilePrimary: true,
   },
@@ -63,7 +60,7 @@ export const CONNECTED_NAV_ITEMS: ConnectedNavItem[] = [
     key: "queue",
     label: "Queue",
     icon: ListChecks,
-    segment: "rescue-queue",
+    segment: "queue",
     description: "Activation Rescue candidates awaiting review",
     mobilePrimary: true,
   },
@@ -152,43 +149,25 @@ export const MOBILE_MORE_ITEMS: ConnectedNavItem[] = CONNECTED_NAV_ITEMS.filter(
 
 /**
  * Build a company-scoped href. Always interpolates companyId so the
- * result is always inside /dashboard/[companyId]/...
- *
- * WP-03: Canonical base is now /dashboard/ instead of /companies/.
+ * result is always inside /companies/[companyId]/...
  */
 export function buildCompanyHref(companyId: string, segment: string): string {
-  const base = `/dashboard/${encodeURIComponent(companyId)}`;
-  return segment ? `${base}/${segment}` : base;
+  return `/companies/${encodeURIComponent(companyId)}/${segment}`;
 }
 
 /**
  * Determine which nav item is active for the given pathname.
  *
- * Matches the path segment immediately after /dashboard/[companyId]/.
- * Also matches the legacy /companies/[companyId]/ prefix for compatibility.
+ * Matches the path segment immediately after /companies/[companyId]/.
  * Returns null when the pathname is outside the company scope.
  */
 export function getActiveConnectedNavKey(
   pathname: string,
   companyId: string,
 ): string | null {
-  const encodedId = encodeURIComponent(companyId);
-  const dashboardPrefix = `/dashboard/${encodedId}/`;
-  const legacyPrefix = `/companies/${encodedId}/`;
-
-  let rest: string | null = null;
-  if (pathname.startsWith(dashboardPrefix)) {
-    rest = pathname.slice(dashboardPrefix.length);
-  } else if (pathname.startsWith(legacyPrefix)) {
-    rest = pathname.slice(legacyPrefix.length);
-  }
-
-  // Also match exact /dashboard/[companyId] (no trailing slash)
-  if (!rest && pathname === `/dashboard/${encodedId}`) {
-    rest = "";
-  }
-
-  if (rest === null) return null;
+  const prefix = `/companies/${encodeURIComponent(companyId)}/`;
+  if (!pathname.startsWith(prefix)) return null;
+  const rest = pathname.slice(prefix.length);
   const segment = rest.split("/")[0] ?? "";
   const item = CONNECTED_NAV_ITEMS.find((i) => i.segment === segment);
   return item?.key ?? null;

@@ -355,12 +355,11 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 
 **Status:** ✅ COMPLETE
 
-**Objective:** Implement install-to-first-value onboarding journey for Whop creators, including canonical dashboard routes, auth/permission contract, course mapping with zero-course state, resumable first sync, threshold/candidate preview, first-value and zero-candidate completion, fixture/connected separation, privacy-safe analytics, and controlled Whop verification.
+**Objective:** Implement install-to-first-value onboarding journey for Whop creators.
 
 **Commit:** `feat(onboarding): deliver install-to-first-value Whop journey`
 
 ### Canonical Dashboard Routes
-
 | Route | Purpose |
 |-------|---------|
 | `/dashboard/[companyId]` | Dashboard overview with onboarding progress |
@@ -375,52 +374,36 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 | `/dashboard/[companyId]/usage` | Plan usage |
 | `/dashboard/[companyId]/settings` | Settings |
 
-### Legacy Redirects
-All `/companies/[companyId]/*` routes redirect to `/dashboard/[companyId]/*` equivalents.
-
 ### Onboarding State Machine
 7-step flow: `entry → access_check → mapping → first_sync → threshold → preview → complete`
 
-### New Files Created
-- `src/lib/onboarding/onboarding-state.ts` — State machine with pure functions (client-safe)
-- `src/lib/onboarding/sync-progress-types.ts` — Sync progress types and pure functions (client-safe)
-- `src/lib/onboarding/sync-progress.ts` — DB persistence (server-only)
-- `src/lib/onboarding/permission-diagnostics.ts` — Permission diagnostics system
-- `src/lib/onboarding/analytics.ts` — Allowlisted onboarding analytics events
-- `src/lib/onboarding/mode-guard.ts` — Fixture/connected mode separation
-- `src/components/rescueloop/onboarding/onboarding-wizard.tsx` — Multi-step wizard
-- `src/components/rescueloop/onboarding/onboarding-journey.tsx` — Journey container
-- `src/components/rescueloop/onboarding/course-mapping-step.tsx` — Course mapping + zero-course state
-- `src/components/rescueloop/onboarding/sync-step.tsx` — Sync progress with resume
-- `src/components/rescueloop/onboarding/threshold-step.tsx` — Threshold configuration
-- `src/components/rescueloop/onboarding/candidate-preview-step.tsx` — Candidate preview
-- `src/components/rescueloop/onboarding/zero-candidate-state.tsx` — Zero-candidate success
-- `src/components/rescueloop/onboarding/completion-step.tsx` — First-value completion
-- `src/app/dashboard/[companyId]/*` — 12 canonical route files
-- `src/app/api/onboarding/progress/route.ts` — Onboarding state persistence API
-- `src/app/api/onboarding/diagnostics/route.ts` — Permission diagnostics API
-- `src/app/api/onboarding/sync/route.ts` — Sync trigger API
-- `src/app/api/dashboard/[companyId]/onboarding/route.ts` — Company-scoped onboarding API
-
-### Prisma Schema Addition
-- `OnboardingProgress` model with `@@unique([organizationId, companyId])` for upsert support
+### Key Deliverables
+- Onboarding state machine with client-safe pure functions
+- Permission diagnostics (10 categories, safe IDs, no secrets)
+- Course mapping with zero-course state
+- First sync with resume (8 stages, persisted progress, stale detection)
+- Threshold/candidate preview with configurable threshold
+- First-value completion with Closing Signal confirmation
+- Fixture/connected mode separation with mode guard
+- Privacy-safe analytics (14 allowlisted events)
+- OnboardingProgress model added to Prisma schema
+- Legacy `/companies/[companyId]` routes redirect to canonical `/dashboard/[companyId]`
 
 ### Acceptance Gates
-
 | Gate | Status |
 |------|--------|
-| Canonical dashboard routes | ✅ `/dashboard/[companyId]/*` |
-| Legacy redirects | ✅ `/companies/[companyId]/*` → `/dashboard/[companyId]/*` |
-| Auth/permission contract | ✅ requireCompanyAdmin + diagnostics |
-| Permission diagnostics | ✅ 10 categories, safe IDs, no secrets |
-| Course mapping | ✅ Real provider results + zero-course state |
-| First sync with resume | ✅ 8 stages, persisted progress, stale detection |
-| Threshold/candidate preview | ✅ Configurable threshold, candidate samples |
-| First-value completion | ✅ Closing Signal confirmation, honest zero state |
-| Fixture/connected separation | ✅ Mode guard, fixture data factory |
-| Privacy-safe analytics | ✅ 14 allowlisted events, forbidden metadata |
-| No notification during onboarding | ✅ notificationsSent: 0 |
-| Lint clean | ✅ 0 errors (1 pre-existing warning) |
+| Canonical dashboard routes | ✅ |
+| Legacy redirects | ✅ |
+| Auth/permission contract | ✅ |
+| Permission diagnostics | ✅ |
+| Course mapping + zero-course | ✅ |
+| First sync with resume | ✅ |
+| Threshold/candidate preview | ✅ |
+| First-value completion | ✅ |
+| Fixture/connected separation | ✅ |
+| Privacy-safe analytics | ✅ |
+| No notification during onboarding | ✅ |
+| Lint clean | ✅ |
 
 ## WP-04 through WP-09: (Not started)
 
