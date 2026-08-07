@@ -23,6 +23,7 @@ import { CardSkeleton } from "@/components/shared/card-skeleton";
 import type { DemoOutcome } from "@/lib/demo-fixtures";
 import { PageTransition } from "@/components/shared/page-transition";
 import { SectionHeader } from "@/components/shared/section-header";
+import { ScrollReveal } from "@/components/shared/scroll-reveal";
 
 type Classification = DemoOutcome["classification"];
 
@@ -127,6 +128,7 @@ export default function OutcomesPage() {
       )}
 
       {/* Tier summary */}
+      <ScrollReveal delay={0}>
       <div className="mt-6 border-t border-[var(--hairline)] pt-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {loading ? (
@@ -157,8 +159,10 @@ export default function OutcomesPage() {
         )}
       </div>
       </div>
+      </ScrollReveal>
 
       {/* Outcome list */}
+      <ScrollReveal delay={0.1}>
       {loading ? (
         <CardSkeleton rows={5} />
       ) : outcomes.length === 0 ? (
@@ -250,6 +254,7 @@ export default function OutcomesPage() {
           </div>
         </Card>
       )}
+      </ScrollReveal>
     </div>
     </PageTransition>
   );

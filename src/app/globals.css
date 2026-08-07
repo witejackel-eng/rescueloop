@@ -680,3 +680,165 @@
   }
 }
 
+/* ───────────────────────────────────────────────────────────────
+ * Mobile Responsive Utilities
+ * Touch targets, horizontal scroll, safe areas, layout helpers.
+ * All classes use mobile-first or max-width breakpoints to avoid
+ * affecting desktop layouts.
+ * ─────────────────────────────────────────────────────────────── */
+
+/* Touch target: ensures interactive elements meet 44x44px minimum (Apple HIG). */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Horizontal scroll with momentum and hidden scrollbar on mobile.
+ * On desktop (lg+), scrollbar is visible for mouse users. */
+.mobile-scroll-x {
+  -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+@media (max-width: 1023px) {
+  .mobile-scroll-x {
+    scrollbar-width: none;
+  }
+  .mobile-scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Safe area bottom padding for devices with home indicators. */
+.mobile-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Flex-col on mobile, flex-row on desktop. */
+.mobile-stack {
+  flex-direction: column;
+}
+@media (min-width: 1024px) {
+  .mobile-stack {
+    flex-direction: row;
+  }
+}
+
+/* Full width on mobile, auto on desktop. */
+.mobile-full {
+  width: 100%;
+}
+@media (min-width: 1024px) {
+  .mobile-full {
+    width: auto;
+  }
+}
+
+/* Haptic-style tap feedback: scale down briefly on active. */
+.mobile-tap-feedback {
+  transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mobile-tap-feedback:active {
+  transform: scale(0.95);
+}
+
+/* Horizontal scroll edge indicator: subtle gradient shadow on the
+ * right edge when content overflows (applied to parent wrapper). */
+.scroll-edge-indicator {
+  position: relative;
+}
+.scroll-edge-indicator::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 32px;
+  background: linear-gradient(to right, transparent, var(--canvas-elevated));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.scroll-edge-indicator[data-overflow="true"]::after {
+  opacity: 1;
+}
+
+/* Mobile bottom nav active indicator: thicker top bar animation. */
+@keyframes mobile-nav-indicator {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+.mobile-nav-active-bar {
+  animation: mobile-nav-indicator 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Micro-interaction keyframes & utilities
+ * All classes respect prefers-reduced-motion (via the global guard
+ * above) and have dark-mode variants where appropriate.
+ * ─────────────────────────────────────────────────────────────── */
+
+/* Brief green flash for increasing metric values. */
+@keyframes value-flash-green {
+  0% { color: var(--recovery-green); text-shadow: 0 0 6px color-mix(in srgb, var(--recovery-green) 30%, transparent); }
+  100% { color: inherit; text-shadow: none; }
+}
+
+/* Brief red flash for decreasing metric values. */
+@keyframes value-flash-red {
+  0% { color: var(--critical); text-shadow: 0 0 6px color-mix(in srgb, var(--critical) 30%, transparent); }
+  100% { color: inherit; text-shadow: none; }
+}
+
+.value-flash-up {
+  animation: value-flash-green 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.value-flash-down {
+  animation: value-flash-red 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Pulse animation for chart hover data points. */
+@keyframes chart-point-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--recovery-green) 18%, transparent); }
+}
+
+.chart-point-pulse {
+  animation: chart-point-pulse 1.2s ease-in-out infinite;
+}
+
+/* Badge pulse — subtle ping for "Live", "New" badges. */
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.badge-pulse {
+  animation: badge-pulse 1.4s ease-in-out infinite;
+}
+
+/* Scroll-reveal base opacity (used by ScrollReveal component). */
+.scroll-reveal-hidden {
+  opacity: 0;
+}
+
+/* Reduced-motion guards for micro-interaction classes. */
+@media (prefers-reduced-motion: reduce) {
+  .value-flash-up,
+  .value-flash-down {
+    animation: none;
+  }
+  .chart-point-pulse {
+    animation: none;
+    box-shadow: none;
+  }
+  .badge-pulse {
+    animation: none;
+  }
+}
+

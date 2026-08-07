@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { usePathname, useParams } from "next/navigation";
+import { usePathname, useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -18,7 +18,6 @@ import {
   CreditCard,
   HelpCircle,
   Menu,
-  ChevronDown,
   Wifi,
   RefreshCw,
   Bell,
@@ -26,6 +25,7 @@ import {
   Command as CommandIcon,
   Keyboard,
   CircleDot,
+  PanelLeftClose,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +47,8 @@ import { RescueLoopMark } from "@/components/brand/logo";
 import { useDemoStore, useUnresolvedNotificationCount } from "@/features/demo-engine/demo-store";
 import { NotificationPanel } from "@/components/shell/notification-panel";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { WorkspaceSwitcher } from "@/components/shared/workspace-switcher";
+import { PullRefresh } from "@/components/shared/pull-refresh";
 
 // ── Navigation ────────────────────────────────────────────────
 const PRIMARY_NAV = [
@@ -100,6 +102,12 @@ export default function CompanyDashboardLayout({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const setCommandPaletteOpen = useDemoStore((s) => s.setCommandPaletteOpen);
   const unresolvedCount = useUnresolvedNotificationCount();
+  const router = useRouter();
+
+  // Pull-to-refresh: reload current route data
+  const handlePullRefresh = useCallback(async () => {
+    router.refresh();
+  }, [router]);
 
   const isActive = (href: string) => {
     const full = `${basePath}${href}`;
@@ -146,20 +154,7 @@ export default function CompanyDashboardLayout({
           <Link href="/" aria-label="RescueLoop home" className="shrink-0">
             <RescueLoopMark size={22} />
           </Link>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="truncate font-serif text-[13px] font-medium text-[var(--ink-primary)]">
-                Creator Growth Lab
-              </span>
-              <ChevronDown className="size-3 text-[var(--ink-muted)]" />
-            </div>
-            <div className="flex items-center gap-1 text-[10px] text-[var(--ink-muted)]">
-              <Wifi className="size-2.5 text-[var(--recovery-green)]" />
-              <span>Whop connected</span>
-              <span>·</span>
-              <span className="text-[var(--recovery-green)]">Growth</span>
-            </div>
-          </div>
+          <WorkspaceSwitcher variant="sidebar" />
         </div>
 
         {/* Primary nav */}
@@ -276,6 +271,7 @@ export default function CompanyDashboardLayout({
 
           <div className="flex items-center gap-2 lg:hidden">
             <RescueLoopMark size={18} />
+            <WorkspaceSwitcher variant="compact" />
           </div>
 
           {/* Page breadcrumb (single source of truth — workspace already in sidebar) */}
@@ -337,25 +333,40 @@ export default function CompanyDashboardLayout({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1200px] px-4 py-6 pb-16 lg:px-8 lg:py-8 lg:pb-20">
-            {children}
-            {/* Closure footer */}
-            <DashboardFooter />
-          </div>
+          <PullRefresh onRefresh={handlePullRefresh}>
+            <div className="mx-auto w-full max-w-[1200px] px-4 py-6 pb-16 lg:px-8 lg:py-8 lg:pb-20">
+              {children}
+              {/* Closure footer */}
+              <DashboardFooter />
+            </div>
+          </PullRefresh>
         </div>
       </div>
 
-      {/* Mobile sheet */}
+      {/* Mobile sheet — enhanced with sections, workspace, theme toggle, collapse */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-[280px] border-r border-[var(--hairline)] bg-[var(--canvas-elevated)] p-0">
-          <SheetHeader className="border-b border-[var(--hairline)] px-4 py-4">
+        <SheetContent
+          side="left"
+          className="w-[280px] border-r border-[var(--hairline)] bg-[var(--canvas-elevated)] p-0 [&>button]:hidden"
+        >
+          {/* Workspace header */}
+          <SheetHeader className="border-b border-[var(--hairline)] px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <RescueLoopMark size={22} />
-              <SheetTitle className="font-serif text-[16px] text-[var(--ink-primary)]">Creator Growth Lab</SheetTitle>
+              <Link href="/" onClick={() => setMobileOpen(false)} aria-label="RescueLoop home">
+                <RescueLoopMark size={20} />
+              </Link>
+              <WorkspaceSwitcher variant="compact" />
             </div>
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
           </SheetHeader>
-          <nav className="flex flex-col py-2">
-            {[...PRIMARY_NAV, ...SECONDARY_NAV].map((item) => {
+
+          {/* Scrollable nav with section headers + green indicator */}
+          <nav className="flex-1 overflow-y-auto scrollbar-thin py-2" aria-label="Mobile navigation">
+            {/* Primary section */}
+            <div className="px-4 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--ink-muted)]">
+              Primary
+            </div>
+            {PRIMARY_NAV.map((item) => {
               const active = isActive(item.href);
               const Icon = item.icon;
               return (
@@ -364,19 +375,74 @@ export default function CompanyDashboardLayout({
                   href={`${basePath}${item.href}`}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 px-5 py-3 transition-colors",
+                    "group relative flex items-center gap-3 px-5 py-2.5 mobile-tap-feedback transition-colors",
                     active
-                      ? "bg-[var(--surface)] text-[var(--ink-primary)]"
+                      ? "bg-[var(--surface)] text-[var(--ink-primary)] font-semibold"
                       : "text-[var(--ink-secondary)] hover:bg-[var(--canvas)] hover:text-[var(--ink-primary)]",
                   )}
                 >
-                  <Icon className="size-4" />
+                  {active && (
+                    <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--recovery-green)]" />
+                  )}
+                  <Icon className={cn(
+                    "size-4 shrink-0",
+                    active && "text-[var(--recovery-green)]",
+                  )} />
                   <span className="text-[14px]">{item.label}</span>
-                  {active && <span className="ml-auto size-1.5 rounded-full bg-[var(--recovery-green)]" />}
+                </Link>
+              );
+            })}
+
+            {/* Divider */}
+            <div className="mx-4 my-2 h-px bg-[var(--hairline)]" />
+
+            {/* Secondary section */}
+            <div className="px-4 pb-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--ink-muted)]">
+              Secondary
+            </div>
+            {SECONDARY_NAV.map((item) => {
+              const active = isActive(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={`${basePath}${item.href}`}
+                  onClick={() => setMobileOpen(false)}
+                  className={cn(
+                    "group relative flex items-center gap-3 px-5 py-2.5 mobile-tap-feedback transition-colors",
+                    active
+                      ? "bg-[var(--surface)] text-[var(--ink-primary)] font-semibold"
+                      : "text-[var(--ink-secondary)] hover:bg-[var(--canvas)] hover:text-[var(--ink-primary)]",
+                  )}
+                >
+                  {active && (
+                    <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--recovery-green)]" />
+                  )}
+                  <Icon className={cn(
+                    "size-4 shrink-0",
+                    active && "text-[var(--recovery-green)]",
+                  )} />
+                  <span className="text-[14px]">{item.label}</span>
                 </Link>
               );
             })}
           </nav>
+
+          {/* Sheet footer: theme toggle + collapse */}
+          <div className="border-t border-[var(--hairline)] px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-[var(--ink-muted)]">Appearance</span>
+              <ThemeToggle />
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileOpen(false)}
+              className="flex w-full items-center justify-center gap-2 rounded-[6px] border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 text-[12px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--canvas-elevated)] hover:text-[var(--ink-primary)] mobile-tap-feedback"
+            >
+              <PanelLeftClose className="size-3.5" />
+              Collapse sidebar
+            </button>
+          </div>
         </SheetContent>
       </Sheet>
 
@@ -436,40 +502,84 @@ export default function CompanyDashboardLayout({
         </DialogContent>
       </Dialog>
 
-      {/* Mobile bottom tabs */}
+      {/* Mobile bottom tabs — enhanced with 5th slot, touch targets, haptic feedback, stronger active indicator */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-around border-t border-[var(--hairline)] bg-[var(--canvas-elevated)]/95 backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 flex items-center border-t border-[var(--hairline)] bg-[var(--canvas-elevated)]/95 backdrop-blur lg:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-label="Mobile navigation"
       >
-        {PRIMARY_NAV.slice(0, 4).map((item) => {
+        {PRIMARY_NAV.slice(0, 3).map((item) => {
           const active = isActive(item.href);
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={`${basePath}${item.href}`}
-              className="relative flex flex-1 flex-col items-center gap-0.5 py-2"
+              className={cn(
+                "relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 mobile-tap-feedback",
+                "min-h-[44px]", // Touch target
+              )}
               aria-current={active ? "page" : undefined}
             >
+              {/* Active indicator — thicker top bar with animation */}
               {active && (
-                <span className="absolute top-0 h-[2px] w-8 bg-[var(--recovery-green)]" />
+                <span className="absolute top-0 left-1/4 right-1/4 h-[3px] rounded-b-full bg-[var(--recovery-green)] mobile-nav-active-bar" />
               )}
-              <Icon className={cn("size-4", active ? "text-[var(--ink-primary)]" : "text-[var(--ink-muted)]")} />
-              <span className={cn("text-[9px]", active ? "text-[var(--ink-primary)]" : "text-[var(--ink-muted)]")}>
+              <Icon className={cn(
+                "size-[18px] transition-colors",
+                active ? "text-[var(--recovery-green)]" : "text-[var(--ink-muted)]",
+              )} />
+              <span className={cn(
+                "text-[9px] leading-none",
+                active ? "font-bold text-[var(--ink-primary)]" : "text-[var(--ink-muted)]",
+              )}>
                 {item.label}
               </span>
             </Link>
           );
         })}
+        {/* 4th slot: Notifications with unread badge */}
+        <Link
+          href={`${basePath}/notifications`}
+          className={cn(
+            "relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 mobile-tap-feedback",
+            "min-h-[44px]",
+          )}
+          aria-current={isActive("/notifications") ? "page" : undefined}
+        >
+          {isActive("/notifications") && (
+            <span className="absolute top-0 left-1/4 right-1/4 h-[3px] rounded-b-full bg-[var(--recovery-green)] mobile-nav-active-bar" />
+          )}
+          <span className="relative">
+            <Bell className={cn(
+              "size-[18px] transition-colors",
+              isActive("/notifications") ? "text-[var(--recovery-green)]" : "text-[var(--ink-muted)]",
+            )} />
+            {unresolvedCount > 0 && (
+              <span className="absolute -right-1.5 -top-1 flex size-3.5 items-center justify-center rounded-full bg-[var(--critical)] font-mono text-[8px] font-semibold text-white">
+                {unresolvedCount > 9 ? "9+" : unresolvedCount}
+              </span>
+            )}
+          </span>
+          <span className={cn(
+            "text-[9px] leading-none",
+            isActive("/notifications") ? "font-bold text-[var(--ink-primary)]" : "text-[var(--ink-muted)]",
+          )}>
+            Alerts
+          </span>
+        </Link>
+        {/* 5th slot: More button */}
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="flex flex-1 flex-col items-center gap-0.5 py-2"
+          className={cn(
+            "flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 mobile-tap-feedback",
+            "min-h-[44px]",
+          )}
           aria-label="More sections"
         >
-          <Menu className="size-4 text-[var(--ink-muted)]" />
-          <span className="text-[9px] text-[var(--ink-muted)]">More</span>
+          <Menu className="size-[18px] text-[var(--ink-muted)]" />
+          <span className="text-[9px] leading-none text-[var(--ink-muted)]">More</span>
         </button>
       </nav>
     </div>

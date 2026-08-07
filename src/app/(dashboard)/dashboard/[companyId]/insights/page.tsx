@@ -29,6 +29,7 @@ import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { PlaybookRecommender } from "@/components/rescueloop/insights/playbook-recommender";
 import { PageTransition } from "@/components/shared/page-transition";
 import { SectionHeader } from "@/components/shared/section-header";
+import { ScrollReveal } from "@/components/shared/scroll-reveal";
 
 // ── Risk score derivation from member data ─────────────────────
 function deriveRiskScore(member: {
@@ -158,6 +159,7 @@ export default function InsightsPage() {
 
       {/* Top stats */}
       {!loading && metrics && (
+        <ScrollReveal delay={0}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: "Monitored", value: metrics.membersMonitored, icon: Users, color: "text-[var(--ink-primary)]", border: "before:bg-[var(--ink-secondary)]", iconBg: "bg-[var(--canvas-elevated)] text-[var(--ink-secondary)]" },
@@ -185,15 +187,17 @@ export default function InsightsPage() {
             );
           })}
         </div>
+        </ScrollReveal>
       )}
-
-      {/* AI Playbook Recommendations */}
       {!loading && metrics && (
-        <PlaybookRecommender />
+        <ScrollReveal delay={0.08}>
+          <PlaybookRecommender />
+        </ScrollReveal>
       )}
 
       {/* ── NEW: Risk Score Distribution + Recovery Velocity row ── */}
       {!loading && members.length > 0 && (
+        <ScrollReveal delay={0.12}>
         <div className="grid gap-5 lg:grid-cols-5">
           {/* Risk Score Distribution */}
           <div className="lg:col-span-3">
@@ -313,10 +317,10 @@ export default function InsightsPage() {
             </Card>
           </div>
         </div>
+        </ScrollReveal>
       )}
-
-      {/* ── NEW: Top Friction Points Card ── */}
       {!loading && topFriction.length > 0 && (
+        <ScrollReveal delay={0.16}>
         <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
           <div className="flex items-center gap-2">
             <div className="flex size-7 items-center justify-center rounded-[6px] bg-[var(--warning)]/10">
@@ -404,8 +408,10 @@ export default function InsightsPage() {
             Severity: <span className="text-[var(--critical)]">Critical ≥20%</span> · <span className="text-[var(--warning)]">High ≥15%</span> · <span className="text-[#D4652A]">Medium ≥10%</span> · <span className="text-[var(--info)]">Low &lt;10%</span>
           </p>
         </Card>
+        </ScrollReveal>
       )}
 
+      <ScrollReveal delay={0.2}>
       <div className="grid gap-5 lg:grid-cols-5">
         {/* Friction chart (original) */}
         <div className="lg:col-span-3">
@@ -579,6 +585,7 @@ export default function InsightsPage() {
           ) : null}
         </div>
       </div>
+      </ScrollReveal>
     </div>
     </PageTransition>
   );

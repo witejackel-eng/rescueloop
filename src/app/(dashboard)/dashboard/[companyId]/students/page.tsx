@@ -311,7 +311,7 @@ export default function MembersPage() {
 
       {/* Filters + search */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <div className="flex items-center gap-2 mobile-scroll-x overflow-x-auto pb-1">
           <span className="flex shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--ink-muted)]">
             <Filter className="size-3" /> Filter
           </span>
@@ -326,7 +326,7 @@ export default function MembersPage() {
                 type="button"
                 onClick={() => setFilter(f.key)}
                 className={cn(
-                  "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-all",
+                  "touch-target flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-all",
                   active
                     ? "border-[var(--ink-primary)] bg-[var(--ink-primary)] text-white"
                     : "border-[var(--hairline)] bg-[var(--surface)] text-[var(--ink-secondary)] hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)]",
@@ -383,7 +383,7 @@ export default function MembersPage() {
         />
       ) : (
         <Card className="overflow-hidden rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)]">
-          <div className="overflow-x-auto scrollbar-thin">
+          <div className="mobile-scroll-x scroll-edge-indicator overflow-x-auto scrollbar-thin" data-overflow="true">
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="border-b border-[var(--hairline-subtle)] bg-[var(--canvas-elevated)]">

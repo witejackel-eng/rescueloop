@@ -236,7 +236,7 @@ export default function CompanyOverviewPage() {
         variants={staggerContainer}
         initial="hidden"
         animate="show"
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
       >
         {loading ? (
           Array.from({ length: 5 }).map((_, i) => (
@@ -380,7 +380,7 @@ export default function CompanyOverviewPage() {
               7 day view
             </Badge>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <TrendItem label="Detection rate" value="14.2/wk" pctChange={8.3} direction="up" data={makeSparkline(42, "7d")} />
             <TrendItem label="Approval rate" value="68%" pctChange={4.1} direction="up" data={makeSparkline(67, "7d")} color="var(--recovery-green)" />
             <TrendItem label="Avg response time" value="1.8d" pctChange={12.5} direction="down" data={makeSparkline(23, "7d")} color="var(--info)" />
@@ -690,7 +690,7 @@ export default function CompanyOverviewPage() {
         <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--ink-muted)]">
           Quick actions
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
           <Link href={`${basePath}/rescue-queue`} className="block">
             <QuickActionCard
               icon={ListChecks}

@@ -47,6 +47,7 @@ import { ExportDataButton } from "@/components/shared/export-data-button";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import type { TimeRange } from "@/components/shared/time-range-selector";
 import { ChartTooltip } from "@/components/shared/chart-tooltip";
+import { ScrollReveal } from "@/components/shared/scroll-reveal";
 
 // ── Design system colors ─────────────────────────────────────
 const COLORS = {
@@ -288,8 +289,9 @@ export default function AnalyticsPage() {
       )}
 
       {/* ── Summary Metric Cards ────────────────────────────── */}
+      <ScrollReveal delay={0}>
       <motion.div
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        className="grid gap-3 grid-cols-2 lg:grid-cols-4"
         {...animProps}
       >
         {loading ? (
@@ -341,10 +343,12 @@ export default function AnalyticsPage() {
           </>
         )}
       </motion.div>
+      </ScrollReveal>
 
       {/* ── Charts Row 1: Recovery Trend + Risk Distribution ── */}
+      <ScrollReveal delay={0.1}>
       <motion.div
-        className="grid gap-5 lg:grid-cols-3"
+        className="grid gap-4 lg:gap-5 grid-cols-1 lg:grid-cols-3"
         {...animProps}
       >
         {/* Recovery Trend Chart */}
@@ -446,10 +450,12 @@ export default function AnalyticsPage() {
           </Card>
         </motion.div>
       </motion.div>
+      </ScrollReveal>
 
       {/* ── Charts Row 2: Rescue Funnel + Revenue Impact ────── */}
+      <ScrollReveal delay={0.15}>
       <motion.div
-        className="grid gap-5 lg:grid-cols-2"
+        className="grid gap-4 lg:gap-5 grid-cols-1 lg:grid-cols-2"
         {...animProps}
       >
         {/* Rescue Funnel */}
@@ -559,8 +565,10 @@ export default function AnalyticsPage() {
           </Card>
         </motion.div>
       </motion.div>
+      </ScrollReveal>
 
       {/* ── Cohort Analysis Table ────────────────────────────── */}
+      <ScrollReveal delay={0.2}>
       <motion.div {...animProps}>
         <motion.div variants={itemVariants}>
           <Card className="bg-[var(--surface)] border border-[var(--hairline)] rounded-[10px] p-5">
@@ -576,7 +584,7 @@ export default function AnalyticsPage() {
                 6 months
               </Badge>
             </div>
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 mobile-scroll-x scroll-edge-indicator overflow-x-auto" data-overflow="true">
               <Table>
                 <TableHeader>
                   <TableRow className="border-b border-[var(--hairline)] hover:bg-transparent">
@@ -626,6 +634,7 @@ export default function AnalyticsPage() {
           </Card>
         </motion.div>
       </motion.div>
+      </ScrollReveal>
     </div>
   );
 }

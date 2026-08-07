@@ -482,7 +482,7 @@ export default function NotificationsPage() {
         <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-3">
           <div className="flex flex-col gap-3">
             {/* Filter chips */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <div className="flex items-center gap-2 mobile-scroll-x overflow-x-auto pb-1">
               <span className="flex shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--ink-muted)]">
                 Filter
               </span>
@@ -501,7 +501,7 @@ export default function NotificationsPage() {
                     onClick={() => setFilter(f.key)}
                     aria-pressed={active}
                     className={cn(
-                      "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-all",
+                      "touch-target flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-all",
                       active
                         ? "border-[var(--recovery-green)] bg-[var(--recovery-green)] text-white"
                         : "border-[var(--hairline)] bg-[var(--canvas-elevated)] text-[var(--ink-secondary)] hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas)]",
@@ -523,7 +523,7 @@ export default function NotificationsPage() {
 
             {/* Time range + search */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-1 overflow-x-auto">
+              <div className="flex items-center gap-1 mobile-scroll-x overflow-x-auto">
                 <span className="flex shrink-0 items-center text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--ink-muted)]">
                   Range
                 </span>
@@ -536,7 +536,7 @@ export default function NotificationsPage() {
                       onClick={() => setTimeRange(r.key)}
                       aria-pressed={active}
                       className={cn(
-                        "shrink-0 rounded-[6px] px-2 py-1 text-[11px] transition-colors",
+                        "touch-target shrink-0 rounded-[6px] px-2 py-1 text-[11px] transition-colors",
                         active
                           ? "bg-[var(--ink-primary)] text-white"
                           : "text-[var(--ink-muted)] hover:bg-[var(--canvas-elevated)] hover:text-[var(--ink-secondary)]",
