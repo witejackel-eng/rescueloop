@@ -107,7 +107,7 @@ export function HealthDomainCard({ signal }: { signal: HealthSignal }) {
               </div>
             )}
 
-            {!signal.actionRequired && signal.status !== "healthy" && (
+            {!signal.actionRequired && (
               <p className="text-[11px] text-[var(--ink-muted)]">
                 No creator action needed — this should resolve automatically
               </p>
