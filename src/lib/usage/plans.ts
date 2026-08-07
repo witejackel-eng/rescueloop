@@ -113,3 +113,39 @@ export type MetricKey =
   | "notifications_accepted"
   | "stored_events"
   | "exports";
+
+/** Human-readable labels for each metric key. */
+export const METRIC_LABELS: Record<MetricKey, string> = {
+  courses: "Courses",
+  monitored_members: "Monitored Members",
+  active_campaigns: "Active Playbooks",
+  team_members: "Team Seats",
+  candidates_evaluated: "Candidate Evaluations",
+  interventions_created: "Interventions",
+  notifications_accepted: "Accepted Notifications",
+  stored_events: "Stored Events",
+  exports: "Exports",
+};
+
+/** Map a Whop product ID to a PlanTier. Set via env WHOP_PRODUCT_<TIER> variables. */
+export function getPlanTierForProductId(productId: string): PlanTier | null {
+  const env = process.env;
+  const mapping: Record<string, PlanTier> = {};
+  // Read WHOP_PRODUCT_RESCUE, WHOP_PRODUCT_GROWTH, WHOP_PRODUCT_SCALE from env
+  if (env.WHOP_PRODUCT_RESCUE) mapping[env.WHOP_PRODUCT_RESCUE] = "rescue";
+  if (env.WHOP_PRODUCT_GROWTH) mapping[env.WHOP_PRODUCT_GROWTH] = "growth";
+  if (env.WHOP_PRODUCT_SCALE) mapping[env.WHOP_PRODUCT_SCALE] = "scale";
+  return mapping[productId] ?? null;
+}
+
+/** Get the plan tier order for comparison (higher = more capacity). */
+export function planTierOrder(tier: PlanTier): number {
+  switch (tier) {
+    case "pilot": return 0;
+    case "rescue": return 1;
+    case "growth": return 2;
+    case "scale": return 3;
+    case "internal": return 4;
+    default: return 0;
+  }
+}

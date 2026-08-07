@@ -216,6 +216,9 @@ model Organization {
   quietHoursStart String? // "20:00"
   quietHoursEnd   String? // "08:00"
   timezone        String             @default("America/New_York")
+  entitlementState    EntitlementState  @default(inactive)
+  billingGracePeriodEnds DateTime?  @db.Timestamptz()
+  billingManageUrl     String?
   createdAt       DateTime @db.Timestamptz()           @default(now())
   updatedAt       DateTime @db.Timestamptz()           @updatedAt
 
@@ -237,6 +240,7 @@ model Organization {
   syncCheckpoints    SyncCheckpoint[]
   reconciliationRuns ReconciliationRun[]
   onboardingProgress OnboardingProgress[]
+  planOverrides      PlanOverride[]
 
   @@map("organizations")
 }
@@ -964,17 +968,50 @@ model Plan {
   @@map("plans")
 }
 
+enum EntitlementState {
+  pending
+  active
+  scheduled_cancel
+  inactive
+  billing_error
+  pilot_override
+}
+
 model SubscriptionEntitlement {
-  id                 String   @id @default(cuid())
+  id                 String          @id @default(cuid())
   organizationId     String
-  planTier           PlanTier @default(pilot)
-  billingPeriodStart DateTime @db.Timestamptz()
-  billingPeriodEnd   DateTime @db.Timestamptz()
-  createdAt          DateTime @db.Timestamptz() @default(now())
-  updatedAt          DateTime @db.Timestamptz() @updatedAt
+  planTier           PlanTier        @default(pilot)
+  state              EntitlementState @default(pending)
+  whopMembershipId   String?
+  whopProductId      String?
+  manageUrl          String?
+  billingPeriodStart DateTime         @db.Timestamptz()
+  billingPeriodEnd   DateTime         @db.Timestamptz()
+  createdAt          DateTime         @db.Timestamptz() @default(now())
+  updatedAt          DateTime         @db.Timestamptz() @updatedAt
+
+  @@unique([whopMembershipId])
+  @@index([organizationId])
+  @@index([organizationId, state])
+  @@map("subscription_entitlements")
+}
+
+model PilotOverride {
+  id             String   @id @default(cuid())
+  organizationId String
+  planTier       PlanTier
+  grantedBy      String
+  revokedBy      String?
+  expiresAt      DateTime @db.Timestamptz()
+  revokedAt      DateTime? @db.Timestamptz()
+  notes          String
+  revokeReason   String?
+  createdAt      DateTime @db.Timestamptz() @default(now())
+  updatedAt      DateTime @db.Timestamptz() @updatedAt
 
   @@index([organizationId])
-  @@map("subscription_entitlements")
+  @@index([expiresAt])
+  @@map("pilot_overrides")
 }
 
 model UsageCounter {
@@ -1028,17 +1065,25 @@ model UsageReservation {
 model PlanOverride {
   id             String   @id @default(cuid())
   organizationId String
+  tier           String   @default("rescue")
   metric         String
   overrideLimit  Int
   reason         String
   appliedBy      String
+  grantorId      String   @default("system")
   approvedBy     String
+  notes          String   @default("")
   startsAt       DateTime @db.Timestamptz()
   expiresAt      DateTime @db.Timestamptz()
+  revokedAt      DateTime? @db.Timestamptz()
+  revocationReason String?
   createdAt      DateTime @db.Timestamptz() @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, metric])
   @@index([expiresAt])
+  @@index([revokedAt])
   @@map("plan_overrides")
 }
 
