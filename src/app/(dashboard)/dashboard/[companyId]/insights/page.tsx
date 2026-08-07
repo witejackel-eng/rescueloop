@@ -27,6 +27,8 @@ import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { PlaybookRecommender } from "@/components/rescueloop/insights/playbook-recommender";
+import { PageTransition } from "@/components/shared/page-transition";
+import { SectionHeader } from "@/components/shared/section-header";
 
 // ── Risk score derivation from member data ─────────────────────
 function deriveRiskScore(member: {
@@ -131,26 +133,15 @@ export default function InsightsPage() {
   }, [bundle]);
 
   return (
+    <PageTransition>
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-[24px] text-[var(--ink-primary)]">Insights</h1>
-          <p className="mt-1 text-[13px] text-[var(--ink-secondary)]">
-            Course friction analysis and student behavior patterns
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={refetch}
-          className="h-7 rounded-[6px] px-2 text-[11px] text-[var(--ink-muted)]"
-          aria-label="Refresh insights"
-        >
-          <RefreshCw className="mr-1 size-3" />
-          Refresh
-        </Button>
-      </div>
+      <SectionHeader
+        icon={Lightbulb}
+        title="Insights"
+        description="Course friction analysis and student behavior patterns"
+        action={{ label: "Refresh", onClick: refetch, icon: RefreshCw }}
+      />
 
       {/* Error */}
       {error && (
@@ -589,5 +580,6 @@ export default function InsightsPage() {
         </div>
       </div>
     </div>
+    </PageTransition>
   );
 }

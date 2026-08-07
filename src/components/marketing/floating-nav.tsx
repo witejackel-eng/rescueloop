@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { RescueLoopLogo } from "@/components/brand/logo";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { springLayout } from "@/design-system/motion";
+import { ThemeToggle } from "@/components/shared/theme-toggle";
 
 const LINKS = [
   { label: "Product", href: "#product" },
@@ -84,6 +85,7 @@ export function FloatingNav() {
           </nav>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Link
               href="/overview"
               className="hidden text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] md:inline"

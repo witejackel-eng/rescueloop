@@ -18,6 +18,12 @@ interface MetricCardProps {
   /** Optional click handler — when provided, card becomes interactive. */
   onClick?: () => void;
   delay?: number;
+  /** Enable glassmorphism effect */
+  glass?: boolean;
+  /** Enable gradient accent strip at top */
+  gradientStrip?: boolean;
+  /** Enable shimmer border on hover */
+  shimmerBorder?: boolean;
 }
 
 const ACCENT_COLORS: Record<NonNullable<MetricCardProps["accent"]>, string> = {
@@ -45,6 +51,15 @@ const ACCENT_LEFT_BORDER: Record<NonNullable<MetricCardProps["accent"]>, string>
   recovery: "before:bg-[var(--recovery-green)]",
 };
 
+// Map accent to gradient strip class
+const ACCENT_GRADIENT_STRIP: Record<NonNullable<MetricCardProps["accent"]>, string> = {
+  none: "gradient-strip",
+  warning: "gradient-strip gradient-strip-warning",
+  critical: "gradient-strip gradient-strip-critical",
+  info: "gradient-strip gradient-strip-info",
+  recovery: "gradient-strip gradient-strip-recovery",
+};
+
 export function MetricCard({
   label,
   value,
@@ -55,6 +70,9 @@ export function MetricCard({
   format = "integer",
   onClick,
   delay = 0,
+  glass = false,
+  gradientStrip = false,
+  shimmerBorder = false,
 }: MetricCardProps) {
   const prefix = format === "currency" ? "$" : "";
   const suffix = format === "percent" ? "%" : "";
@@ -67,20 +85,50 @@ export function MetricCard({
       onClick={onClick}
       className={cn(
         "group relative block w-full overflow-hidden text-left",
-        "rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all duration-200",
-        // Left accent border (4px), visible when accent !== "none"
-        "before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:content-['']",
-        "before:transition-all before:duration-300",
+        "rounded-[10px] p-4",
+        // Base border/background
+        glass
+          ? "glass"
+          : "border border-[var(--hairline)] bg-[var(--surface)]",
+        // Gradient strip at top
+        gradientStrip && ACCENT_GRADIENT_STRIP[accent],
+        // Shimmer border on hover
+        shimmerBorder && "shimmer-border",
+        // Inner shadow for depth
+        "metric-card-depth",
+        // Hover lift animation
+        "metric-card-hover",
+        // Left accent border (4px), visible when accent !== "none" — uses inner ::before offset
         accent !== "none" && ACCENT_LEFT_BORDER[accent],
-        onClick && "hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_1px_0_var(--hairline),0_4px_16px_-6px_rgba(17,17,15,0.10)] active:scale-[0.99]",
+        onClick && "hover:border-[var(--hairline-strong)] active:scale-[0.99]",
       )}
       style={{ animationDelay: `${delay}ms` }}
     >
+      {/* Inner gradient overlay for subtle depth */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-[inherit] bg-gradient-to-br from-[var(--recovery-green)]/[0.02] to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+      />
+
+      {/* Left accent border (3px) — positioned inside to not conflict with gradient-strip */}
+      {accent !== "none" && (
+        <div
+          aria-hidden
+          className={cn(
+            "absolute inset-y-0 left-0 w-[3px] rounded-l-[inherit] transition-all duration-300",
+            accent === "warning" && "bg-[var(--warning)]",
+            accent === "critical" && "bg-[var(--critical)]",
+            accent === "info" && "bg-[var(--info)]",
+            accent === "recovery" && "bg-[var(--recovery-green)]",
+          )}
+        />
+      )}
+
       {/* Top row: tinted icon container + label + status dot */}
       <div className="flex items-center gap-2.5">
         <span
           className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-[6px] transition-transform group-hover:scale-105",
+            "flex size-7 shrink-0 items-center justify-center rounded-[6px] transition-transform duration-200 group-hover:scale-110",
             ACCENT_CONTAINER[accent],
           )}
         >
@@ -100,19 +148,19 @@ export function MetricCard({
         )}
       </div>
 
-      {/* Value */}
+      {/* Value — larger font, tighter letter-spacing */}
       <div
         className={cn(
-          "mt-3 font-serif text-[30px] leading-none tabular-nums tracking-tight",
+          "mt-3 font-serif text-[32px] leading-none tabular-nums tracking-[-0.03em]",
           colorClassName ?? "text-[var(--ink-primary)]",
         )}
       >
         <AnimatedCounter value={value} prefix={prefix} suffix={suffix} duration={1.2} />
       </div>
 
-      {/* Trend */}
+      {/* Trend — more prominent */}
       {trend && (
-        <p className="mt-2 text-[11px] font-medium text-[var(--ink-secondary)]">{trend}</p>
+        <p className="mt-2 text-[11px] font-semibold text-[var(--ink-secondary)]">{trend}</p>
       )}
     </Wrapper>
   );

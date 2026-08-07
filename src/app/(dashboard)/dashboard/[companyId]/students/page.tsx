@@ -21,6 +21,11 @@ import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
 import type { DemoMember } from "@/lib/demo-fixtures";
+import { GlobalSearchBar } from "@/components/shared/global-search-bar";
+import { FilterBar, type ActiveFilters } from "@/components/shared/filter-bar";
+import { toast } from "sonner";
+import { PageTransition } from "@/components/shared/page-transition";
+import { SectionHeader } from "@/components/shared/section-header";
 
 type StatusFilter = "all" | "needs_attention" | "active" | "responded" | "paused_reminders";
 
@@ -152,6 +157,7 @@ export default function MembersPage() {
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
 
   const allMembers = bundle?.members ?? [];
 
@@ -184,32 +190,21 @@ export default function MembersPage() {
   }
 
   return (
+    <PageTransition>
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-[24px] text-[var(--ink-primary)]">Members</h1>
-          <p className="mt-1 text-[13px] text-[var(--ink-secondary)]">
-            {loading ? (
-              <span className="inline-block h-3 w-40 animate-pulse rounded-[2px] bg-[var(--hairline)] align-middle" />
-            ) : (
-              <>
-                {allMembers.length} students across all courses
-              </>
-            )}
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleRefresh}
-          className="h-7 rounded-[6px] px-2 text-[11px] text-[var(--ink-muted)]"
-          aria-label="Refresh members"
-        >
-          <RefreshCw className={cn("mr-1 size-3", refreshing && "animate-spin")} />
-          Refresh
-        </Button>
-      </div>
+      <SectionHeader
+        icon={Users}
+        title="Members"
+        description={
+          loading ? (
+            <span className="inline-block h-3 w-40 animate-pulse rounded-[2px] bg-[var(--hairline)] align-middle" />
+          ) : (
+            <>{allMembers.length} students across all courses</>
+          )
+        }
+        action={{ label: "Refresh", onClick: handleRefresh, icon: RefreshCw, loading: refreshing }}
+      />
 
       {/* ── NEW: Summary Stats Header ── */}
       {!loading && summaryStats && (
@@ -254,6 +249,23 @@ export default function MembersPage() {
           </div>
         </Card>
       )}
+
+      {/* ── Global Search & Filter Bar ── */}
+      <div className="space-y-3">
+        <GlobalSearchBar
+          placeholder="Search members, playbooks, responses…"
+          onSearch={(q) => {
+            setSearch(q);
+          }}
+          onSelect={(result) => {
+            toast.success(`Selected: ${result.label}`, { description: result.detail });
+          }}
+        />
+        <FilterBar
+          activeFilters={activeFilters}
+          onFiltersChange={setActiveFilters}
+        />
+      </div>
 
       {/* Filters + search */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -442,5 +454,6 @@ export default function MembersPage() {
         </Card>
       )}
     </div>
+    </PageTransition>
   );
 }

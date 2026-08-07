@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
 import type { DemoOutcome } from "@/lib/demo-fixtures";
+import { PageTransition } from "@/components/shared/page-transition";
+import { SectionHeader } from "@/components/shared/section-header";
 
 type Classification = DemoOutcome["classification"];
 
@@ -90,24 +92,15 @@ export default function OutcomesPage() {
   }
 
   return (
+    <PageTransition>
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-[24px] text-[var(--ink-primary)]">Outcomes</h1>
-          <p className="mt-1 text-[13px] text-[var(--ink-secondary)]">Evidence-tiered recovery attribution</p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleRefresh}
-          className="h-7 rounded-[6px] px-2 text-[11px] text-[var(--ink-muted)]"
-          aria-label="Refresh outcomes"
-        >
-          <RefreshCw className={cn("mr-1 size-3", refreshing && "animate-spin")} />
-          Refresh
-        </Button>
-      </div>
+      <SectionHeader
+        icon={CheckCircle2}
+        title="Outcomes"
+        description="Evidence-tiered recovery attribution"
+        action={{ label: "Refresh", onClick: handleRefresh, icon: RefreshCw, loading: refreshing }}
+      />
 
       {/* Truth banner */}
       <Card className="rounded-[8px] border border-[var(--warning)]/20 bg-[var(--warning)]/5 p-4">
@@ -258,5 +251,6 @@ export default function OutcomesPage() {
         </Card>
       )}
     </div>
+    </PageTransition>
   );
 }

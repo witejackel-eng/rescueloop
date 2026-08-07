@@ -38,6 +38,7 @@ import { TimeRangeSelector, type TimeRange } from "@/components/shared/time-rang
 import { SparklineMini } from "@/components/shared/sparkline-mini";
 import { ExportDataButton } from "@/components/shared/export-data-button";
 import { LiveActivityPulse } from "@/components/shared/live-activity-pulse";
+import { AnimatedCounter } from "@/components/interaction/animated-counter";
 
 const ACTIVITY_ICON = {
   sync_completed: RefreshCw,
@@ -141,8 +142,21 @@ export default function CompanyOverviewPage() {
     return JSON.stringify({ metrics, recoveryRate, timeRange, generatedAt: new Date().toISOString() }, null, 2);
   };
 
+  // Stagger container for metric cards
+  const staggerContainer = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+    },
+  };
+  const staggerItem = {
+    hidden: { opacity: 0, y: 12, scale: 0.97 },
+    show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } },
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="dot-grid space-y-8">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -150,7 +164,11 @@ export default function CompanyOverviewPage() {
             <h1 className="font-serif text-[28px] leading-tight text-[var(--ink-primary)]">Dashboard</h1>
             {company?.whopConnected && (
               <Badge variant="outline" className="rounded-[3px] text-[10px] border-[var(--recovery-green)]/30 text-[var(--recovery-green)]">
-                <Wifi className="mr-1 size-3" /> Live
+                <span className="relative mr-1.5 flex size-2">
+                  <span className="absolute inline-flex size-full rounded-full bg-[var(--recovery-green)] opacity-75 pulse-live" />
+                  <span className="relative inline-flex size-full rounded-full bg-[var(--recovery-green)]" />
+                </span>
+                Live
               </Badge>
             )}
           </div>
@@ -213,78 +231,93 @@ export default function CompanyOverviewPage() {
         </Card>
       )}
 
-      {/* Primary metrics with sparklines */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {/* Primary metrics with sparklines — enhanced with glassmorphism, gradient strips, shimmer borders */}
+      <motion.div
+        variants={staggerContainer}
+        initial="hidden"
+        animate="show"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+      >
         {loading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <MetricSkeleton key={i} />
           ))
         ) : metrics ? (
           <>
-            <MetricCardWithSparkline
-              label="Monitored members"
-              value={metrics.membersMonitored}
-              icon={Users}
-              trend={`+${trends.members.pct}% vs prev`}
-              trendDirection={trends.members.direction}
-              accent="none"
-              delay={0}
-              sparklineData={sparklines.members}
-              onClick={() => {}}
-            />
-            <MetricCardWithSparkline
-              label="Needs review"
-              value={metrics.needsReview}
-              icon={AlertTriangle}
-              colorClassName="text-[var(--warning)]"
-              accent="warning"
-              trend={`-${trends.needsReview.pct}% vs prev`}
-              trendDirection={trends.needsReview.direction}
-              delay={60}
-              sparklineData={sparklines.needsReview}
-              sparklineColor="var(--warning)"
-            />
-            <MetricCardWithSparkline
-              label="Awaiting approval"
-              value={metrics.awaitingApproval}
-              icon={Clock}
-              colorClassName="text-[var(--info)]"
-              accent="info"
-              trend={`+${trends.awaiting.pct}% vs prev`}
-              trendDirection={trends.awaiting.direction}
-              delay={120}
-              sparklineData={sparklines.awaiting}
-              sparklineColor="var(--info)"
-            />
-            <MetricCardWithSparkline
-              label="Responses"
-              value={metrics.recentResponses}
-              icon={MessageSquare}
-              trend={`+${trends.responses.pct}% vs prev`}
-              trendDirection={trends.responses.direction}
-              accent="none"
-              delay={180}
-              sparklineData={sparklines.responses}
-            />
-            <MetricCardWithSparkline
-              label="Observed returns"
-              value={metrics.observedReturns}
-              icon={TrendingUp}
-              colorClassName="text-[var(--recovery-green)]"
-              accent="recovery"
-              trend={`+${trends.returns.pct}% vs prev`}
-              trendDirection={trends.returns.direction}
-              delay={240}
-              sparklineData={sparklines.returns}
-              sparklineColor="var(--recovery-green)"
-            />
+            <motion.div variants={staggerItem}>
+              <MetricCardWithSparkline
+                label="Monitored members"
+                value={metrics.membersMonitored}
+                icon={Users}
+                trend={`+${trends.members.pct}% vs prev`}
+                trendDirection={trends.members.direction}
+                accent="none"
+                delay={0}
+                sparklineData={sparklines.members}
+                onClick={() => {}}
+              />
+            </motion.div>
+            <motion.div variants={staggerItem}>
+              <MetricCardWithSparkline
+                label="Needs review"
+                value={metrics.needsReview}
+                icon={AlertTriangle}
+                colorClassName="text-[var(--warning)]"
+                accent="warning"
+                trend={`-${trends.needsReview.pct}% vs prev`}
+                trendDirection={trends.needsReview.direction}
+                delay={60}
+                sparklineData={sparklines.needsReview}
+                sparklineColor="var(--warning)"
+              />
+            </motion.div>
+            <motion.div variants={staggerItem}>
+              <MetricCardWithSparkline
+                label="Awaiting approval"
+                value={metrics.awaitingApproval}
+                icon={Clock}
+                colorClassName="text-[var(--info)]"
+                accent="info"
+                trend={`+${trends.awaiting.pct}% vs prev`}
+                trendDirection={trends.awaiting.direction}
+                delay={120}
+                sparklineData={sparklines.awaiting}
+                sparklineColor="var(--info)"
+              />
+            </motion.div>
+            <motion.div variants={staggerItem}>
+              <MetricCardWithSparkline
+                label="Responses"
+                value={metrics.recentResponses}
+                icon={MessageSquare}
+                trend={`+${trends.responses.pct}% vs prev`}
+                trendDirection={trends.responses.direction}
+                accent="none"
+                delay={180}
+                sparklineData={sparklines.responses}
+              />
+            </motion.div>
+            <motion.div variants={staggerItem}>
+              <MetricCardWithSparkline
+                label="Observed returns"
+                value={metrics.observedReturns}
+                icon={TrendingUp}
+                colorClassName="text-[var(--recovery-green)]"
+                accent="recovery"
+                trend={`+${trends.returns.pct}% vs prev`}
+                trendDirection={trends.returns.direction}
+                delay={240}
+                sparklineData={sparklines.returns}
+                sparklineColor="var(--recovery-green)"
+              />
+            </motion.div>
           </>
         ) : null}
-      </div>
+      </motion.div>
 
-      {/* Recovery rate banner — enhanced with gauge */}
+      {/* Recovery rate banner — enhanced with gauge + glassmorphism */}
       {!loading && metrics && (
-        <Card className="relative overflow-hidden rounded-[10px] border border-[var(--recovery-green)]/20 bg-gradient-to-br from-[var(--recovery-green)]/[0.04] to-transparent">
+        <Card className="glass gradient-strip gradient-strip-recovery shimmer-border relative overflow-hidden rounded-[10px] border border-[var(--recovery-green)]/20 bg-gradient-to-br from-[var(--recovery-green)]/[0.04] to-transparent">
           <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
               {/* Mini recovery gauge */}
@@ -335,10 +368,10 @@ export default function CompanyOverviewPage() {
 
       {/* Weekly Trends Summary */}
       {!loading && metrics && (
-        <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
+        <Card className="metric-card-depth rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-serif text-[16px] text-[var(--ink-primary)]">Weekly Trends</h2>
+              <h2 className="font-serif text-[17px] text-[var(--ink-primary)]">Weekly Trends</h2>
               <p className="mt-0.5 text-[11px] text-[var(--ink-muted)]">
                 Key metrics over the last 7 days
               </p>
@@ -357,7 +390,7 @@ export default function CompanyOverviewPage() {
       )}
 
       {/* Recovery Funnel + System Health */}
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid gap-4 lg:grid-cols-5">
         {/* Recovery funnel */}
         <div className="lg:col-span-3">
           <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
@@ -492,7 +525,7 @@ export default function CompanyOverviewPage() {
       </div>
 
       {/* Rescue Queue preview + Recent activity */}
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid gap-4 lg:grid-cols-5">
         {/* Rescue Queue preview */}
         <div className="lg:col-span-3">
           <Card className="rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-5">
@@ -652,7 +685,7 @@ export default function CompanyOverviewPage() {
         </div>
       </div>
 
-      {/* Quick actions — expanded with 6 cards */}
+      {/* Quick actions — expanded with 6 cards, enhanced hover */}
       <div>
         <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--ink-muted)]">
           Quick actions
@@ -720,6 +753,15 @@ export default function CompanyOverviewPage() {
 
 // ── Sub-components ───────────────────────────────────────────
 
+// Gradient strip class map for MetricCardWithSparkline
+const MC_ACCENT_GRADIENT_STRIP: Record<string, string> = {
+  none: "gradient-strip",
+  warning: "gradient-strip gradient-strip-warning",
+  critical: "gradient-strip gradient-strip-critical",
+  info: "gradient-strip gradient-strip-info",
+  recovery: "gradient-strip gradient-strip-recovery",
+};
+
 function MetricCardWithSparkline({
   label,
   value,
@@ -745,13 +787,6 @@ function MetricCardWithSparkline({
   sparklineColor?: string;
   onClick?: () => void;
 }) {
-  const ACCENT_LEFT_BORDER: Record<string, string> = {
-    none: "",
-    warning: "before:bg-[var(--warning)]",
-    critical: "before:bg-[var(--critical)]",
-    info: "before:bg-[var(--info)]",
-    recovery: "before:bg-[var(--recovery-green)]",
-  };
   const ACCENT_CONTAINER: Record<string, string> = {
     none: "bg-[var(--canvas-elevated)] text-[var(--ink-secondary)]",
     warning: "bg-[var(--warning)]/10 text-[var(--warning)]",
@@ -768,16 +803,43 @@ function MetricCardWithSparkline({
       onClick={onClick}
       className={cn(
         "group relative block w-full overflow-hidden text-left",
-        "rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all duration-200",
-        "before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:content-['']",
-        "before:transition-all before:duration-300",
-        accent !== "none" && ACCENT_LEFT_BORDER[accent],
-        onClick && "hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_1px_0_var(--hairline),0_4px_16px_-6px_rgba(17,17,15,0.10)] active:scale-[0.99]",
+        "rounded-[10px] p-4",
+        // Glassmorphism background
+        "glass",
+        // Gradient strip at top
+        MC_ACCENT_GRADIENT_STRIP[accent],
+        // Shimmer border on hover
+        "shimmer-border",
+        // Inner shadow for depth
+        "metric-card-depth",
+        // Hover lift animation
+        "metric-card-hover",
+        onClick && "hover:border-[var(--hairline-strong)] active:scale-[0.99]",
       )}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="flex items-center gap-2.5">
-        <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-[6px] transition-transform group-hover:scale-105", ACCENT_CONTAINER[accent])}>
+      {/* Inner gradient overlay for subtle depth on hover */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-[inherit] bg-gradient-to-br from-[var(--recovery-green)]/[0.02] to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+      />
+
+      {/* Left accent border (3px) */}
+      {accent !== "none" && (
+        <div
+          aria-hidden
+          className={cn(
+            "absolute inset-y-0 left-0 w-[3px] rounded-l-[inherit] transition-all duration-300",
+            accent === "warning" && "bg-[var(--warning)]",
+            accent === "critical" && "bg-[var(--critical)]",
+            accent === "info" && "bg-[var(--info)]",
+            accent === "recovery" && "bg-[var(--recovery-green)]",
+          )}
+        />
+      )}
+
+      <div className="relative flex items-center gap-2.5">
+        <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-[6px] transition-transform duration-200 group-hover:scale-110", ACCENT_CONTAINER[accent])}>
           <Icon className="size-3.5" />
         </span>
         <span className="flex-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-muted)]">
@@ -787,12 +849,14 @@ function MetricCardWithSparkline({
         <SparklineMini data={sparklineData} width={40} height={16} color={sparklineColor} fill className="opacity-70 group-hover:opacity-100 transition-opacity" />
       </div>
 
-      <div className={cn("mt-3 font-serif text-[30px] leading-none tabular-nums tracking-tight", colorClassName ?? "text-[var(--ink-primary)]")}>
-        {value.toLocaleString()}
+      {/* Value — larger font, tighter letter-spacing, count-up animation */}
+      <div className={cn("relative mt-3 font-serif text-[32px] leading-none tabular-nums tracking-[-0.03em]", colorClassName ?? "text-[var(--ink-primary)]")}>
+        <AnimatedCounter value={value} duration={1.2} />
       </div>
 
+      {/* Trend — more prominent with bold weight */}
       {trend && (
-        <div className="mt-2 flex items-center gap-1">
+        <div className="relative mt-2 flex items-center gap-1">
           {trendDirection && (
             trendDirection === "up" ? (
               <ArrowUpRight className="size-3 text-[var(--recovery-green)]" />
@@ -800,7 +864,7 @@ function MetricCardWithSparkline({
               <ArrowDownRight className="size-3 text-[var(--ink-muted)]" />
             )
           )}
-          <p className="text-[11px] font-medium text-[var(--ink-secondary)]">{trend}</p>
+          <p className="text-[11px] font-semibold text-[var(--ink-secondary)]">{trend}</p>
         </div>
       )}
     </Wrapper>
@@ -826,16 +890,16 @@ function TrendItem({
 }) {
   const isPositive = invertDirection ? direction === "down" : direction === "up";
   return (
-    <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--hairline)] bg-[var(--canvas)] p-3">
+    <div className="metric-card-depth group flex flex-col gap-2 rounded-[8px] border border-[var(--hairline)] bg-[var(--canvas)] p-3 transition-all duration-200 hover:border-[var(--hairline-strong)]">
       <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-muted)]">{label}</p>
       <div className="flex items-baseline gap-2">
-        <span className="font-serif text-[20px] leading-none tabular-nums text-[var(--ink-primary)]">{value}</span>
-        <span className={cn("flex items-center gap-0.5 text-[10px] font-medium", isPositive ? "text-[var(--recovery-green)]" : "text-[var(--critical)]")}>
+        <span className="font-serif text-[22px] leading-none tabular-nums tracking-[-0.02em] text-[var(--ink-primary)]">{value}</span>
+        <span className={cn("flex items-center gap-0.5 text-[10px] font-semibold", isPositive ? "text-[var(--recovery-green)]" : "text-[var(--critical)]")}>
           {direction === "up" ? <ArrowUpRight className="size-2.5" /> : <ArrowDownRight className="size-2.5" />}
           {pctChange}%
         </span>
       </div>
-      <SparklineMini data={data} width={80} height={24} color={color} />
+      <SparklineMini data={data} width={80} height={24} color={color} className="opacity-80 group-hover:opacity-100 transition-opacity" />
     </div>
   );
 }
@@ -854,10 +918,10 @@ function QuickActionCard({
   subtitle: string;
 }) {
   return (
-    <Card className="group rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 transition-all hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]">
+    <Card className="group quick-action-hover metric-card-depth rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-4 hover:border-[var(--hairline-strong)] hover:bg-[var(--canvas-elevated)] hover:shadow-[0_4px_12px_-6px_rgba(17,17,15,0.08)]">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={cn("flex size-9 items-center justify-center rounded-[8px]", iconBg)}>
+          <div className={cn("flex size-9 items-center justify-center rounded-[8px] transition-transform duration-200 group-hover:scale-110", iconBg)}>
             <Icon className={cn("size-4", iconColor)} />
           </div>
           <div>
@@ -865,7 +929,7 @@ function QuickActionCard({
             <p className="text-[11px] text-[var(--ink-muted)]">{subtitle}</p>
           </div>
         </div>
-        <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform group-hover:translate-x-0.5" />
+        <ChevronRight className="size-4 text-[var(--ink-muted)] transition-transform duration-200 group-hover:translate-x-0.5" />
       </div>
     </Card>
   );

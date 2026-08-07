@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
+import { PageTransition } from "@/components/shared/page-transition";
 
 export default function PlaybooksPage() {
   const params = useParams<{ companyId: string }>();
@@ -43,6 +44,7 @@ export default function PlaybooksPage() {
   const playbooks = bundle?.playbooks ?? [];
 
   return (
+    <PageTransition>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -316,5 +318,6 @@ export default function PlaybooksPage() {
         </Card>
       )}
     </div>
+    </PageTransition>
   );
 }

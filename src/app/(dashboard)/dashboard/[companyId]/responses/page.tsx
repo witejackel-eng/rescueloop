@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
 import type { DemoResponse } from "@/lib/demo-fixtures";
+import { PageTransition } from "@/components/shared/page-transition";
 
 type ResponseFilter = "all" | "Continue course" | "I need help" | "I'm blocked" | "Stop reminders";
 
@@ -59,6 +60,7 @@ export default function ResponsesPage() {
   }
 
   return (
+    <PageTransition>
     <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -216,5 +218,6 @@ export default function ResponsesPage() {
         </div>
       )}
     </div>
+    </PageTransition>
   );
 }

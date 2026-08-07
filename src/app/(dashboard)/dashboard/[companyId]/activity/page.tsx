@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useCompanyDataBundle } from "@/hooks/use-company-data";
 import { CardSkeleton } from "@/components/shared/card-skeleton";
 import type { DemoActivityEvent } from "@/lib/demo-fixtures";
+import { PageTransition } from "@/components/shared/page-transition";
 
 type EventType = DemoActivityEvent["type"] | "all";
 
@@ -63,6 +64,7 @@ export default function ActivityPage() {
   }
 
   return (
+    <PageTransition>
     <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -214,5 +216,6 @@ export default function ActivityPage() {
         </Card>
       )}
     </div>
+    </PageTransition>
   );
 }

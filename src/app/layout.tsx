@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Instrument_Sans, Instrument_Serif, JetBrains_Mono } from "next/font/google";
+import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -46,8 +47,10 @@ export default function RootLayout({
       <body
         className={`${instrumentSans.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} antialiased`}
       >
-        {children}
-        <Toaster position="bottom-right" toastOptions={{ style: { fontSize: 13 } }} />
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          {children}
+          <Toaster position="bottom-right" toastOptions={{ style: { fontSize: 13 } }} />
+        </ThemeProvider>
       </body>
     </html>
   );

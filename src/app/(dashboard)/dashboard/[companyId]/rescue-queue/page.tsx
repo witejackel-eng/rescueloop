@@ -43,6 +43,11 @@ import { CardSkeleton } from "@/components/shared/card-skeleton";
 import { SavedViews, type SavedView } from "@/components/shared/saved-views";
 import type { DemoQueueCandidate } from "@/lib/demo-fixtures";
 import { toast } from "sonner";
+import { PageTransition } from "@/components/shared/page-transition";
+import { SectionHeader } from "@/components/shared/section-header";
+import { GlobalSearchBar } from "@/components/shared/global-search-bar";
+import { FilterBar, type ActiveFilters } from "@/components/shared/filter-bar";
+import { SavedFilters } from "@/components/shared/saved-filters-v2";
 
 type PriorityFilter = "all" | "urgent" | "high" | "medium";
 
@@ -726,6 +731,7 @@ export default function RescueQueuePage() {
   const [bulkMode, setBulkMode] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedView[]>(INITIAL_VIEWS);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const [activeFilters, setActiveFilters] = useState<ActiveFilters>({});
 
   const allCandidates = useMemo(() => bundle?.queueCandidates ?? [], [bundle?.queueCandidates]);
 
@@ -895,23 +901,27 @@ export default function RescueQueuePage() {
   }
 
   return (
+    <PageTransition>
     <div className="space-y-5 pb-24">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-serif text-[28px] leading-tight text-[var(--ink-primary)]">Rescue Queue</h1>
-          <p className="mt-1 text-[13px] text-[var(--ink-secondary)]">
-            {loading ? (
-              <span className="inline-block h-3 w-32 animate-pulse rounded-[2px] bg-[var(--hairline)] align-middle" />
-            ) : (
-              <>
-                {candidates.length} student{candidates.length === 1 ? "" : "s"} need attention
-                {bundle?.company?.lastSync && (
-                  <span className="ml-2 text-[var(--ink-muted)]">· synced {bundle.company.lastSync}</span>
-                )}
-              </>
-            )}
-          </p>
+          <SectionHeader
+            icon={Activity}
+            title="Rescue Queue"
+            description={
+              loading ? (
+                <span className="inline-block h-3 w-32 animate-pulse rounded-[2px] bg-[var(--hairline)] align-middle" />
+              ) : (
+                <>
+                  {candidates.length} student{candidates.length === 1 ? "" : "s"} need attention
+                  {bundle?.company?.lastSync && (
+                    <span className="ml-2 text-[var(--ink-muted)]">· synced {bundle.company.lastSync}</span>
+                  )}
+                </>
+              )
+            }
+          />
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -1035,6 +1045,33 @@ export default function RescueQueuePage() {
             Export CSV
           </button>
         )}
+      </div>
+
+      {/* ── Global Search & Filter Bar ── */}
+      <div className="space-y-3">
+        <GlobalSearchBar
+          onSearch={(q) => {
+            if (q) toast.info(`Searching: "${q}"`);
+          }}
+          onSelect={(result) => {
+            toast.success(`Selected: ${result.label}`, { description: result.detail });
+          }}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterBar
+            activeFilters={activeFilters}
+            onFiltersChange={setActiveFilters}
+          />
+          {!bulkMode && (
+            <SavedFilters
+              currentFilters={activeFilters}
+              onApply={(filters, name) => {
+                setActiveFilters(filters);
+                toast.success(`Applied: ${name}`);
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {/* Saved Views */}
@@ -1309,5 +1346,6 @@ export default function RescueQueuePage() {
         )}
       </AnimatePresence>
     </div>
+    </PageTransition>
   );
 }

@@ -46,6 +46,7 @@ import {
 import { RescueLoopMark } from "@/components/brand/logo";
 import { useDemoStore, useUnresolvedNotificationCount } from "@/features/demo-engine/demo-store";
 import { NotificationPanel } from "@/components/shell/notification-panel";
+import { ThemeToggle } from "@/components/shared/theme-toggle";
 
 // ── Navigation ────────────────────────────────────────────────
 const PRIMARY_NAV = [
@@ -56,6 +57,7 @@ const PRIMARY_NAV = [
   { href: "/responses", label: "Responses", icon: MessageSquare },
   { href: "/outcomes", label: "Outcomes", icon: BarChart3 },
   { href: "/insights", label: "Insights", icon: Lightbulb },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 const SECONDARY_NAV = [
@@ -232,6 +234,11 @@ export default function CompanyDashboardLayout({
 
         {/* Status footer */}
         <div className="border-t border-[var(--hairline)] px-3 py-3 space-y-2">
+          {/* Theme toggle in sidebar */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] text-[var(--ink-muted)]">Appearance</span>
+            <ThemeToggle />
+          </div>
           <div className="flex items-center justify-between gap-2 rounded-[6px] bg-[var(--surface)] px-2.5 py-2 border border-[var(--hairline)]">
             <div className="flex items-center gap-1.5 text-[10px] text-[var(--ink-muted)]">
               <RefreshCw className="size-3" />
@@ -306,6 +313,9 @@ export default function CompanyDashboardLayout({
               <Wifi className="mr-1 size-3" />
               Connected
             </Badge>
+
+            {/* Theme toggle */}
+            <ThemeToggle />
 
             {/* Notifications */}
             <Button
@@ -477,6 +487,7 @@ function getPageTitle(pathname: string, basePath: string): string {
     "responses": "Responses",
     "outcomes": "Outcomes",
     "insights": "Insights",
+    "analytics": "Analytics",
     "activity": "Activity",
     "settings": "Settings",
     "usage": "Plan & Usage",

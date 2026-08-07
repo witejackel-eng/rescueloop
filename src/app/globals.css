@@ -86,6 +86,60 @@
   --radius: 6px;
 }
 
+/* ── Dark mode ──────────────────────────────────────────────────── */
+.dark {
+  /* RescueLoop dark palette — warm charcoal + cream text */
+  --canvas: #11110F;
+  --canvas-elevated: #1A1917;
+  --surface: #222120;
+  --surface-hover: #2B2A28;
+
+  --ink-primary: #EDE9E0;
+  --ink-secondary: #9E9A91;
+  --ink-muted: #6B6860;
+
+  --hairline: rgba(237, 233, 224, 0.10);
+  --hairline-strong: rgba(237, 233, 224, 0.18);
+  --hairline-subtle: rgba(237, 233, 224, 0.05);
+
+  --dark-section: #EDE9E0;
+  --dark-elevated: #F4F1EA;
+  --dark-secondary: #5F5D57;
+  --dark-hairline: rgba(17, 17, 15, 0.12);
+
+  /* System signals — brighter for dark backgrounds */
+  --recovery-green: #1A9A7E;
+  --recovery-light: #132B24;
+  --warning: #D9A032;
+  --warning-light: #2B2210;
+  --critical: #D04E44;
+  --critical-light: #2B1412;
+  --info: #5A93B8;
+
+  --rl-ring: rgba(26, 154, 126, 0.35);
+
+  /* Legacy compat for shadcn in dark mode */
+  --background: var(--canvas);
+  --foreground: var(--ink-primary);
+  --border: var(--hairline);
+  --input: var(--hairline);
+  --ring: var(--rl-ring);
+  --primary: var(--recovery-green);
+  --primary-foreground: #FFFFFF;
+  --card: var(--surface);
+  --card-foreground: var(--ink-primary);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink-primary);
+  --secondary: var(--canvas-elevated);
+  --secondary-foreground: var(--ink-primary);
+  --muted: var(--canvas-elevated);
+  --muted-foreground: var(--ink-secondary);
+  --accent: var(--canvas-elevated);
+  --accent-foreground: var(--ink-primary);
+  --destructive: var(--critical);
+  --destructive-foreground: #FFFFFF;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -152,6 +206,14 @@
     background: rgba(17, 17, 15, 0.28);
   }
 
+  /* Dark mode scrollbars */
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgba(237, 233, 224, 0.12);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: rgba(237, 233, 224, 0.22);
+  }
+
   /* Selection */
   ::selection {
     background: var(--recovery-green);
@@ -177,6 +239,231 @@
 /* Reveal text animation */
 .reveal-text {
   display: inline-block;
+}
+
+/* ── Glassmorphism ──────────────────────────────────────────── */
+.glass {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(252, 251, 247, 0.60);
+  border: 1px solid rgba(252, 251, 247, 0.20);
+}
+.dark .glass {
+  background: rgba(26, 25, 23, 0.60);
+  border: 1px solid rgba(26, 25, 23, 0.20);
+}
+
+/* ── Gradient accent strip (2px top border) ─────────────────── */
+.gradient-strip {
+  position: relative;
+}
+.gradient-strip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--recovery-green), var(--info));
+  border-radius: inherit;
+  pointer-events: none;
+}
+/* Override strip color by accent type */
+.gradient-strip-warning::before {
+  background: linear-gradient(90deg, var(--warning), var(--critical));
+}
+.gradient-strip-info::before {
+  background: linear-gradient(90deg, var(--info), var(--recovery-green));
+}
+.gradient-strip-recovery::before {
+  background: linear-gradient(90deg, var(--recovery-green), #3DD9A6);
+}
+.gradient-strip-critical::before {
+  background: linear-gradient(90deg, var(--critical), var(--warning));
+}
+
+/* ── Animated shimmer border on hover ───────────────────────── */
+@keyframes shimmer-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.shimmer-border {
+  position: relative;
+  isolation: isolate;
+}
+.shimmer-border::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--shimmer-angle, 0deg),
+    transparent 0%,
+    var(--recovery-green) 10%,
+    transparent 20%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 300ms ease;
+  pointer-events: none;
+}
+.shimmer-border:hover::after {
+  opacity: 0.6;
+  animation: shimmer-rotate 2s linear infinite;
+}
+
+/* ── Dot-grid pattern background ────────────────────────────── */
+.dot-grid {
+  background-image: radial-gradient(
+    circle,
+    var(--hairline-subtle) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+}
+
+/* ── Live pulse animation ───────────────────────────────────── */
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.8); }
+}
+.pulse-live {
+  animation: pulse-live 1.5s ease-in-out infinite;
+}
+
+/* ── Metric card depth ──────────────────────────────────────── */
+.metric-card-depth {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 0 var(--hairline-subtle),
+    0 1px 3px rgba(17, 17, 15, 0.02);
+}
+.dark .metric-card-depth {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 1px 0 rgba(237, 233, 224, 0.04),
+    0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Metric card hover lift ─────────────────────────────────── */
+.metric-card-hover {
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 200ms ease,
+    background-color 200ms ease;
+}
+.metric-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 0 var(--hairline),
+    0 6px 20px -6px rgba(17, 17, 15, 0.12);
+}
+.dark .metric-card-hover:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 0 rgba(237, 233, 224, 0.06),
+    0 6px 20px -6px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Quick action scale hover ───────────────────────────────── */
+.quick-action-hover {
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 200ms ease;
+}
+.quick-action-hover:hover {
+  transform: scale(1.02);
+}
+
+/* ── Enhanced card utility ────────────────────────────────────── */
+.card-enhanced {
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgba(17, 17, 15, 0.03),
+    0 1px 3px rgba(17, 17, 15, 0.02);
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 200ms ease;
+}
+.card-enhanced:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 2px 4px rgba(17, 17, 15, 0.04),
+    0 4px 12px -4px rgba(17, 17, 15, 0.08);
+}
+.dark .card-enhanced {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.1),
+    0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.dark .card-enhanced:hover {
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.12),
+    0 4px 12px -4px rgba(0, 0, 0, 0.2);
+}
+
+/* ── Interactive card utility ────────────────────────────────── */
+.card-interactive {
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 200ms ease,
+    background-color 200ms ease;
+}
+.card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--hairline-strong);
+  background: var(--canvas-elevated);
+  box-shadow:
+    0 4px 12px -4px rgba(17, 17, 15, 0.1),
+    0 2px 4px rgba(17, 17, 15, 0.04);
+}
+.dark .card-interactive:hover {
+  box-shadow:
+    0 4px 12px -4px rgba(0, 0, 0, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Section divider with gradient fade ──────────────────────── */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--hairline) 15%,
+    var(--hairline) 85%,
+    transparent
+  );
+}
+
+/* ── Text balance utility ────────────────────────────────────── */
+.text-balance {
+  text-wrap: balance;
+}
+
+/* ── Base animate-in class (fade + slide) ────────────────────── */
+.animate-in {
+  animation: animate-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
