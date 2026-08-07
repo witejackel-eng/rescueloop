@@ -467,6 +467,40 @@ export default function CompanyOverviewPage() {
           </Card>
         </Link>
       </div>
+
+      {/* Recovery rate banner */}
+      {!loading && metrics && (
+        <Card className="overflow-hidden rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)]">
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex size-10 items-center justify-center rounded-[8px] bg-[var(--recovery-green)]/10">
+                <TrendingUp className="size-5 text-[var(--recovery-green)]" />
+              </div>
+              <div>
+                <p className="text-[12px] text-[var(--ink-muted)]">Recovery rate (last 30 days)</p>
+                <div className="mt-0.5 flex items-baseline gap-2">
+                  <span className="font-mono text-[24px] tabular-nums text-[var(--recovery-green)]">
+                    {Math.round((metrics.observedReturns / metrics.needsReview) * 100)}%
+                  </span>
+                  <span className="text-[11px] text-[var(--ink-muted)]">
+                    {metrics.observedReturns} of {metrics.needsReview} detected returned
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="rounded-[3px] text-[10px] border-[var(--recovery-green)]/30 text-[var(--recovery-green)]">
+                Above average
+              </Badge>
+              <Link href={`${basePath}/outcomes`}>
+                <Button variant="ghost" size="sm" className="text-[11px] text-[var(--ink-secondary)]">
+                  View outcomes <ArrowRight className="ml-1 size-3" />
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

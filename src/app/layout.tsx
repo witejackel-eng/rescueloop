@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Instrument_Sans, Instrument_Serif, JetBrains_Mono } from "next/font/google";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({
@@ -46,6 +47,7 @@ export default function RootLayout({
         className={`${instrumentSans.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} antialiased`}
       >
         {children}
+        <Toaster position="bottom-right" toastOptions={{ style: { fontSize: 13 } }} />
       </body>
     </html>
   );
