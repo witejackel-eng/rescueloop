@@ -59,20 +59,28 @@ test.describe('Marketing Home Page', () => {
     await expect(mobileNav).not.toBeVisible({ timeout: 5_000 });
   });
 
-  test('hero CTA navigates to /overview which redirects to the demo', async ({ page }) => {
+  test('hero CTA navigates to /overview — public demo loads without auth', async ({ page }) => {
     // Use a stable role-based locator: link pointing to /overview
     const heroCta = page.locator('a[href="/overview"]').first();
     await expect(heroCta).toBeVisible({ timeout: 10_000 });
     await heroCta.click();
 
-    // /overview is a server-side redirect to /dashboard/co_fixture_cgl.
-    // Wait for the redirect chain to settle on the dashboard URL.
-    await page.waitForURL(/\/dashboard\/co_fixture_cgl/, { timeout: 15_000 });
-    expect(page.url()).toContain('/dashboard/co_fixture_cgl');
+    // /overview is a self-contained public demo page (no redirect to
+    // /dashboard/*, no Whop auth required). It must settle on /overview
+    // and render the demo disclosure + Recovery Pulse heading.
+    await page.waitForURL(/\/overview$/, { timeout: 15_000 });
+    expect(page.url()).toMatch(/\/overview$/);
 
-    // The destination must render the workspace shell, not an error page.
-    const desktopNav = page.locator('nav[aria-label="Workspace navigation"]');
-    await expect(desktopNav).toBeAttached({ timeout: 15_000 });
+    // Primary disclosure must be visible — proves the public demo
+    // surface actually mounted, not just the URL.
+    await expect(
+      page.getByText('Interactive demo · simulated workspace'),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Recovery Pulse heading is the canonical demo workspace heading.
+    await expect(
+      page.getByRole('heading', { name: 'Recovery Pulse' }),
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test('pricing section is visible', async ({ page }) => {

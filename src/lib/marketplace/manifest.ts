@@ -46,6 +46,17 @@ export const MARKETPLACE_LISTING: MarketplaceListing = {
     "churn risk",
     "cancellation probability",
     "conversion pressure",
+    // Additional v1-final prohibitions (Section 5 of the v1 completion brief):
+    // Never sum confirmed + strongly associated + estimated into a single total.
+    "Total defended value",
+    // Confirmed recovered value must remain $0 unless an auditable
+    // monetary recovery rule is satisfied.
+    "Confirmed recovered value",
+    // Never use "live demo" for simulated content — say "interactive demo"
+    // or "simulated workspace" instead.
+    "live demo",
+    // Never call an ordinary post-intervention payment "confirmed recovery".
+    "Payment received after a documented intervention",
   ],
 } as const;
 

@@ -254,9 +254,12 @@ export function PricingSection() {
               Reference point
             </div>
             <p className="mt-2 text-[13px] leading-snug text-[var(--ink-secondary)]">
-              In the live demo workspace, {formatCurrency(237)} confirmed and{" "}
-              {formatCurrency(711)} estimated value were recovered against a{" "}
-              {formatCurrency(29)}/month plan — an 8.2× confirmed value-to-cost ratio.
+              In the interactive demo workspace, evidence classes are kept
+              separate: confirmed recovered value stays at {formatCurrency(0)}
+              by policy, strongly associated engagements are reported without
+              a monetary claim, and estimated opportunity is presented as a
+              modelled projection — never summed into a single &ldquo;total
+              value&rdquo; figure.
             </p>
           </div>
         </div>
