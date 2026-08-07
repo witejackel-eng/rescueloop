@@ -60,3 +60,6 @@ server.log
 /prompt
 /tool-results/
 /worklog.md
+
+# AI workspace artefacts — never tracked
+/agent-ctx/
