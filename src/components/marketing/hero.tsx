@@ -71,7 +71,7 @@ export function MarketingHero() {
               href="/overview"
               className="press inline-flex items-center justify-center gap-2 rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] px-5 py-3 text-[14px] font-medium text-[var(--ink-primary)]"
             >
-              Explore the live workspace
+              Explore the interactive demo
             </Link>
           </motion.div>
 
