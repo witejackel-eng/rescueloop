@@ -405,9 +405,252 @@ Created from: `feat/private-pilot-activation-rescue` at `ec18ca136baadab05bc8709
 | No notification during onboarding | ✅ |
 | Lint clean | ✅ |
 
-## WP-04 through WP-09: (Not started)
+## WP-04: Rescue Queue Implementation
 
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETE
+
+**Objective:** Implement the rescue queue with student rows, inspector, keyboard handler, segment navigation, and approval/edit/dismiss/suppress/schedule actions.
+
+**Commit:** `feat(wp04): rescue queue with inspector, keyboard, and approval actions`
+
+### Changes Made
+
+| # | File | Change | Rationale |
+|---|------|--------|-----------|
+| 1 | `src/app/dashboard/[companyId]/rescue-queue/page.tsx` | Rescue queue page with fail-closed auth | Canonical route for rescue queue |
+| 2 | `src/components/rescueloop/rescue-queue/rescue-queue-client.tsx` | Client component with queue rendering | Interactive rescue queue UI |
+| 3 | `src/components/rescueloop/rescue-queue/student-row.tsx` | Student row with momentum indicator | Individual queue entry |
+| 4 | `src/components/rescueloop/rescue-queue/wp04-student-row.tsx` | WP04-specific student row | Enhanced row with WP04 fields |
+| 5 | `src/components/rescueloop/rescue-queue/wp04-inspector.tsx` | Inspector drawer for student detail | View evidence, edit, approve |
+| 6 | `src/components/rescueloop/rescue-queue/inspector.tsx` | Base inspector component | Reusable inspector drawer |
+| 7 | `src/components/rescueloop/rescue-queue/segment-nav.tsx` | Segment navigation (new/stale/dismissed) | Filter queue by segment |
+| 8 | `src/components/rescueloop/rescue-queue/keyboard-handler.tsx` | J/K/Arrow/Enter/Space/Escape keyboard handler | Keyboard-first queue navigation |
+| 9 | `src/components/rescueloop/rescue-queue/student-list.tsx` | Virtualized student list | Performance for large queues |
+| 10 | `src/components/rescueloop/rescue-queue/wp04-types.ts` | WP04-specific type definitions | Typed queue entries |
+| 11 | `src/app/api/dashboard/[companyId]/rescue-queue/route.ts` | Rescue queue API endpoint | Server-side queue data |
+| 12 | `src/app/api/companies/[companyId]/queue/[interventionId]/approve/route.ts` | Approve intervention action | Creator approval gate |
+| 13 | `src/app/api/companies/[companyId]/queue/[interventionId]/edit/route.ts` | Edit intervention action | Modify message before sending |
+| 14 | `src/app/api/companies/[companyId]/queue/[interventionId]/dismiss/route.ts` | Dismiss intervention action | Remove from queue |
+| 15 | `src/app/api/companies/[companyId]/queue/[interventionId]/suppress/route.ts` | Suppress intervention action | Temporarily hide similar |
+| 16 | `src/app/api/companies/[companyId]/queue/[interventionId]/schedule/route.ts` | Schedule intervention action | Delay delivery |
+
+### Acceptance Gates
+
+| Gate | Status |
+|------|--------|
+| Rescue queue renders with real candidates | ✅ |
+| Inspector shows evidence and draft message | ✅ |
+| Keyboard handler: J/K/Arrow/Enter/Space/Escape | ✅ |
+| Segment navigation: new/stale/dismissed | ✅ |
+| Approve/edit/dismiss/suppress/schedule actions | ✅ |
+| Fail-closed auth guard | ✅ |
+| Tenant-scoped queries | ✅ |
+
+### Test Counts
+
+| Suite | Count |
+|-------|-------|
+| Unit | Covered by existing suite |
+
+---
+
+## WP-05: Student Directory and Insights
+
+**Status:** ✅ COMPLETE
+
+**Objective:** Implement student directory with momentum legend, saved filters, and course intelligence insights.
+
+**Commit:** `feat(wp05): student directory with momentum insights and course intelligence`
+
+### Changes Made
+
+| # | File | Change | Rationale |
+|---|------|--------|-----------|
+| 1 | `src/app/dashboard/[companyId]/students/page.tsx` | Students page with fail-closed auth | Canonical route for student directory |
+| 2 | `src/components/rescueloop/students/student-row.tsx` | Student row with momentum indicator | Individual student entry |
+| 3 | `src/components/rescueloop/students/student-inspector.tsx` | Student inspector drawer | Detailed student view |
+| 4 | `src/components/rescueloop/students/momentum-legend.tsx` | Momentum legend (active/stale/at-risk) | Visual legend for momentum states |
+| 5 | `src/components/rescueloop/students/saved-filters.tsx` | Saved filter presets | Quick-access filter combinations |
+| 6 | `src/app/dashboard/[companyId]/insights/page.tsx` | Insights page | Course intelligence dashboard |
+| 7 | `src/components/rescueloop/insights/insights-page-client.tsx` | Insights client component | Interactive insights UI |
+| 8 | `src/components/rescueloop/insights/course-funnel.tsx` | Course funnel visualization | Enrollment → progress → completion |
+| 9 | `src/components/rescueloop/insights/course-map.tsx` | Course map overview | Cross-course view |
+| 10 | `src/components/rescueloop/insights/blocker-explorer.tsx` | Blocker explorer | Understand common blockers |
+| 11 | `src/components/rescueloop/insights/recommendation-workflow.tsx` | Recommendation workflow | Suggested actions |
+| 12 | `src/app/api/dashboard/[companyId]/insights/route.ts` | Insights API endpoint | Server-side insights data |
+
+### Acceptance Gates
+
+| Gate | Status |
+|------|--------|
+| Student directory renders with search | ✅ |
+| Momentum legend shows correct states | ✅ |
+| Saved filters persist | ✅ |
+| Course funnel shows enrollment → completion | ✅ |
+| Blocker explorer shows common blockers | ✅ |
+| Tenant-scoped queries | ✅ |
+
+---
+
+## WP-06: Value and Attribution
+
+**Status:** ✅ COMPLETE
+
+**Objective:** Implement value ledger with attribution waterfall, evidence timeline, ROI panel, and dispute flow.
+
+**Commit:** `feat(wp06): value ledger with attribution waterfall and evidence timeline`
+
+### Changes Made
+
+| # | File | Change | Rationale |
+|---|------|--------|-----------|
+| 1 | `src/app/dashboard/[companyId]/value/page.tsx` | Value page | Canonical route for value ledger |
+| 2 | `src/components/rescueloop/value/value-page-client.tsx` | Value client component | Interactive value UI |
+| 3 | `src/components/rescueloop/value/attribution-waterfall.tsx` | Attribution waterfall | How value is attributed to interventions |
+| 4 | `src/components/rescueloop/value/evidence-timeline.tsx` | Evidence timeline | Chronological evidence view |
+| 5 | `src/components/rescueloop/value/ledger-table.tsx` | Ledger table | Value event listing |
+| 6 | `src/components/rescueloop/value/roi-panel.tsx` | ROI panel | Summary statistics |
+| 7 | `src/app/api/dashboard/[companyId]/value/route.ts` | Value API endpoint | Server-side value data |
+| 8 | `src/app/api/dashboard/[companyId]/value/[valueEventId]/dispute/route.ts` | Dispute value event | Creator can dispute attribution |
+| 9 | `src/lib/attribution/engine.ts` | Attribution engine | Core attribution logic |
+| 10 | `src/lib/attribution/engine.test.ts` | Attribution engine tests | Verify attribution correctness |
+| 11 | `src/lib/attribution/policy.ts` | Attribution policy | Rules for attribution eligibility |
+
+### Acceptance Gates
+
+| Gate | Status |
+|------|--------|
+| Value ledger renders with events | ✅ |
+| Attribution waterfall shows intervention → outcome | ✅ |
+| Evidence timeline shows chronological proof | ✅ |
+| ROI panel shows summary stats | ✅ |
+| Dispute flow works | ✅ |
+| Attribution engine tests pass | ✅ |
+| Honest labels only (no "delivered" without evidence) | ✅ |
+
+### Test Counts
+
+| Suite | Count |
+|-------|-------|
+| Unit (attribution) | 15+ tests |
+
+---
+
+## WP-07: Billing and Usage
+
+**Status:** ✅ COMPLETE
+
+**Objective:** Implement billing entitlement engine, Whop checkout integration, usage metering, and plan enforcement.
+
+**Commit:** `feat(wp07): billing entitlement engine with Whop checkout and plan enforcement`
+
+### Changes Made
+
+| # | File | Change | Rationale |
+|---|------|--------|-----------|
+| 1 | `src/lib/billing/entitlement-engine.ts` | Entitlement engine | Check plan limits and feature access |
+| 2 | `src/lib/billing/entitlement-engine.test.ts` | Entitlement engine tests | Verify enforcement correctness |
+| 3 | `src/lib/billing/pilot-override.ts` | Pilot override logic | Pilot creators bypass limits |
+| 4 | `src/lib/billing/whop-webhooks.ts` | Whop billing webhooks | Process subscription events |
+| 5 | `src/app/api/dashboard/[companyId]/billing/route.ts` | Billing API endpoint | Current plan and usage |
+| 6 | `src/app/api/dashboard/[companyId]/billing/checkout/route.ts` | Checkout API endpoint | Create Whop checkout session |
+| 7 | `src/lib/usage/metering.ts` | Usage metering | Track usage events |
+| 8 | `src/lib/usage/enforcement.ts` | Usage enforcement | Check limits before actions |
+| 9 | `src/lib/usage/enforcement.test.ts` | Enforcement tests | Verify limit enforcement |
+| 10 | `src/lib/usage/plans.ts` | Plan definitions | Plan tiers and limits |
+| 11 | `src/lib/usage/seed-plans.ts` | Plan seeding | Initialize plan data |
+| 12 | `src/app/dashboard/[companyId]/usage/page.tsx` | Usage page | Plan usage dashboard |
+
+### Acceptance Gates
+
+| Gate | Status |
+|------|--------|
+| Entitlement engine checks plan limits | ✅ |
+| Pilot override allows bypass | ✅ |
+| Checkout creates Whop session | ✅ |
+| Usage metering tracks events | ✅ |
+| Enforcement blocks over-limit actions | ✅ |
+| Honest billing (no phantom charges) | ✅ |
+
+---
+
+## WP-08: Whop Marketplace Launch
+
+**Status:** ✅ COMPLETE
+
+**Objective:** Prepare RescueLoop for Whop marketplace listing with minimal permissions, honest copy, data lifecycle transparency, and pilot workflow documentation.
+
+**Commit:** `feat(wp08): marketplace listing, permissions, and data lifecycle`
+
+### Changes Made
+
+| # | File | Change | Rationale |
+|---|------|--------|-----------|
+| 1 | `src/lib/whop/app-permissions.ts` | App permissions document | Define minimal permissions with justifications |
+| 2 | `src/lib/whop/marketplace-listing.ts` | Marketplace listing copy | Honest copy for Whop marketplace |
+| 3 | `src/app/dashboard/[companyId]/settings/marketplace/page.tsx` | Marketplace listing preview page | Show listing, permissions, lifecycle, pilot flow, analytics |
+
+### Acceptance Gates
+
+| Gate | Status |
+|------|--------|
+| App permissions: 4 defined (3 required, 1 optional) | ✅ |
+| No guaranteed retention/revenue claims | ✅ |
+| No autonomous save claims | ✅ |
+| Trust line present: "Nothing sends without your approval." | ✅ |
+| Data lifecycle: retention, export, deletion, pause, uninstall documented | ✅ |
+| Pilot workflow: 7 steps documented | ✅ |
+| Analytics allowlist: 14 events shown | ✅ |
+| Legal pages verified: privacy, terms, security, data-processing | ✅ |
+| getRequiredPermissions() and getOptionalPermissions() exported | ✅ |
+
+### Test Counts
+
+| Suite | Count |
+|-------|-------|
+| Unit | Covered by type checking (pure data module) |
+
+---
+
+## WP-09: Production Hardening and Release
+
+**Status:** ✅ COMPLETE
+
+**Objective:** Harden RescueLoop for production deployment with security headers, migration rehearsal, rollback plan, and release checklist.
+
+**Commit:** `feat(wp09): security headers, migration rehearsal, rollback plan, release checklist`
+
+### Changes Made
+
+| # | File | Change | Rationale |
+|---|------|--------|-----------|
+| 1 | `next.config.ts` | Security headers (CSP, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy, HSTS) | Production security baseline |
+| 2 | `scripts/migration-rehearsal.sh` | Migration rehearsal script | Validate migrations before production deploy |
+| 3 | `docs/implementation/ROLLBACK_PLAN.md` | Rollback plan | Code + DB + Vercel rollback procedures |
+| 4 | `docs/implementation/RELEASE_CHECKLIST.md` | Release checklist | Pre-release, merge, post-release verification |
+
+### Acceptance Gates
+
+| Gate | Status |
+|------|--------|
+| CSP allows Whop iframe (frame-ancestors) | ✅ |
+| CSP restricts scripts to 'self' | ✅ |
+| X-Content-Type-Options: nosniff | ✅ |
+| Referrer-Policy: strict-origin-when-cross-origin | ✅ |
+| Permissions-Policy: camera/mic/geolocation denied | ✅ |
+| HSTS with 1-year max-age | ✅ |
+| Migration script never runs migrate reset | ✅ |
+| Migration script never runs db push --accept-data-loss | ✅ |
+| Rollback plan covers code, DB, Vercel | ✅ |
+| Release checklist covers pre/merge/post release | ✅ |
+| No force-push in any procedure | ✅ |
+
+### Test Counts
+
+| Suite | Count |
+|-------|-------|
+| Lint | 0 errors |
+| Typecheck | 0 errors |
 
 ---
 
