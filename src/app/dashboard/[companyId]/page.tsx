@@ -1,12 +1,14 @@
 // /dashboard/[companyId]
 //
 // Canonical dashboard overview. Shows onboarding progress, quick links to
-// sub-routes, and the recovery pulse. Reuses the same auth/fixture pattern
-// as the legacy /companies/[companyId]/overview.
+// sub-routes, and the recovery pulse.
+//
+// FAIL-CLOSED: Calls requireCompanyAccess() at the top. In connected mode,
+// auth MUST pass before any data is fetched or rendered. In fixture mode,
+// fixture data is shown with a fixture banner.
 
 import "server-only";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { getProviderMode } from "@/providers";
 import { FIXTURE_COMPANY_ID } from "@/providers/fixtures/fixtures-data";
 import {
@@ -15,14 +17,13 @@ import {
   getProducts,
   getCourseStudents,
 } from "@/providers/fixtures";
-import { requireCompanyAdmin } from "@/lib/auth/whop-auth";
 import { db } from "@/lib/db";
 import { getOrganizationPlan, checkLimit } from "@/lib/usage/enforcement";
 import { PLANS } from "@/lib/usage/plans";
 import {
-  resolveStrictCompanyAuth,
-  renderCompanyAuthError,
-} from "@/lib/auth/strict-company-auth";
+  requireCompanyAccess,
+  renderAccessDeniedError,
+} from "@/lib/auth/require-company-access";
 import {
   CompanyPageHeader,
 } from "@/components/rescueloop/company/state-cards";
@@ -52,31 +53,24 @@ export default async function DashboardPage({
   params: Promise<{ companyId: string }>;
 }) {
   const { companyId } = await params;
-  const mode = getProviderMode();
 
-  let organizationId: string;
-
-  if (mode === "fixture") {
-    organizationId = FIXTURE_COMPANY_ID;
-  } else if (mode === "whop") {
-    try {
-      const auth = await resolveStrictCompanyAuth(companyId);
-      organizationId = auth.organizationId;
-    } catch (error) {
-      const rendered = renderCompanyAuthError(error, companyId);
-      if (rendered) return <div className="mx-auto max-w-3xl">{rendered}</div>;
-      throw error;
-    }
-  } else {
-    redirect("/onboarding");
+  // ─── Auth guard (fail-closed) ────────────────────────────────
+  let ctx;
+  try {
+    ctx = await requireCompanyAccess(companyId);
+  } catch (error) {
+    const rendered = renderAccessDeniedError(error, companyId);
+    if (rendered) return <div className="mx-auto max-w-3xl">{rendered}</div>;
+    throw error;
   }
 
-  if (mode === "fixture") {
+  // ─── Fixture mode ───────────────────────────────────────────
+  if (ctx.mode === "fixture") {
     return <FixtureDashboard companyId={companyId} />;
   }
 
-  // ─── Whop mode: database queries ─────────────────────────────
-  const orgId = organizationId;
+  // ─── Connected mode (auth confirmed) ────────────────────────
+  const orgId = ctx.organizationId;
 
   const [
     org,

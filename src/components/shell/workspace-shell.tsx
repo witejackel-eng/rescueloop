@@ -42,16 +42,26 @@ import { useUnresolvedNotificationCount } from "@/features/demo-engine/demo-stor
 import { AutomationStateBadge } from "@/components/shell/automation-badge";
 import { NotificationPanel } from "@/components/shell/notification-panel";
 import { COMPANY, COURSE, LAST_SYNC } from "@/lib/mock-data";
+import { NAV_ITEMS as CORE_NAV_ITEMS, ShellInteractionWrapper } from "@/components/shell/shell-core";
+import { useReducedMotionContract } from "@/hooks/use-reduced-motion-contract";
+import { DestructiveConfirm } from "@/components/interaction/focus-manager";
+import { TouchTarget } from "@/components/interaction/mobile-safe-area";
 
-const NAV_ITEMS = [
-  { href: "/overview", label: "Overview", icon: LayoutDashboard },
-  { href: "/rescue-queue", label: "Queue", icon: ListChecks },
-  { href: "/students", label: "Students", icon: Users },
-  { href: "/campaigns", label: "Campaigns", icon: Megaphone },
-  { href: "/insights", label: "Insights", icon: BarChart3 },
-  { href: "/value", label: "Value", icon: DollarSign },
-  { href: "/settings", label: "Settings", icon: SettingsIcon },
-];
+// Icon mapping for nav items (shell-core provides href+label, we add icons here)
+const NAV_ICONS: Record<string, typeof LayoutDashboard> = {
+  "/overview": LayoutDashboard,
+  "/rescue-queue": ListChecks,
+  "/students": Users,
+  "/campaigns": Megaphone,
+  "/insights": BarChart3,
+  "/value": DollarSign,
+  "/settings": SettingsIcon,
+};
+
+const NAV_ITEMS = CORE_NAV_ITEMS.map((item) => ({
+  ...item,
+  icon: NAV_ICONS[item.href] ?? LayoutDashboard,
+}));
 
 const MOBILE_PRIMARY = NAV_ITEMS.slice(0, 4); // Overview, Queue, Campaigns, Insights
 const MOBILE_MORE = NAV_ITEMS.slice(4); // Value, Students, Settings
@@ -60,14 +70,17 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [moreSheetOpen, setMoreSheetOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
   const automationState = useDemoStore((s) => s.automationState);
   const pauseAutomation = useDemoStore((s) => s.pauseAutomation);
   const resumeAutomation = useDemoStore((s) => s.resumeAutomation);
   const setCommandPaletteOpen = useDemoStore((s) => s.setCommandPaletteOpen);
   const unresolvedCount = useUnresolvedNotificationCount();
   const isPaused = automationState === "paused";
+  const motionContract = useReducedMotionContract();
 
   return (
+    <ShellInteractionWrapper>
     <div className="flex h-screen overflow-hidden bg-[var(--canvas)]">
       {/* Desktop vertical nav rail */}
       <aside className="hidden w-[68px] shrink-0 flex-col border-r border-[var(--hairline)] bg-[var(--canvas-elevated)] md:flex lg:w-[72px]">
@@ -206,31 +219,41 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
               )}
             </Button>
 
-            {/* Pause / Resume */}
-            <Button
-              onClick={() => (isPaused ? resumeAutomation() : pauseAutomation())}
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "size-9 rounded-[8px]",
-                isPaused
-                  ? "bg-[var(--critical)] text-white hover:bg-[var(--critical)]"
-                  : "text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]",
-              )}
-              aria-label={isPaused ? "Resume automation" : "Pause automation"}
-            >
-              {isPaused ? <Play className="size-4" /> : <Pause className="size-4" />}
-            </Button>
+            {/* Pause / Resume — uses DestructiveConfirm for pause */}
+            <TouchTarget>
+              <Button
+                onClick={() => {
+                  if (isPaused) {
+                    resumeAutomation();
+                  } else {
+                    setPauseConfirmOpen(true);
+                  }
+                }}
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "size-9 rounded-[8px]",
+                  isPaused
+                    ? "bg-[var(--critical)] text-white hover:bg-[var(--critical)]"
+                    : "text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)]",
+                )}
+                aria-label={isPaused ? "Resume automation" : "Pause automation"}
+              >
+                {isPaused ? <Play className="size-4" /> : <Pause className="size-4" />}
+              </Button>
+            </TouchTarget>
           </div>
         </header>
 
-        {/* Paused banner */}
+        {/* Paused banner — reduced-motion-aware */}
         <AnimatePresence>
           {isPaused && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              {...motionContract.motionProps({
+                hidden: { height: 0, opacity: 0 },
+                visible: { height: "auto", opacity: 1 },
+                exit: { height: 0, opacity: 0 },
+              })}
               className="overflow-hidden border-b border-[var(--critical-light)] bg-[var(--critical-light)]/40"
             >
               <p className="px-4 py-1.5 text-center text-[12px] font-medium text-[var(--critical)]">
@@ -241,7 +264,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         </AnimatePresence>
 
         {/* Page content */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto" id="main-content" tabIndex={-1}>
           <div className="mx-auto w-full max-w-[1320px] px-4 py-6 lg:px-8 lg:py-8">
             {children}
           </div>
@@ -333,6 +356,20 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <NotificationPanel onClose={() => setNotifOpen(false)} />
         </SheetContent>
       </Sheet>
+
+      {/* DestructiveConfirm for pause automation */}
+      <DestructiveConfirm
+        open={pauseConfirmOpen}
+        onOpenChange={setPauseConfirmOpen}
+        title="Pause automation"
+        consequences="No interventions will be sent until you resume. Students awaiting outreach will not be contacted."
+        actionLabel="Pause automation"
+        onConfirm={() => {
+          pauseAutomation();
+          setPauseConfirmOpen(false);
+        }}
+      />
     </div>
+    </ShellInteractionWrapper>
   );
 }

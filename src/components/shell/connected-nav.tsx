@@ -2,7 +2,7 @@
 //
 // Single source of truth for the nav items rendered inside ConnectedShell.
 // Every href ALWAYS includes companyId so a creator inside
-// /companies/[companyId]/... is never sent to a demo route.
+// /dashboard/[companyId]/... is never sent to a demo route.
 //
 // This module is safe to import from both client and server components
 // (no "server-only" import, no server-only APIs).
@@ -17,7 +17,7 @@ import {
   DollarSign,
   Settings as SettingsIcon,
   RefreshCw,
-  ScrollText,
+  Activity,
   Gauge,
   type LucideIcon,
 } from "lucide-react";
@@ -33,7 +33,7 @@ export interface ConnectedNavItem {
   label: string;
   /** Lucide icon component. */
   icon: LucideIcon;
-  /** Last path segment, e.g. "overview" for /companies/[id]/overview. */
+  /** Canonical path segment under /dashboard/[companyId]/, e.g. "rescue-queue". */
   segment: string;
   /** One-line description shown in tooltips / mobile sheet. */
   description: string;
@@ -44,23 +44,24 @@ export interface ConnectedNavItem {
 /**
  * The full set of company-scoped nav items. Order matters — it drives
  * the order of the desktop nav rail and the mobile "More" sheet.
+ * Segments map to canonical /dashboard/[companyId]/... routes.
  *
- * Mobile primary tabs (4): Overview, Queue, Campaigns, Responses.
+ * Mobile primary tabs (4): Dashboard, Queue, Playbooks, Responses.
  */
 export const CONNECTED_NAV_ITEMS: ConnectedNavItem[] = [
   {
-    key: "overview",
-    label: "Overview",
+    key: "dashboard",
+    label: "Dashboard",
     icon: LayoutDashboard,
-    segment: "overview",
+    segment: "",
     description: "Recovery pulse + system status",
     mobilePrimary: true,
   },
   {
-    key: "queue",
+    key: "rescue-queue",
     label: "Queue",
     icon: ListChecks,
-    segment: "queue",
+    segment: "rescue-queue",
     description: "Activation Rescue candidates awaiting review",
     mobilePrimary: true,
   },
@@ -73,10 +74,10 @@ export const CONNECTED_NAV_ITEMS: ConnectedNavItem[] = [
     mobilePrimary: false,
   },
   {
-    key: "campaigns",
-    label: "Campaigns",
+    key: "playbooks",
+    label: "Playbooks",
     icon: Megaphone,
-    segment: "campaigns",
+    segment: "playbooks",
     description: "Rescue campaigns + message templates",
     mobilePrimary: true,
   },
@@ -105,11 +106,11 @@ export const CONNECTED_NAV_ITEMS: ConnectedNavItem[] = [
     mobilePrimary: false,
   },
   {
-    key: "settings",
-    label: "Settings",
-    icon: SettingsIcon,
-    segment: "settings",
-    description: "Organisation + safety rules",
+    key: "activity",
+    label: "Activity",
+    icon: Activity,
+    segment: "activity",
+    description: "Immutable activity log",
     mobilePrimary: false,
   },
   {
@@ -121,19 +122,19 @@ export const CONNECTED_NAV_ITEMS: ConnectedNavItem[] = [
     mobilePrimary: false,
   },
   {
-    key: "audit",
-    label: "Audit",
-    icon: ScrollText,
-    segment: "audit",
-    description: "Immutable audit log",
-    mobilePrimary: false,
-  },
-  {
     key: "usage",
     label: "Usage",
     icon: Gauge,
     segment: "usage",
     description: "Plan limits + consumption",
+    mobilePrimary: false,
+  },
+  {
+    key: "settings",
+    label: "Settings",
+    icon: SettingsIcon,
+    segment: "settings",
+    description: "Organisation + safety rules",
     mobilePrimary: false,
   },
 ];
@@ -148,27 +149,42 @@ export const MOBILE_MORE_ITEMS: ConnectedNavItem[] = CONNECTED_NAV_ITEMS.filter(
 );
 
 /**
- * Build a company-scoped href. Always interpolates companyId so the
- * result is always inside /companies/[companyId]/...
+ * Build a dashboard-scoped href. Always interpolates companyId so the
+ * result is always inside /dashboard/[companyId]/...
+ *
+ * When segment is "" (the root dashboard), returns /dashboard/[companyId].
+ */
+export function buildDashboardHref(companyId: string, segment: string): string {
+  const base = `/dashboard/${encodeURIComponent(companyId)}`;
+  return segment ? `${base}/${segment}` : base;
+}
+
+/**
+ * @deprecated Use buildDashboardHref instead. Kept for backward compat.
  */
 export function buildCompanyHref(companyId: string, segment: string): string {
-  return `/companies/${encodeURIComponent(companyId)}/${segment}`;
+  return buildDashboardHref(companyId, segment);
 }
 
 /**
  * Determine which nav item is active for the given pathname.
  *
- * Matches the path segment immediately after /companies/[companyId]/.
- * Returns null when the pathname is outside the company scope.
+ * Matches the path segment under /dashboard/[companyId]/.
+ * Returns null when the pathname is outside the dashboard scope.
  */
 export function getActiveConnectedNavKey(
   pathname: string,
   companyId: string,
 ): string | null {
-  const prefix = `/companies/${encodeURIComponent(companyId)}/`;
+  const prefix = `/dashboard/${encodeURIComponent(companyId)}`;
   if (!pathname.startsWith(prefix)) return null;
   const rest = pathname.slice(prefix.length);
-  const segment = rest.split("/")[0] ?? "";
+  // Root dashboard (no segment or just a trailing slash)
+  if (rest === "" || rest === "/") {
+    const item = CONNECTED_NAV_ITEMS.find((i) => i.segment === "");
+    return item?.key ?? null;
+  }
+  const segment = rest.replace(/^\//, "").split("/")[0] ?? "";
   const item = CONNECTED_NAV_ITEMS.find((i) => i.segment === segment);
   return item?.key ?? null;
 }

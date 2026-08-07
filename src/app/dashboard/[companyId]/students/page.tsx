@@ -2,17 +2,15 @@
 //
 // Canonical students directory (WP-03). Shows the member directory with
 // course progress, membership status, and rescue history.
+//
+// FAIL-CLOSED: Calls requireCompanyAccess() at the top.
 
 import "server-only";
-import { redirect } from "next/navigation";
-import { getProviderMode } from "@/providers";
-import { FIXTURE_COMPANY_ID } from "@/providers/fixtures/fixtures-data";
-import { requireCompanyAdmin } from "@/lib/auth/whop-auth";
 import { db } from "@/lib/db";
 import {
-  resolveStrictCompanyAuth,
-  renderCompanyAuthError,
-} from "@/lib/auth/strict-company-auth";
+  requireCompanyAccess,
+  renderAccessDeniedError,
+} from "@/lib/auth/require-company-access";
 import {
   CompanyPageHeader,
 } from "@/components/rescueloop/company/state-cards";
@@ -28,24 +26,18 @@ export default async function StudentsPage({
   params: Promise<{ companyId: string }>;
 }) {
   const { companyId } = await params;
-  const mode = getProviderMode();
 
-  let organizationId: string;
-
-  if (mode === "fixture") {
-    organizationId = FIXTURE_COMPANY_ID;
-  } else if (mode === "whop") {
-    try {
-      const auth = await resolveStrictCompanyAuth(companyId);
-      organizationId = auth.organizationId;
-    } catch (error) {
-      const rendered = renderCompanyAuthError(error, companyId);
-      if (rendered) return <div className="mx-auto max-w-3xl">{rendered}</div>;
-      throw error;
-    }
-  } else {
-    redirect("/onboarding");
+  // ─── Auth guard (fail-closed) ────────────────────────────────
+  let ctx;
+  try {
+    ctx = await requireCompanyAccess(companyId);
+  } catch (error) {
+    const rendered = renderAccessDeniedError(error, companyId);
+    if (rendered) return <div className="mx-auto max-w-3xl">{rendered}</div>;
+    throw error;
   }
+
+  const organizationId = ctx.organizationId;
 
   const studentCount = await db.student.count({
     where: { organizationId },

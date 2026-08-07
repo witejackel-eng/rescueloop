@@ -3,14 +3,19 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ArrowRight } from "lucide-react";
+import { Menu, X, ArrowRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RescueLoopLogo } from "@/components/brand/logo";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { springLayout } from "@/design-system/motion";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
-// All navigation links. At full+ all are shown; at compact the secondary links
-// move into the overflow menu; below compact the full mobile menu is used.
+// Primary navigation links — always shown in desktop center nav
 const PRIMARY_LINKS = [
   { label: "Product", href: "#product" },
   { label: "How it works", href: "#process" },
@@ -18,6 +23,7 @@ const PRIMARY_LINKS = [
   { label: "Pricing", href: "#pricing" },
 ];
 
+// Secondary links — moved to Resources dropdown + footer (NOT in center nav)
 const SECONDARY_LINKS = [
   { label: "Safety", href: "#safety" },
   { label: "FAQ", href: "#faq" },
@@ -25,20 +31,11 @@ const SECONDARY_LINKS = [
 
 const ALL_LINKS = [...PRIMARY_LINKS, ...SECONDARY_LINKS];
 
-// Breakpoints:
-// full (1366px+): full desktop nav with all links + CTA
-// compact (1180–1365px): compact desktop nav (primary links only) + CTA, secondary in overflow
-// below compact: mobile menu
-const DESKTOP_FULL = "full"; // 1366px+
-const DESKTOP_COMPACT = "compact"; // 1180px+
-
 export function FloatingNav() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [overflowOpen, setOverflowOpen] = useState(false);
   const reduced = useReducedMotion();
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
-  const overflowTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     function onScroll() {
@@ -61,22 +58,17 @@ export function FloatingNav() {
     };
   }, [mobileOpen]);
 
-  // Escape key closes menus + restores focus
+  // Escape key closes mobile menu + restores focus
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        if (overflowOpen) {
-          setOverflowOpen(false);
-          overflowTriggerRef.current?.focus();
-        } else if (mobileOpen) {
-          setMobileOpen(false);
-          mobileTriggerRef.current?.focus();
-        }
+      if (e.key === "Escape" && mobileOpen) {
+        setMobileOpen(false);
+        mobileTriggerRef.current?.focus();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mobileOpen, overflowOpen]);
+  }, [mobileOpen]);
 
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
@@ -116,7 +108,7 @@ export function FloatingNav() {
             </Link>
           </motion.div>
 
-          {/* ── Desktop navigation (full: all links, compact: primary only) ── */}
+          {/* ── Desktop navigation: 4 primary links + Resources dropdown ── */}
           <nav
             className="hidden items-center justify-center compact:flex"
             aria-label="Marketing navigation"
@@ -133,53 +125,30 @@ export function FloatingNav() {
               </a>
             ))}
 
-            {/* Secondary links — visible at full, collapsed into overflow at compact */}
-            {SECONDARY_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="group relative hidden whitespace-nowrap text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] full:inline-block"
-              >
-                {link.label}
-                <span className="absolute -bottom-1 left-0 h-px w-0 bg-[var(--ink-primary)] transition-all duration-300 group-hover:w-full" />
-              </a>
-            ))}
-
-            {/* Overflow trigger — compact only (1180–1365px) */}
-            <div className="relative hidden compact:block full:hidden">
-              <button
-                ref={overflowTriggerRef}
-                onClick={() => setOverflowOpen((v) => !v)}
-                className="flex size-7 items-center justify-center rounded-[6px] text-[var(--ink-secondary)] transition-colors hover:bg-[var(--canvas-elevated)] hover:text-[var(--ink-primary)]"
-                aria-label="More navigation"
-                aria-expanded={overflowOpen}
-                aria-haspopup="true"
-              >
-                <Menu className="size-4" />
-              </button>
-              <AnimatePresence>
-                {overflowOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 min-w-[140px] border border-[var(--hairline)] bg-[var(--surface)] py-1 shadow-[0_8px_24px_rgba(17,17,15,0.08)]"
-                  >
-                    {SECONDARY_LINKS.map((link) => (
-                      <a
-                        key={link.href}
-                        href={link.href}
-                        onClick={() => setOverflowOpen(false)}
-                        className="block whitespace-nowrap px-3 py-2 text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:bg-[var(--canvas-elevated)] hover:text-[var(--ink-primary)]"
-                      >
-                        {link.label}
-                      </a>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            {/* Resources dropdown — Safety & FAQ at all desktop breakpoints */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="group flex items-center gap-0.5 whitespace-nowrap text-[13px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)] focus-visible:outline-none"
+                  aria-label="Resources"
+                >
+                  Resources
+                  <ChevronDown className="size-3 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[140px]">
+                {SECONDARY_LINKS.map((link) => (
+                  <DropdownMenuItem key={link.href} asChild>
+                    <a
+                      href={link.href}
+                      className="text-[13px] font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
+                    >
+                      {link.label}
+                    </a>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </nav>
 
           {/* ── CTA region (never shrinks) ── */}
@@ -260,7 +229,7 @@ export function FloatingNav() {
                   <ArrowRight className="size-4" />
                 </Link>
                 <Link
-                  href="/overview"
+                  href="/private-pilot"
                   onClick={closeMobile}
                   className="flex items-center justify-center rounded-[10px] border border-[var(--hairline)] px-4 py-3 text-[15px] font-medium text-[var(--ink-secondary)]"
                 >

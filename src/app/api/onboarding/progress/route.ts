@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     log.error("Failed to load onboarding progress", {
       action: "GET",
       companyId,
-      organizationId,
+      organizationId: organizationId ?? undefined,
       errorType: error instanceof Error ? error.constructor.name : "unknown",
     });
 

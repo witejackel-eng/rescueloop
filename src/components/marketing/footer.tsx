@@ -22,6 +22,14 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
     ],
   },
   {
+    title: "Resources",
+    links: [
+      { label: "Safety", href: "#safety" },
+      { label: "FAQ", href: "#faq" },
+      { label: "Private pilot", href: "/private-pilot" },
+    ],
+  },
+  {
     title: "Legal",
     links: [
       { label: "Privacy", href: "/legal/privacy" },
@@ -36,7 +44,7 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-[var(--hairline)] bg-[var(--canvas)]">
       <div className="mx-auto max-w-[1400px] px-4 py-16 lg:px-8 lg:py-20">
-        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr] lg:gap-10">
+        <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr] lg:gap-10">
           {/* Brand */}
           <div className="flex flex-col gap-4">
             <RescueLoopLogo context="marketing" />

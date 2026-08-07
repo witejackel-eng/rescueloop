@@ -7,8 +7,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── Enums ────────────────────────────────────────────────────
@@ -197,8 +198,8 @@ model User {
   whopUserId String?              @unique
   email      String?              @unique
   name       String?
-  createdAt  DateTime             @default(now())
-  updatedAt  DateTime             @updatedAt
+  createdAt  DateTime @db.Timestamptz()             @default(now())
+  updatedAt  DateTime @db.Timestamptz()             @updatedAt
   members    OrganizationMember[]
 
   @@map("users")
@@ -214,8 +215,8 @@ model Organization {
   quietHoursStart String? // "20:00"
   quietHoursEnd   String? // "08:00"
   timezone        String             @default("America/New_York")
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  createdAt       DateTime @db.Timestamptz()           @default(now())
+  updatedAt       DateTime @db.Timestamptz()           @updatedAt
 
   members            OrganizationMember[]
   installations      WhopInstallation[]
@@ -244,7 +245,7 @@ model OrganizationMember {
   organizationId String
   userId         String
   role           MemberRole @default(member)
-  createdAt      DateTime   @default(now())
+  createdAt      DateTime @db.Timestamptz()   @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -262,10 +263,10 @@ model WhopInstallation {
   requestedScopes String // JSON-encoded string array
   grantedScopes   String // JSON-encoded string array
   installedById   String?
-  installedAt     DateTime           @default(now())
-  uninstalledAt   DateTime?         
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  installedAt     DateTime @db.Timestamptz()           @default(now())
+  uninstalledAt   DateTime? @db.Timestamptz()         
+  createdAt       DateTime @db.Timestamptz()           @default(now())
+  updatedAt       DateTime @db.Timestamptz()           @updatedAt
 
   organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   credentials  IntegrationCredential[]
@@ -279,8 +280,8 @@ model IntegrationCredential {
   installationId String
   keyType        String // "api_key", "webhook_secret", etc.
   encryptedValue String // encrypted at rest
-  expiresAt      DateTime?
-  createdAt      DateTime  @default(now())
+  expiresAt      DateTime? @db.Timestamptz()
+  createdAt      DateTime @db.Timestamptz()  @default(now())
 
   installation WhopInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
 
@@ -296,8 +297,8 @@ model Product {
   priceCents     Int      @default(0)
   currency       String   @default("USD")
   billingCycle   String   @default("monthly") // monthly, annual, one_time
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @db.Timestamptz() @default(now())
+  updatedAt      DateTime @db.Timestamptz() @updatedAt
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   mappings     ProductCourseMapping[]
@@ -314,8 +315,8 @@ model Course {
   externalExperienceId String? // Whop experience ID (required for notification delivery)
   name                 String
   lessonCount          Int      @default(0)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime @db.Timestamptz() @default(now())
+  updatedAt            DateTime @db.Timestamptz() @updatedAt
 
   organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   mappings       ProductCourseMapping[]
@@ -334,8 +335,8 @@ model ProductCourseMapping {
   courseId            String
   activationDelayDays Int      @default(7)
   isConfirmed         Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @db.Timestamptz() @default(now())
+  updatedAt           DateTime @db.Timestamptz() @updatedAt
 
   organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product       Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -355,8 +356,8 @@ model Student {
   whopUserId     String // Whop user ID
   email          String?
   name           String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @db.Timestamptz() @default(now())
+  updatedAt      DateTime @db.Timestamptz() @updatedAt
 
   organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   memberships      Membership[]
@@ -380,14 +381,14 @@ model Membership {
   productId        String
   whopMembershipId String           @unique
   status           MembershipStatus @default(active)
-  joinedAt         DateTime        
-  renewalDate      DateTime?       
-  cancelledAt      DateTime?       
+  joinedAt         DateTime @db.Timestamptz()        
+  renewalDate      DateTime? @db.Timestamptz()       
+  cancelledAt      DateTime? @db.Timestamptz()       
   priceCents       Int              @default(0)
   currency         String           @default("USD")
-  lastSyncedAt     DateTime         @default(now())
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  lastSyncedAt     DateTime @db.Timestamptz()         @default(now())
+  createdAt        DateTime @db.Timestamptz()         @default(now())
+  updatedAt        DateTime @db.Timestamptz()         @updatedAt
 
   student  Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
   product  Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -405,9 +406,9 @@ model Enrollment {
   studentId      String
   courseId       String
   status         EnrollmentStatus @default(not_started)
-  enrolledAt     DateTime         @default(now())
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  enrolledAt     DateTime @db.Timestamptz()         @default(now())
+  createdAt      DateTime @db.Timestamptz()         @default(now())
+  updatedAt      DateTime @db.Timestamptz()         @updatedAt
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -425,11 +426,11 @@ model StudentCourseState {
   progressPercent  Int       @default(0)
   lessonsCompleted Int       @default(0)
   totalLessons     Int       @default(0)
-  firstActivityAt  DateTime?
-  lastActivityAt   DateTime?
-  lastSyncedAt     DateTime  @default(now())
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  firstActivityAt  DateTime? @db.Timestamptz()
+  lastActivityAt   DateTime? @db.Timestamptz()
+  lastSyncedAt     DateTime @db.Timestamptz()  @default(now())
+  createdAt        DateTime @db.Timestamptz()  @default(now())
+  updatedAt        DateTime @db.Timestamptz()  @updatedAt
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -450,12 +451,12 @@ model ProgressEvent {
   lessonTitle           String?
   action                String // "completed", "started", "stalled"
   payloadHash           String? // SHA-256 of interaction payload for dedup
-  sourceTimestamp       DateTime? // When the event occurred at the source
-  receivedAt            DateTime  @default(now()) // When we received it
+  sourceTimestamp       DateTime? @db.Timestamptz() // When the event occurred at the source
+  receivedAt            DateTime @db.Timestamptz()  @default(now()) // When we received it
   sourceVersion         String? // Provider version / etag for staleness checks
-  occurredAt            DateTime 
+  occurredAt            DateTime @db.Timestamptz() 
   webhookReceiptId      String?
-  createdAt             DateTime  @default(now())
+  createdAt             DateTime @db.Timestamptz()  @default(now())
 
   course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -475,9 +476,9 @@ model MembershipEvent {
   organizationId   String
   membershipId     String
   eventType        String // "created", "activated", "cancelled", "renewed"
-  occurredAt       DateTime
+  occurredAt       DateTime @db.Timestamptz()
   webhookReceiptId String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime @db.Timestamptz() @default(now())
 
   membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
 
@@ -493,9 +494,9 @@ model PaymentEvent {
   status           PaymentStatus @default(pending)
   amountCents      Int
   currency         String        @default("USD")
-  occurredAt       DateTime     
+  occurredAt       DateTime @db.Timestamptz()     
   webhookReceiptId String?
-  createdAt        DateTime      @default(now())
+  createdAt        DateTime @db.Timestamptz()      @default(now())
 
   membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
 
@@ -522,8 +523,8 @@ model Campaign {
   stopAfterMembershipEnd Boolean        @default(true)
   messageTemplate        String
   confirmedMappingId     String? // Explicit campaign-to-mapping relationship
-  createdAt              DateTime       @default(now())
-  updatedAt              DateTime       @updatedAt
+  createdAt              DateTime @db.Timestamptz()       @default(now())
+  updatedAt              DateTime @db.Timestamptz()       @updatedAt
 
   organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   confirmedMapping ProductCourseMapping? @relation(fields: [confirmedMappingId], references: [id])
@@ -540,7 +541,7 @@ model CampaignVersion {
   versionNumber   Int
   rulesJson       Json // versioned rule snapshot
   messageTemplate String
-  createdAt       DateTime @default(now())
+  createdAt       DateTime @db.Timestamptz() @default(now())
 
   campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   interventions Intervention[]
@@ -554,7 +555,7 @@ model CampaignRule {
   campaignId String
   ruleType   String // "progress_min", "inactivity_days", etc.
   ruleValue  String
-  createdAt  DateTime @default(now())
+  createdAt  DateTime @db.Timestamptz() @default(now())
 
   // Note: rules are versioned via CampaignVersion.rulesJson for historical evidence
   @@map("campaign_rules")
@@ -569,10 +570,10 @@ model EligibilitySnapshot {
   idempotencyKey         String           @unique // Prevents duplicate snapshots on re-run
   state                  EligibilityState @default(pending_evaluation)
   evidenceJson           Json // versioned evidence at detection time
-  detectedAt             DateTime         @default(now())
-  eligibilityWindowStart DateTime?        // Start of the eligibility evaluation window
-  expiresAt              DateTime?       
-  createdAt              DateTime         @default(now())
+  detectedAt             DateTime @db.Timestamptz()         @default(now())
+  eligibilityWindowStart DateTime? @db.Timestamptz()        // Start of the eligibility evaluation window
+  expiresAt              DateTime? @db.Timestamptz()       
+  createdAt              DateTime @db.Timestamptz()         @default(now())
 
   interventions Intervention[]
 
@@ -600,14 +601,14 @@ model Intervention {
   messageEdited         String?
   idempotencyKey        String            @unique
   approvedById          String?
-  approvedAt            DateTime?        
-  scheduledFor          DateTime?        
-  sentAt                DateTime?        
-  respondedAt           DateTime?        
-  recoveredAt           DateTime?        
-  cooldownUntil         DateTime?        
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
+  approvedAt            DateTime? @db.Timestamptz()        
+  scheduledFor          DateTime? @db.Timestamptz()        
+  sentAt                DateTime? @db.Timestamptz()        
+  respondedAt           DateTime? @db.Timestamptz()        
+  recoveredAt           DateTime? @db.Timestamptz()        
+  cooldownUntil         DateTime? @db.Timestamptz()        
+  createdAt             DateTime @db.Timestamptz()          @default(now())
+  updatedAt             DateTime @db.Timestamptz()          @updatedAt
 
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student             Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -631,13 +632,13 @@ model DeliveryAttempt {
   attemptNumber     Int           @default(1)
   idempotencyKey    String        @unique
   providerMessageId String? // Whop message ID
-  apiAcceptedAt     DateTime?    
-  deliveredAt       DateTime?    
-  failedAt          DateTime?    
+  apiAcceptedAt     DateTime? @db.Timestamptz()    
+  deliveredAt       DateTime? @db.Timestamptz()    
+  failedAt          DateTime? @db.Timestamptz()    
   errorMessage      String?
   retryCount        Int           @default(0)
-  nextAttemptAt     DateTime?    
-  createdAt         DateTime      @default(now())
+  nextAttemptAt     DateTime? @db.Timestamptz()    
+  createdAt         DateTime @db.Timestamptz()      @default(now())
 
   intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
 
@@ -656,7 +657,7 @@ model StudentResponse {
   accessTokenId  String? // Reference to the StudentAccessToken used (not the raw token)
   ipAddress      String?
   userAgent      String?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime @db.Timestamptz()     @default(now())
 
   intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
   student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -675,11 +676,11 @@ model StudentAccessToken {
   interventionId String
   studentId      String
   tokenHash      String    @unique // SHA-256 hash of the raw token
-  expiresAt      DateTime 
-  revokedAt      DateTime?
-  lastUsedAt     DateTime?
-  consumedAt     DateTime? // Set for one-time actions
-  createdAt      DateTime  @default(now())
+  expiresAt      DateTime @db.Timestamptz() 
+  revokedAt      DateTime? @db.Timestamptz()
+  lastUsedAt     DateTime? @db.Timestamptz()
+  consumedAt     DateTime? @db.Timestamptz() // Set for one-time actions
+  createdAt      DateTime @db.Timestamptz()  @default(now())
 
   @@index([organizationId, studentId])
   @@index([interventionId])
@@ -693,7 +694,7 @@ model BlockerResponse {
   blocker        BlockerType
   note           String?
   interventionId String?
-  createdAt      DateTime    @default(now())
+  createdAt      DateTime @db.Timestamptz()    @default(now())
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -705,9 +706,9 @@ model ReminderRequest {
   id             String   @id @default(cuid())
   interventionId String
   studentId      String
-  reminderTime   DateTime
+  reminderTime   DateTime @db.Timestamptz()
   timezone       String   @default("America/New_York")
-  createdAt      DateTime @default(now())
+  createdAt      DateTime @db.Timestamptz() @default(now())
 
   @@index([interventionId])
   @@map("reminder_requests")
@@ -720,7 +721,7 @@ model Suppression {
   scope          String   @default("organization") // organization, course
   reason         String   @default("student_opt_out")
   interventionId String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime @db.Timestamptz() @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -741,8 +742,8 @@ model WebhookReceipt {
   status         WebhookStatus @default(received)
   attemptCount   Int           @default(0)
   lastError      String?
-  receivedAt     DateTime      @default(now())
-  processedAt    DateTime?    
+  receivedAt     DateTime @db.Timestamptz()      @default(now())
+  processedAt    DateTime? @db.Timestamptz()    
   payloadJson    Json // stored for replay/audit
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -763,7 +764,7 @@ model AuditLog {
   newState       String?
   reason         String?
   metadataJson   Json?
-  createdAt      DateTime    @default(now())
+  createdAt      DateTime @db.Timestamptz()    @default(now())
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   intervention Intervention? @relation(fields: [interventionId], references: [id])
@@ -787,7 +788,7 @@ model ValueEvent {
   // Reference to the source payment event that created this value event.
   // Unique constraint prevents one payment from creating duplicate value events.
   paymentEventId   String?          @unique
-  createdAt        DateTime         @default(now())
+  createdAt        DateTime @db.Timestamptz()         @default(now())
 
   organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   intervention Intervention?         @relation(fields: [interventionId], references: [id])
@@ -803,9 +804,9 @@ model AttributionEvidence {
   valueEventId String
   evidenceType String // "intervention_sent", "course_started", "payment_succeeded"
   evidenceRef  String // reference to source record
-  timestamp    DateTime
+  timestamp    DateTime @db.Timestamptz()
   metadataJson Json?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime @db.Timestamptz() @default(now())
 
   valueEvent ValueEvent @relation(fields: [valueEventId], references: [id], onDelete: Cascade)
 
@@ -819,11 +820,11 @@ model DataDeletionRequest {
   requestedById  String?
   status         DataDeletionStatus @default(requested)
   reason         String?
-  verifiedAt     DateTime?         
-  scheduledAt    DateTime?         
-  processedAt    DateTime?         
-  requestedAt    DateTime           @default(now())
-  completedAt    DateTime?         
+  verifiedAt     DateTime? @db.Timestamptz()         
+  scheduledAt    DateTime? @db.Timestamptz()         
+  processedAt    DateTime? @db.Timestamptz()         
+  requestedAt    DateTime @db.Timestamptz()           @default(now())
+  completedAt    DateTime? @db.Timestamptz()         
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -838,9 +839,9 @@ model DataExportRequest {
   requestedById     String?
   status            DataExportStatus @default(Requested)
   downloadToken     String           @unique // Opaque time-limited download token
-  downloadExpiresAt DateTime        
-  createdAt         DateTime         @default(now())
-  completedAt       DateTime?       
+  downloadExpiresAt DateTime @db.Timestamptz()        
+  createdAt         DateTime @db.Timestamptz()         @default(now())
+  completedAt       DateTime? @db.Timestamptz()       
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -875,14 +876,14 @@ model OutboxEvent {
   attemptCount    Int         @default(0)
   maxAttempts     Int         @default(5)
   lastError       String?
-  dispatchedAt    DateTime?  
-  nextAttemptAt   DateTime?  
+  dispatchedAt    DateTime? @db.Timestamptz()  
+  nextAttemptAt   DateTime? @db.Timestamptz()  
   externalEventId String? // Inngest event ID after successful dispatch
   claimedBy       String? // Worker identifier that holds the lease
-  claimedAt       DateTime?   // When the lease was acquired
-  leaseExpiresAt  DateTime?   // When the lease expires
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  claimedAt       DateTime? @db.Timestamptz()   // When the lease was acquired
+  leaseExpiresAt  DateTime? @db.Timestamptz()   // When the lease expires
+  createdAt       DateTime @db.Timestamptz()    @default(now())
+  updatedAt       DateTime @db.Timestamptz()    @updatedAt
 
   @@index([organizationId, state])
   @@index([state, nextAttemptAt])
@@ -897,11 +898,11 @@ model JobExecution {
   jobType        String // e.g. "process-webhook", "deliver-intervention"
   runId          String? // Inngest run ID
   status         String    @default("pending") // pending, running, completed, failed
-  startedAt      DateTime?
-  completedAt    DateTime?
+  startedAt      DateTime? @db.Timestamptz()
+  completedAt    DateTime? @db.Timestamptz()
   errorMessage   String?
   metadataJson   Json?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime @db.Timestamptz()  @default(now())
 
   @@index([organizationId, status])
   @@index([jobType, status])
@@ -916,8 +917,8 @@ model DeadLetterEvent {
   payloadJson    Json
   errorMessage   String
   attemptCount   Int
-  deadLetteredAt DateTime @default(now())
-  createdAt      DateTime @default(now())
+  deadLetteredAt DateTime @db.Timestamptz() @default(now())
+  createdAt      DateTime @db.Timestamptz() @default(now())
 
   @@index([organizationId])
   @@map("dead_letter_events")
@@ -948,8 +949,8 @@ model Plan {
   maxExports               Int
   priceCents               Int
   currency                 String   @default("USD")
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  createdAt                DateTime @db.Timestamptz() @default(now())
+  updatedAt                DateTime @db.Timestamptz() @updatedAt
 
   @@map("plans")
 }
@@ -958,10 +959,10 @@ model SubscriptionEntitlement {
   id                 String   @id @default(cuid())
   organizationId     String
   planTier           PlanTier @default(pilot)
-  billingPeriodStart DateTime
-  billingPeriodEnd   DateTime
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  billingPeriodStart DateTime @db.Timestamptz()
+  billingPeriodEnd   DateTime @db.Timestamptz()
+  createdAt          DateTime @db.Timestamptz() @default(now())
+  updatedAt          DateTime @db.Timestamptz() @updatedAt
 
   @@index([organizationId])
   @@map("subscription_entitlements")
@@ -973,7 +974,7 @@ model UsageCounter {
   metric         String // "monitored_members", "candidates_evaluated", etc.
   period         String // "2026-08" (YYYY-MM)
   count          Int      @default(0)
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime @db.Timestamptz() @updatedAt
 
   @@unique([organizationId, metric, period])
   @@index([organizationId, period])
@@ -987,8 +988,8 @@ model UsageEvent {
   increment      Int      @default(1)
   idempotencyKey String?  @unique
   metadataJson   Json?
-  occurredAt     DateTime @default(now())
-  createdAt      DateTime @default(now())
+  occurredAt     DateTime @db.Timestamptz() @default(now())
+  createdAt      DateTime @db.Timestamptz() @default(now())
 
   @@index([organizationId, metric, occurredAt])
   @@map("usage_events")
@@ -1007,8 +1008,8 @@ model UsageReservation {
   period         String
   idempotencyKey String            @unique
   status         ReservationStatus @default(reserved)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  createdAt      DateTime @db.Timestamptz()          @default(now())
+  updatedAt      DateTime @db.Timestamptz()          @updatedAt
 
   @@index([organizationId, metric, period])
   @@index([status])
@@ -1023,9 +1024,9 @@ model PlanOverride {
   reason         String
   appliedBy      String
   approvedBy     String
-  startsAt       DateTime
-  expiresAt      DateTime
-  createdAt      DateTime @default(now())
+  startsAt       DateTime @db.Timestamptz()
+  expiresAt      DateTime @db.Timestamptz()
+  createdAt      DateTime @db.Timestamptz() @default(now())
 
   @@index([organizationId, metric])
   @@index([expiresAt])
@@ -1061,10 +1062,10 @@ model PilotApplication {
   reviewStatus             PilotReviewStatus @default(New)
   honeypot                 String?           @map("hp")
   reviewNotes              String?
-  reviewedAt               DateTime?        
+  reviewedAt               DateTime? @db.Timestamptz()        
   reviewedBy               String?
-  createdAt                DateTime          @default(now())
-  updatedAt                DateTime          @updatedAt
+  createdAt                DateTime @db.Timestamptz()          @default(now())
+  updatedAt                DateTime @db.Timestamptz()          @updatedAt
 
   @@index([reviewStatus])
   @@index([email])
@@ -1085,7 +1086,7 @@ model InternalAuditLog {
   newState      String?
   reason        String
   metadataJson  Json?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime @db.Timestamptz() @default(now())
 
   @@index([actorId])
   @@index([objectType, objectId])
@@ -1133,12 +1134,12 @@ model SyncExecution {
   trigger        SyncTrigger        @default(manual)
   requestedBy    String? // user ID or "system"
   state          SyncExecutionState @default(pending)
-  startedAt      DateTime           @default(now())
-  completedAt    DateTime?         
+  startedAt      DateTime @db.Timestamptz()           @default(now())
+  completedAt    DateTime? @db.Timestamptz()         
   errorSummary   String?
   jobId          String? // Inngest / external job ID
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt      DateTime @db.Timestamptz()           @default(now())
+  updatedAt      DateTime @db.Timestamptz()           @updatedAt
 
   organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stages          SyncStage[]
@@ -1155,16 +1156,16 @@ model SyncStage {
   syncExecutionId String
   resourceType    String // "courses", "products", "memberships", "progress"
   state           SyncStageState @default(pending)
-  startedAt       DateTime       @default(now())
-  completedAt     DateTime?     
+  startedAt       DateTime @db.Timestamptz()       @default(now())
+  completedAt     DateTime? @db.Timestamptz()     
   pagesProcessed  Int            @default(0)
   recordsRead     Int            @default(0)
   recordsCreated  Int            @default(0)
   recordsUpdated  Int            @default(0)
   recordsSkipped  Int            @default(0)
   retryCount      Int            @default(0)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  createdAt       DateTime @db.Timestamptz()       @default(now())
+  updatedAt       DateTime @db.Timestamptz()       @updatedAt
 
   syncExecution SyncExecution @relation(fields: [syncExecutionId], references: [id], onDelete: Cascade)
 
@@ -1181,8 +1182,8 @@ model SyncCheckpoint {
   cursor            String? // Provider cursor for resumption
   sourceWatermark   String? // Provider timestamp / etag for staleness checks
   lastCompletedPage Int      @default(0)
-  updatedAt         DateTime @updatedAt
-  createdAt         DateTime @default(now())
+  updatedAt         DateTime @db.Timestamptz() @updatedAt
+  createdAt         DateTime @db.Timestamptz() @default(now())
 
   organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   syncExecution SyncExecution @relation(fields: [syncExecutionId], references: [id], onDelete: Cascade)
@@ -1219,8 +1220,8 @@ model ReconciliationOutcome {
   classification      ReconciliationOutcomeClassification
   resolutionState     ReconciliationResolutionState       @default(pending)
   evidenceJson        Json?
-  resolvedAt          DateTime?                          
-  createdAt           DateTime                            @default(now())
+  resolvedAt          DateTime? @db.Timestamptz()                          
+  createdAt           DateTime @db.Timestamptz()                            @default(now())
 
   reconciliationRun ReconciliationRun @relation(fields: [reconciliationRunId], references: [id], onDelete: Cascade)
 
@@ -1243,10 +1244,10 @@ model ReconciliationRun {
   staleSourceRecord               Int                 @default(0)
   totalEvaluated                  Int                 @default(0)
   state                           ReconciliationState @default(pending)
-  startedAt                       DateTime            @default(now())
-  completedAt                     DateTime?          
-  createdAt                       DateTime            @default(now())
-  updatedAt                       DateTime            @updatedAt
+  startedAt                       DateTime @db.Timestamptz()            @default(now())
+  completedAt                     DateTime? @db.Timestamptz()          
+  createdAt                       DateTime @db.Timestamptz()            @default(now())
+  updatedAt                       DateTime @db.Timestamptz()            @updatedAt
 
   organization  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   syncExecution SyncExecution?          @relation(fields: [syncExecutionId], references: [id], onDelete: SetNull)
@@ -1266,9 +1267,9 @@ model OnboardingProgress {
   currentStep      String
   stepsJson        String     // JSON-serialized step states
   syncProgressJson String?    // JSON-serialized sync progress
-  completedAt      DateTime?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  completedAt      DateTime? @db.Timestamptz()
+  createdAt        DateTime @db.Timestamptz()   @default(now())
+  updatedAt        DateTime @db.Timestamptz()   @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

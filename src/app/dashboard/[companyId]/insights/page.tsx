@@ -2,11 +2,14 @@
 //
 // Canonical insights page (WP-03). Friction findings, course funnels,
 // and recommended next actions.
+//
+// FAIL-CLOSED: Calls requireCompanyAccess() at the top.
 
 import "server-only";
-import { redirect } from "next/navigation";
-import { getProviderMode } from "@/providers";
-import { resolveStrictCompanyAuth, renderCompanyAuthError } from "@/lib/auth/strict-company-auth";
+import {
+  requireCompanyAccess,
+  renderAccessDeniedError,
+} from "@/lib/auth/require-company-access";
 import { CompanyPageHeader } from "@/components/rescueloop/company/state-cards";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,16 +23,12 @@ export default async function InsightsPage({
   params: Promise<{ companyId: string }>;
 }) {
   const { companyId } = await params;
-  const mode = getProviderMode();
 
-  if (mode === "unconfigured") {
-    redirect("/onboarding");
-  }
-
+  // ─── Auth guard (fail-closed) ────────────────────────────────
   try {
-    await resolveStrictCompanyAuth(companyId);
+    await requireCompanyAccess(companyId);
   } catch (error) {
-    const rendered = renderCompanyAuthError(error, companyId);
+    const rendered = renderAccessDeniedError(error, companyId);
     if (rendered) return <div className="mx-auto max-w-3xl">{rendered}</div>;
     throw error;
   }

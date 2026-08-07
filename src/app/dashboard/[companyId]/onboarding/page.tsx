@@ -1,25 +1,19 @@
 // /dashboard/[companyId]/onboarding
 //
 // Canonical onboarding journey (WP-03). Server component verifies admin access,
-// fetches Whop onboarding data, then renders the multi-step OnboardingJourney
-// client component implementing: Access → Connection → Mapping → Sync →
-// Threshold → Preview → Complete.
+// fetches Whop onboarding data, then renders the multi-step OnboardingJourney.
+//
+// FAIL-CLOSED: Calls requireCompanyAccess() at the top.
 
 import "server-only";
-import { requireCompanyAdmin } from "@/lib/auth/whop-auth";
 import {
-  InstallationMissingError,
-  MissingTokenError,
-  InvalidTokenError,
-  WhopUnavailableError,
-  InsufficientAccessError,
-} from "@/lib/auth/whop-auth";
+  requireCompanyAccess,
+  renderAccessDeniedError,
+} from "@/lib/auth/require-company-access";
 import { fetchOnboardingData } from "@/lib/whop/onboarding-data";
 import { OnboardingJourney } from "@/components/rescueloop/onboarding/onboarding-journey";
 import {
-  AuthErrorCard,
   CompanyPageHeader,
-  InstallationRequiredCard,
 } from "@/components/rescueloop/company/state-cards";
 import { Card, CardContent } from "@/components/ui/card";
 import { ShieldCheck } from "lucide-react";
@@ -33,57 +27,36 @@ export default async function OnboardingPage({
 }) {
   const { companyId } = await params;
 
+  // ─── Auth guard (fail-closed) ────────────────────────────────
   let ctx;
   try {
-    ctx = await requireCompanyAdmin(companyId);
+    ctx = await requireCompanyAccess(companyId);
   } catch (error) {
-    if (error instanceof InstallationMissingError) {
-      return (
-        <div className="mx-auto max-w-3xl">
-          <InstallationRequiredCard companyId={companyId} />
-        </div>
-      );
-    }
-    if (error instanceof MissingTokenError) {
-      return (
-        <AuthErrorCard
-          title="Sign in required"
-          description="Open this page from your Whop dashboard to verify your admin access."
-          hint="Missing Whop user token"
-        />
-      );
-    }
-    if (error instanceof InvalidTokenError) {
-      return (
-        <AuthErrorCard
-          title="Session expired"
-          description="Your Whop session has expired. Please reopen this page from your Whop dashboard."
-          hint="Invalid or expired token"
-        />
-      );
-    }
-    if (error instanceof WhopUnavailableError) {
-      return (
-        <AuthErrorCard
-          title="Whop is unavailable"
-          description="We couldn't reach Whop to verify your access. Please try again in a moment."
-          hint="Authentication service unavailable"
-        />
-      );
-    }
-    if (error instanceof InsufficientAccessError) {
-      return (
-        <AuthErrorCard
-          title="Admin access required"
-          description="Only company admins can configure RescueLoop. Ask a company admin to open this page."
-          hint={error.message}
-        />
-      );
-    }
+    const rendered = renderAccessDeniedError(error, companyId);
+    if (rendered) return <div className="mx-auto max-w-3xl">{rendered}</div>;
     throw error;
   }
 
-  // Authenticated — fetch Whop + DB data (graceful degradation)
+  // Fixture mode — still need companyId for the journey component
+  if (ctx.mode === "fixture") {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <CompanyPageHeader
+          title="Set up Activation Rescue"
+          description="Configure your rescue campaign step by step. Nothing sends until you approve it."
+        />
+        <OnboardingJourney
+          companyId={companyId}
+          courses={[]}
+          products={[]}
+          existingMappings={[]}
+          whopUnavailable={true}
+        />
+      </div>
+    );
+  }
+
+  // Connected mode — fetch real data
   const data = await fetchOnboardingData(companyId, ctx.organizationId);
 
   return (
