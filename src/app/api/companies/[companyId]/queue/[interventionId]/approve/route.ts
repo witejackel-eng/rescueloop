@@ -1,10 +1,13 @@
 // POST /api/companies/[companyId]/queue/[interventionId]/approve
 //
 // Approves an awaiting Activation Rescue intervention:
+//  - performs a full send-time safety re-check first
 //  - sets state to "approved"
 //  - records approvedById + approvedAt
 //  - enqueues the durable delivery job (best-effort — Inngest may be absent)
 //  - writes an audit log entry
+//
+// If the safety re-check fails, returns 409 with the failed checks.
 
 export const runtime = "nodejs";
 
@@ -22,6 +25,7 @@ import {
   requireCompanyAdmin,
   authErrorToResponse,
 } from "@/lib/auth/whop-auth";
+import { performSafetyRecheck } from "@/lib/eligibility/safety-recheck";
 
 export async function POST(
   req: NextRequest,
@@ -57,6 +61,7 @@ export async function POST(
       organizationId: true,
       state: true,
       campaignId: true,
+      studentId: true,
     },
   });
 
@@ -72,6 +77,28 @@ export async function POST(
       {
         error: "Intervention is not awaiting approval",
         currentState: intervention.state,
+      },
+      { status: 409 },
+    );
+  }
+
+  // ─── Send-time safety re-check ─────────────────────────────
+  // Before allowing approval, verify that the conditions that made
+  // the student eligible still hold. If any check fails, reject
+  // the approval with 409 and the list of failed checks.
+  const safetyResult = await performSafetyRecheck({
+    interventionId: intervention.id,
+    organizationId: intervention.organizationId,
+    studentId: intervention.studentId,
+    campaignId: intervention.campaignId,
+  });
+
+  if (!safetyResult.safe) {
+    const failedChecks = safetyResult.checks.filter((c) => !c.passed);
+    return NextResponse.json(
+      {
+        error: "Safety re-check failed — approval denied",
+        failedChecks,
       },
       { status: 409 },
     );

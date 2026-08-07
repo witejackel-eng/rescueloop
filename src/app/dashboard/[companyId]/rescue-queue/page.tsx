@@ -1,19 +1,14 @@
 // /dashboard/[companyId]/rescue-queue
 //
-// Canonical rescue queue (WP-03). Shows database-backed Activation Rescue
-// candidates for the admin's org.
+// WP04 Enhanced Rescue Queue — client-driven queue with inspector,
+// segment navigation, keyboard shortcuts, and evidence timeline.
 //
 // FAIL-CLOSED: Calls requireCompanyAccess() at the top.
+// The server component pre-fetches initial data and passes it
+// to the client component for hydration.
 
 import "server-only";
-import Link from "next/link";
 import { getProviderMode } from "@/providers";
-import { FIXTURE_COMPANY_ID } from "@/providers/fixtures/fixtures-data";
-import {
-  getMemberships as getFixtureMemberships,
-  getCourseStudents as getFixtureCourseStudents,
-  getCourses as getFixtureCourses,
-} from "@/providers/fixtures";
 import { db } from "@/lib/db";
 import {
   requireCompanyAccess,
@@ -22,30 +17,31 @@ import {
 import {
   CompanyPageHeader,
   EmptyStateCard,
+  LoadingCard,
 } from "@/components/rescueloop/company/state-cards";
-import { QueueActions } from "@/components/rescueloop/company/queue-actions";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RescueQueueClient } from "@/components/rescueloop/rescue-queue/rescue-queue-client";
 import { Badge } from "@/components/ui/badge";
 import { ListChecks, FlaskConical } from "lucide-react";
-import type { Prisma } from "@prisma/client";
+import type { QueueItem } from "@/components/rescueloop/rescue-queue/wp04-types";
+import type { QueueTab } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-type QueueCandidate = Prisma.InterventionGetPayload<{
-  where: { state: "awaiting_approval" };
-  include: {
-    student: {
-      select: {
-        id: true; name: true; email: true; whopUserId: true;
-        memberships: { include: { product: { select: { id: true; name: true; whopProductId: true } } } };
-        studentStates: { select: { progressPercent: true; lessonsCompleted: true; totalLessons: true; lastActivityAt: true; firstActivityAt: true; course: { select: { id: true; name: true } } } };
-      };
-    };
-    campaign: { select: { id: true; name: true; type: true; cooldownDays: true; maxMessagesPerStudent: true; quietHoursStart: true; quietHoursEnd: true } };
-    campaignVersion: { select: { id: true; versionNumber: true } };
-    eligibilitySnapshot: { select: { id: true; detectedAt: true; evidenceJson: true } };
-  };
-}>;
+// Mapping from DB intervention state string to QueueTab
+function dbStateToQueueTab(state: string): QueueTab {
+  switch (state) {
+    case "awaiting_approval": return "awaiting_review";
+    case "approved": return "approved";
+    case "scheduled": return "scheduled";
+    case "delivery_attempted":
+    case "notification_accepted":
+    case "delivered":
+    case "queued": return "sent";
+    case "dismissed": return "dismissed";
+    case "stopped": return "dismissed";
+    default: return "awaiting_review";
+  }
+}
 
 export default async function RescueQueuePage({
   params,
@@ -69,125 +65,190 @@ export default async function RescueQueuePage({
     return <FixtureRescueQueue companyId={companyId} />;
   }
 
-  // ─── Connected mode (auth confirmed) ────────────────────────
+  // ─── Connected mode: pre-fetch initial data ────────────────
   const interventions = await db.intervention.findMany({
     where: { organizationId: ctx.organizationId, state: "awaiting_approval" },
     orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     include: {
       student: {
         select: {
-          id: true, name: true, email: true, whopUserId: true,
-          memberships: {
-            include: { product: { select: { id: true, name: true, whopProductId: true } } },
-          },
+          id: true,
+          name: true,
+          email: true,
+          whopUserId: true,
           studentStates: {
-            select: { progressPercent: true, lessonsCompleted: true, totalLessons: true, lastActivityAt: true, firstActivityAt: true, course: { select: { id: true, name: true } } },
+            select: {
+              progressPercent: true,
+              lessonsCompleted: true,
+              totalLessons: true,
+              lastActivityAt: true,
+              firstActivityAt: true,
+              course: { select: { id: true, name: true } },
+            },
           },
         },
       },
       campaign: {
-        select: { id: true, name: true, type: true, cooldownDays: true, maxMessagesPerStudent: true, quietHoursStart: true, quietHoursEnd: true },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          cooldownDays: true,
+          maxMessagesPerStudent: true,
+          quietHoursStart: true,
+          quietHoursEnd: true,
+        },
       },
-      campaignVersion: { select: { id: true, versionNumber: true } },
-      eligibilitySnapshot: { select: { id: true, detectedAt: true, evidenceJson: true } },
+      eligibilitySnapshot: {
+        select: { id: true, detectedAt: true, evidenceJson: true },
+      },
     },
   });
 
-  const basePath = `/dashboard/${encodeURIComponent(companyId)}`;
+  // Also get counts for all segments
+  const allInterventions = await db.intervention.findMany({
+    where: { organizationId: ctx.organizationId },
+    select: { id: true, state: true },
+  });
+
+  const counts: Record<QueueTab, number> = {
+    awaiting_review: 0,
+    approved: 0,
+    scheduled: 0,
+    sent: 0,
+    responded: 0,
+    recovered: 0,
+    dismissed: 0,
+  };
+  for (const iv of allInterventions) {
+    const tab = dbStateToQueueTab(iv.state);
+    counts[tab]++;
+  }
+
+  // Map to QueueItem for client hydration
+  const initialItems: QueueItem[] = interventions.map((iv) => {
+    const studentState = iv.student.studentStates[0];
+    const courseName = studentState?.course?.name ?? "Unknown course";
+    const progressPercent = studentState?.progressPercent ?? 0;
+    const lastActivityAt = studentState?.lastActivityAt?.toISOString() ?? iv.createdAt.toISOString();
+    const inactivityDays = studentState?.lastActivityAt
+      ? Math.floor((Date.now() - studentState.lastActivityAt.getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    return {
+      id: iv.id,
+      studentId: iv.student.id,
+      studentName: iv.student.name ?? iv.student.email ?? `user_${iv.student.whopUserId.slice(-6)}`,
+      studentEmail: iv.student.email ?? "",
+      studentAvatarInitials: (iv.student.name ?? "U").slice(0, 2).toUpperCase(),
+      courseName,
+      trigger: iv.trigger,
+      priority: iv.priority as QueueItem["priority"],
+      state: iv.state,
+      inactivityDays,
+      progressPercent,
+      lastActivityAt,
+      scheduledFor: iv.scheduledFor?.toISOString() ?? null,
+      suppressed: false,
+      inCooldown: iv.cooldownUntil ? new Date(iv.cooldownUntil) > new Date() : false,
+      cooldownUntil: iv.cooldownUntil?.toISOString() ?? null,
+    };
+  });
+
+  const awaitingCount = counts.awaiting_review;
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <CompanyPageHeader
-        title="Rescue queue"
-        description="Activation Rescue candidates awaiting your review. Approve, schedule, or dismiss each one."
-      >
-        <Badge variant="outline" className="font-mono text-[12px]">
-          {interventions.length} awaiting
-        </Badge>
-      </CompanyPageHeader>
-
-      {interventions.length === 0 ? (
-        <EmptyStateCard
-          title="No Activation Rescue candidates detected yet"
-          description="When members match your campaign rules, they'll appear here for your review."
-          icon={ListChecks}
-          actionHref={`${basePath}/onboarding`}
-          actionLabel="Configure campaign"
-        />
-      ) : (
-        <div className="flex flex-col gap-4">
-          {interventions.map((iv) => (
-            <Card key={iv.id}>
-              <CardHeader className="gap-2">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                  <CardTitle className="font-serif text-[18px]">
-                    {iv.student.name ?? iv.student.email ?? `user_${iv.student.whopUserId.slice(-6)}`}
-                  </CardTitle>
-                  <Badge variant="outline" className="font-mono text-[11px] uppercase tracking-wide">
-                    {iv.priority}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3">
-                <div className="rounded-md border border-[var(--hairline)] bg-[var(--canvas-elevated)] p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] uppercase tracking-wide text-[var(--ink-muted)]">Trigger</span>
-                    <span className="text-[13px] text-[var(--ink-primary)]">{iv.trigger}</span>
-                  </div>
-                  <p className="mt-1 text-[13px] leading-relaxed text-[var(--ink-secondary)]">{iv.messagePreview}</p>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--hairline)] pt-3">
-                  <Link
-                    href={`${basePath}/responses`}
-                    className="text-[12px] text-[var(--ink-muted)] transition-colors hover:text-[var(--ink-primary)]"
-                  >
-                    View student responses →
-                  </Link>
-                  <QueueActions
-                    companyId={companyId}
-                    interventionId={iv.id}
-                    studentName={iv.student.name ?? iv.student.email ?? `user_${iv.student.whopUserId.slice(-6)}`}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+    <div className="flex flex-col">
+      <div className="shrink-0 border-b border-[var(--hairline)] bg-[var(--canvas)] px-6 py-4">
+        <CompanyPageHeader
+          title="Rescue queue"
+          description="Activation Rescue candidates. Approve, schedule, or dismiss each one."
+        >
+          <Badge variant="outline" className="font-mono text-[12px]">
+            {awaitingCount} awaiting
+          </Badge>
+        </CompanyPageHeader>
+      </div>
+      <RescueQueueClient
+        companyId={companyId}
+        initialItems={initialItems}
+        initialCounts={counts}
+      />
     </div>
   );
 }
 
 // ─── Fixture rescue queue ────────────────────────────────────
+import {
+  FIXTURE_COMPANY_ID,
+} from "@/providers/fixtures/fixtures-data";
+import {
+  getMemberships as getFixtureMemberships,
+  getCourseStudents as getFixtureCourseStudents,
+} from "@/providers/fixtures";
 
 function FixtureRescueQueue({ companyId }: { companyId: string }) {
   const memberships = getFixtureMemberships();
   const courseStudents = getFixtureCourseStudents();
-  const courses = getFixtureCourses();
 
   // Candidates: active members with no course progress
   const candidates = memberships.filter(
     (m) => m.status === "active" && !courseStudents.some((cs) => cs.userId === m.userId),
   );
 
-  const basePath = `/dashboard/${encodeURIComponent(companyId)}`;
+  // Convert to QueueItem format
+  const initialItems: QueueItem[] = candidates.map((m, idx) => ({
+    id: `fixture-iv-${idx}`,
+    studentId: m.userId,
+    studentName: `user_${m.userId}`,
+    studentEmail: "",
+    studentAvatarInitials: `U${idx}`,
+    courseName: "Agency Growth System",
+    trigger: "No course progress detected",
+    priority: "high" as const,
+    state: "awaiting_approval" as QueueItem["state"],
+    inactivityDays: 14,
+    progressPercent: 0,
+    lastActivityAt: new Date(m.joinedAt).toISOString(),
+    scheduledFor: null,
+    suppressed: false,
+    inCooldown: false,
+    cooldownUntil: null,
+  }));
+
+  const counts: Record<QueueTab, number> = {
+    awaiting_review: initialItems.length,
+    approved: 0,
+    scheduled: 0,
+    sent: 0,
+    responded: 0,
+    recovered: 0,
+    dismissed: 0,
+  };
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <CompanyPageHeader
-        title="Rescue queue"
-        description="Activation Rescue candidates awaiting your review."
-      >
-        <Badge
-          variant="outline"
-          className="border-[var(--warning)]/30 bg-[var(--warning-light)]/40 font-mono text-[11px] uppercase tracking-wide text-[var(--warning)]"
-        >
-          <FlaskConical className="mr-1 size-3" />
-          fixture · {candidates.length} candidates
-        </Badge>
-      </CompanyPageHeader>
+    <div className="flex flex-col">
+      <div className="shrink-0 border-b border-[var(--hairline)] bg-[var(--canvas)] px-6 py-4">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-serif text-[26px] leading-tight text-[var(--ink-primary)]">
+              Rescue queue
+            </h1>
+            <p className="text-[14px] text-[var(--ink-secondary)]">
+              Activation Rescue candidates awaiting your review.
+            </p>
+          </div>
+          <Badge
+            variant="outline"
+            className="border-[var(--warning)]/30 bg-[var(--warning-light)]/40 font-mono text-[11px] uppercase tracking-wide text-[var(--warning)]"
+          >
+            <FlaskConical className="mr-1 size-3" />
+            fixture · {candidates.length} candidates
+          </Badge>
+        </div>
+      </div>
 
-      <div className="mb-5 flex items-center gap-2.5 rounded-md border border-[var(--warning)]/30 bg-[var(--warning-light)]/40 p-3">
+      <div className="mb-5 flex items-center gap-2.5 border-b border-[var(--hairline)] bg-[var(--warning-light)]/20 px-6 py-3">
         <FlaskConical className="size-4 shrink-0 text-[var(--warning)]" />
         <p className="text-[13px] text-[var(--ink-secondary)]">
           <span className="font-medium text-[var(--ink-primary)]">Fixture mode.</span>{" "}
@@ -195,47 +256,11 @@ function FixtureRescueQueue({ companyId }: { companyId: string }) {
         </p>
       </div>
 
-      {candidates.length === 0 ? (
-        <EmptyStateCard
-          title="No candidates in fixture data"
-          description="The fixture seed has no active-no-progress members right now."
-          icon={ListChecks}
-          actionHref={`${basePath}/onboarding`}
-          actionLabel="Configure campaign"
-        />
-      ) : (
-        <div className="flex flex-col gap-3">
-          {candidates.map((m) => {
-            const studentName = `user_${m.userId}`;
-            return (
-              <Card key={m.id}>
-                <CardContent className="flex flex-col gap-2 py-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-serif text-[16px] text-[var(--ink-primary)]">{studentName}</span>
-                    <Badge variant="outline" className="font-mono text-[11px] uppercase">
-                      {m.status}
-                    </Badge>
-                  </div>
-                  <div className="font-mono text-[12px] text-[var(--ink-muted)]">
-                    product: {m.productId} · joined: {fmtRelative(new Date(m.joinedAt))}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      <RescueQueueClient
+        companyId={companyId}
+        initialItems={initialItems}
+        initialCounts={counts}
+      />
     </div>
   );
-}
-
-function fmtRelative(d: Date): string {
-  const diffMs = Date.now() - d.getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
