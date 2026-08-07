@@ -46,21 +46,6 @@ const ALLOWED_EVENTS = new Set([
   "pilot.application_submitted",
   "pilot.application_reviewed",
   "pilot.application_accepted",
-  // Onboarding journey events (WP-03)
-  "organization.onboarding_started",
-  "organization.access_verified",
-  "organization.permission_missing",
-  "organization.mapping_viewed",
-  "organization.mapping_saved",
-  "organization.sync_started",
-  "organization.sync_stage_completed",
-  "organization.sync_failed",
-  "organization.threshold_previewed",
-  "organization.threshold_saved",
-  "organization.candidate_previewed",
-  "organization.first_value_reached",
-  "organization.zero_candidate_completed",
-  "organization.onboarding_abandoned",
 ]) as Set<string>;
 
 /**
