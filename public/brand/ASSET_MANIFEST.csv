@@ -1,0 +1,16 @@
+filename,format,dimensions,background,purpose,file_size_budget_kb
+mark-primary.svg,SVG,128x128,transparent,Canonical two-color mark,8
+mark-mono.svg,SVG,128x128,transparent,Single-color ink mark,8
+mark-reversed.svg,SVG,128x128,transparent,Cream mark for dark backgrounds,8
+mark-micro.svg,SVG,64x64,transparent,Simplified 16-20px mark,4
+favicon.svg,SVG,64x64,opaque green,Scalable browser icon,8
+favicon-16.png,PNG,16x16,opaque green,Browser favicon,50
+favicon-32.png,PNG,32x32,opaque green,Browser favicon,50
+favicon-48.png,PNG,48x48,opaque green,Browser/search icon,50
+apple-touch-icon.png,PNG,180x180,opaque green,Apple touch icon,50
+icon-192.png,PNG,192x192,opaque green,Manifest icon,250
+icon-512.png,PNG,512x512,opaque green,Manifest icon,250
+whop-app-icon-512.png,PNG,512x512,opaque ink,Whop listing working export,250
+social-avatar-512.png,PNG,512x512,opaque cream,Social avatar,250
+og-default-1200x630.png,PNG,1200x630,opaque cream,Default OG image,500
+twitter-default-1200x630.png,PNG,1200x630,opaque cream,Default Twitter image,500

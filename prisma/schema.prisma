@@ -1,8 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// RescueLoop — Private pilot database schema
+// PostgreSQL via Neon. Multi-tenant by organisation.
+// All tables are tenant-scoped via organizationId.
 
 generator client {
   provider = "prisma-client-js"
@@ -13,20 +11,1266 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ─── Enums ────────────────────────────────────────────────────
+
+enum OrganizationStatus {
+  active
+  paused
+  suspended
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum MemberRole {
+  owner
+  admin
+  member
+}
+
+enum InstallationStatus {
+  pending
+  active
+  uninstalled
+  revoked
+}
+
+enum MembershipStatus {
+  active
+  trialing
+  past_due
+  cancelling
+  cancelled
+  paused_membership
+}
+
+enum EnrollmentStatus {
+  not_started
+  in_progress
+  completed
+  stalled
+}
+
+enum CampaignType {
+  activation_rescue
+  early_progress_rescue
+  mid_course_rescue
+  near_finish_rescue
+  cancellation_rescue
+}
+
+enum CampaignStatus {
+  active
+  paused
+  archived
+  draft
+}
+
+enum ApprovalMode {
+  manual
+  automatic
+}
+
+enum EligibilityState {
+  pending_evaluation
+  eligible
+  ineligible
+  suppressed
+  expired
+}
+
+enum InterventionState {
+  drafted
+  awaiting_approval
+  approved
+  scheduled
+  queued
+  delivery_attempted
+  notification_accepted
+  delivered
+  failed
+  stopped
+  dismissed
+}
+
+enum DeliveryState {
+  queued
+  attempted
+  api_accepted
+  failed
+  stopped_before_send
+  delivery_unknown
+  dead_lettered
+}
+
+enum OutcomeState {
+  no_response
+  opened
+  responded
+  reminded_later
+  requested_help
+  opted_out
+  course_started
+  progress_resumed
+  already_completed
+}
+
+enum AttributionState {
+  unattributed
+  strongly_associated
+  confirmed
+  estimated
+  rejected
+}
+
+enum ResponseType {
+  continue_course
+  stuck
+  remind_later
+  already_completed
+  human_help
+  stop_reminders
+}
+
+enum BlockerType {
+  lack_of_time
+  material_difficult
+  unsure_next_step
+  expected_something_different
+  technical_problem
+  needs_creator_help
+}
+
+enum WebhookStatus {
+  received
+  processing
+  processed
+  failed
+  duplicate
+}
+
+enum AuditAction {
+  created
+  updated
+  deleted
+  approved
+  dismissed
+  scheduled
+  suppressed
+  unsuppressed
+  paused
+  resumed
+  sent
+  delivered
+  responded
+  opted_out
+  synced
+  configuration_changed
+}
+
+enum DataDeletionStatus {
+  requested
+  verified
+  scheduled
+  processing
+  completed
+  failed
+  cancelled
+}
+
+enum DataExportStatus {
+  Requested
+  Processing
+  Completed
+  Failed
+  Expired
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+  refunded
+}
+
+// ─── Accounts and installation ───────────────────────────────
+
+model User {
+  id         String               @id @default(cuid())
+  whopUserId String?              @unique
+  email      String?              @unique
+  name       String?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+  members    OrganizationMember[]
+
+  @@map("users")
+}
+
+model Organization {
+  id              String             @id @default(cuid())
+  name            String
+  slug            String             @unique
+  status          OrganizationStatus @default(active)
+  planTier        String             @default("rescue")
+  isPaused        Boolean            @default(false)
+  quietHoursStart String? // "20:00"
+  quietHoursEnd   String? // "08:00"
+  timezone        String             @default("America/New_York")
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  members            OrganizationMember[]
+  installations      WhopInstallation[]
+  products           Product[]
+  courses            Course[]
+  mappings           ProductCourseMapping[]
+  students           Student[]
+  campaigns          Campaign[]
+  interventions      Intervention[]
+  webhooks           WebhookReceipt[]
+  auditLogs          AuditLog[]
+  valueEvents        ValueEvent[]
+  suppressions       Suppression[]
+  deletionRequests   DataDeletionRequest[]
+  exportRequests     DataExportRequest[]
+  syncExecutions     SyncExecution[]
+  syncCheckpoints    SyncCheckpoint[]
+  reconciliationRuns   ReconciliationRun[]
+  onboardingProgresses  OnboardingProgress[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String     @id @default(cuid())
+  organizationId String
+  userId         String
+  role           MemberRole @default(member)
+  createdAt      DateTime   @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model WhopInstallation {
+  id              String             @id @default(cuid())
+  organizationId  String
+  whopCompanyId   String             @unique
+  status          InstallationStatus @default(pending)
+  requestedScopes String // JSON-encoded string array
+  grantedScopes   String // JSON-encoded string array
+  installedById   String?
+  installedAt     DateTime           @default(now())
+  uninstalledAt   DateTime?         
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  credentials  IntegrationCredential[]
+
+  @@index([organizationId])
+  @@map("whop_installations")
+}
+
+model IntegrationCredential {
+  id             String    @id @default(cuid())
+  installationId String
+  keyType        String // "api_key", "webhook_secret", etc.
+  encryptedValue String // encrypted at rest
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  installation WhopInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@index([installationId])
+  @@map("integration_credentials")
+}
+
+model Product {
+  id             String   @id @default(cuid())
+  organizationId String
+  whopProductId  String   @unique
+  name           String
+  priceCents     Int      @default(0)
+  currency       String   @default("USD")
+  billingCycle   String   @default("monthly") // monthly, annual, one_time
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mappings     ProductCourseMapping[]
+  memberships  Membership[]
+
+  @@index([organizationId])
+  @@map("products")
+}
+
+model Course {
+  id                   String   @id @default(cuid())
+  organizationId       String
+  externalCourseId     String // Whop course ID
+  externalExperienceId String? // Whop experience ID (required for notification delivery)
+  name                 String
+  lessonCount          Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mappings       ProductCourseMapping[]
+  enrollments    Enrollment[]
+  studentStates  StudentCourseState[]
+  progressEvents ProgressEvent[]
+
+  @@index([organizationId])
+  @@map("courses")
+}
+
+model ProductCourseMapping {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  productId           String
+  courseId            String
+  activationDelayDays Int      @default(7)
+  isConfirmed         Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product       Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  course        Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  campaignLinks Campaign[] // Campaigns that use this mapping as their confirmed mapping
+
+  @@unique([productId, courseId])
+  @@index([organizationId])
+  @@map("product_course_mappings")
+}
+
+// ─── Students and learning state ─────────────────────────────
+
+model Student {
+  id             String   @id @default(cuid())
+  organizationId String
+  whopUserId     String // Whop user ID
+  email          String?
+  name           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships      Membership[]
+  enrollments      Enrollment[]
+  studentStates    StudentCourseState[]
+  progressEvents   ProgressEvent[]
+  interventions    Intervention[]
+  responses        StudentResponse[]
+  blockerResponses BlockerResponse[]
+  suppressions     Suppression[]
+
+  @@unique([organizationId, whopUserId])
+  @@index([organizationId])
+  @@map("students")
+}
+
+model Membership {
+  id               String           @id @default(cuid())
+  organizationId   String
+  studentId        String
+  productId        String
+  whopMembershipId String           @unique
+  status           MembershipStatus @default(active)
+  joinedAt         DateTime        
+  renewalDate      DateTime?       
+  cancelledAt      DateTime?       
+  priceCents       Int              @default(0)
+  currency         String           @default("USD")
+  lastSyncedAt     DateTime         @default(now())
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  student  Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  product  Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  events   MembershipEvent[]
+  payments PaymentEvent[]
+
+  @@index([organizationId])
+  @@index([studentId])
+  @@map("memberships")
+}
+
+model Enrollment {
+  id             String           @id @default(cuid())
+  organizationId String
+  studentId      String
+  courseId       String
+  status         EnrollmentStatus @default(not_started)
+  enrolledAt     DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId])
+  @@index([organizationId])
+  @@map("enrollments")
+}
+
+model StudentCourseState {
+  id               String    @id @default(cuid())
+  organizationId   String
+  studentId        String
+  courseId         String
+  progressPercent  Int       @default(0)
+  lessonsCompleted Int       @default(0)
+  totalLessons     Int       @default(0)
+  firstActivityAt  DateTime?
+  lastActivityAt   DateTime?
+  lastSyncedAt     DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId])
+  @@index([organizationId])
+  @@map("student_course_states")
+}
+
+model ProgressEvent {
+  id                    String    @id @default(cuid())
+  organizationId        String
+  studentId             String
+  courseId              String
+  externalInteractionId String? // Whop's course_lesson_interaction ID — unique per student+lesson
+  lessonId              String? // External lesson ID for precise dedup
+  lessonIndex           Int
+  lessonTitle           String?
+  action                String // "completed", "started", "stalled"
+  payloadHash           String? // SHA-256 of interaction payload for dedup
+  sourceTimestamp       DateTime? // When the event occurred at the source
+  receivedAt            DateTime  @default(now()) // When we received it
+  sourceVersion         String? // Provider version / etag for staleness checks
+  occurredAt            DateTime 
+  webhookReceiptId      String?
+  createdAt             DateTime  @default(now())
+
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  // Prevent the same Whop lesson interaction from being counted twice
+  @@unique([organizationId, studentId, externalInteractionId])
+  // Payload hash dedup: prevents identical content re-ingestion
+  @@unique([organizationId, payloadHash])
+  @@index([organizationId, studentId, courseId])
+  @@index([occurredAt])
+  @@index([sourceTimestamp])
+  @@map("progress_events")
+}
+
+model MembershipEvent {
+  id               String   @id @default(cuid())
+  organizationId   String
+  membershipId     String
+  eventType        String // "created", "activated", "cancelled", "renewed"
+  occurredAt       DateTime
+  webhookReceiptId String?
+  createdAt        DateTime @default(now())
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, membershipId])
+  @@map("membership_events")
+}
+
+model PaymentEvent {
+  id               String        @id @default(cuid())
+  organizationId   String
+  membershipId     String
+  whopPaymentId    String        @unique
+  status           PaymentStatus @default(pending)
+  amountCents      Int
+  currency         String        @default("USD")
+  occurredAt       DateTime     
+  webhookReceiptId String?
+  createdAt        DateTime      @default(now())
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, membershipId])
+  @@map("payment_events")
+}
+
+// ─── Campaign execution ──────────────────────────────────────
+
+model Campaign {
+  id                     String         @id @default(cuid())
+  organizationId         String
+  type                   CampaignType   @default(activation_rescue)
+  name                   String
+  status                 CampaignStatus @default(active)
+  approvalMode           ApprovalMode   @default(manual)
+  maxMessagesPerStudent  Int            @default(2)
+  maxMessagesPerOrg      Int            @default(100) // Org-wide message limit per period
+  cooldownDays           Int            @default(14)
+  quietHoursStart        String         @default("20:00")
+  quietHoursEnd          String         @default("08:00")
+  stopAfterResponse      Boolean        @default(true)
+  stopAfterProgress      Boolean        @default(true)
+  stopAfterMembershipEnd Boolean        @default(true)
+  messageTemplate        String
+  confirmedMappingId     String? // Explicit campaign-to-mapping relationship
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  confirmedMapping ProductCourseMapping? @relation(fields: [confirmedMappingId], references: [id])
+  versions         CampaignVersion[]
+  interventions    Intervention[]
+
+  @@index([organizationId])
+  @@map("campaigns")
+}
+
+model CampaignVersion {
+  id              String   @id @default(cuid())
+  campaignId      String
+  versionNumber   Int
+  rulesJson       Json // versioned rule snapshot
+  messageTemplate String
+  createdAt       DateTime @default(now())
+
+  campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  interventions Intervention[]
+
+  @@unique([campaignId, versionNumber])
+  @@map("campaign_versions")
+}
+
+model CampaignRule {
+  id         String   @id @default(cuid())
+  campaignId String
+  ruleType   String // "progress_min", "inactivity_days", etc.
+  ruleValue  String
+  createdAt  DateTime @default(now())
+
+  // Note: rules are versioned via CampaignVersion.rulesJson for historical evidence
+  @@map("campaign_rules")
+}
+
+model EligibilitySnapshot {
+  id                     String           @id @default(cuid())
+  organizationId         String
+  studentId              String
+  campaignId             String
+  campaignVersionId      String
+  idempotencyKey         String           @unique // Prevents duplicate snapshots on re-run
+  state                  EligibilityState @default(pending_evaluation)
+  evidenceJson           Json // versioned evidence at detection time
+  detectedAt             DateTime         @default(now())
+  eligibilityWindowStart DateTime?        // Start of the eligibility evaluation window
+  expiresAt              DateTime?       
+  createdAt              DateTime         @default(now())
+
+  interventions Intervention[]
+
+  // One immutable snapshot per (student + campaign version + eligibility window)
+  @@unique([studentId, campaignVersionId, eligibilityWindowStart])
+  @@index([organizationId, studentId])
+  @@index([campaignId, state])
+  @@map("eligibility_snapshots")
+}
+
+model Intervention {
+  id                    String            @id @default(cuid())
+  organizationId        String
+  studentId             String
+  campaignId            String
+  campaignVersionId     String?
+  eligibilitySnapshotId String?
+  state                 InterventionState @default(awaiting_approval)
+  outcomeState          OutcomeState      @default(no_response)
+  attributionState      AttributionState  @default(unattributed)
+  priority              String            @default("medium")
+  trigger               String
+  evidenceJson          Json // stored evidence at creation time
+  messagePreview        String
+  messageEdited         String?
+  idempotencyKey        String            @unique
+  approvedById          String?
+  approvedAt            DateTime?        
+  scheduledFor          DateTime?        
+  sentAt                DateTime?        
+  respondedAt           DateTime?        
+  recoveredAt           DateTime?        
+  cooldownUntil         DateTime?        
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student             Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  campaign            Campaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignVersion     CampaignVersion?     @relation(fields: [campaignVersionId], references: [id])
+  eligibilitySnapshot EligibilitySnapshot? @relation(fields: [eligibilitySnapshotId], references: [id])
+  deliveryAttempts    DeliveryAttempt[]
+  responses           StudentResponse[]
+  valueEvents         ValueEvent[]
+  auditLogs           AuditLog[]
+
+  @@index([organizationId, state])
+  @@index([studentId])
+  @@map("interventions")
+}
+
+model DeliveryAttempt {
+  id                String        @id @default(cuid())
+  interventionId    String
+  state             DeliveryState @default(queued)
+  attemptNumber     Int           @default(1)
+  idempotencyKey    String        @unique
+  providerMessageId String? // Whop message ID
+  apiAcceptedAt     DateTime?    
+  deliveredAt       DateTime?    
+  failedAt          DateTime?    
+  errorMessage      String?
+  retryCount        Int           @default(0)
+  nextAttemptAt     DateTime?    
+  createdAt         DateTime      @default(now())
+
+  intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+
+  @@index([interventionId])
+  @@index([state])
+  @@map("delivery_attempts")
+}
+
+model StudentResponse {
+  id             String       @id @default(cuid())
+  interventionId String
+  studentId      String
+  responseType   ResponseType
+  blockerType    BlockerType?
+  note           String?
+  accessTokenId  String? // Reference to the StudentAccessToken used (not the raw token)
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime     @default(now())
+
+  intervention Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([interventionId])
+  @@index([studentId])
+  @@map("student_responses")
+}
+
+// Opaque student access tokens.
+// The raw token is never stored — only its SHA-256 hash.
+// Tokens are scoped to a specific intervention + student + organisation.
+model StudentAccessToken {
+  id             String    @id @default(cuid())
+  organizationId String
+  interventionId String
+  studentId      String
+  tokenHash      String    @unique // SHA-256 hash of the raw token
+  expiresAt      DateTime 
+  revokedAt      DateTime?
+  lastUsedAt     DateTime?
+  consumedAt     DateTime? // Set for one-time actions
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, studentId])
+  @@index([interventionId])
+  @@map("student_access_tokens")
+}
+
+model BlockerResponse {
+  id             String      @id @default(cuid())
+  organizationId String
+  studentId      String
+  blocker        BlockerType
+  note           String?
+  interventionId String?
+  createdAt      DateTime    @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, studentId])
+  @@map("blocker_responses")
+}
+
+model ReminderRequest {
+  id             String   @id @default(cuid())
+  interventionId String
+  studentId      String
+  reminderTime   DateTime
+  timezone       String   @default("America/New_York")
+  createdAt      DateTime @default(now())
+
+  @@index([interventionId])
+  @@map("reminder_requests")
+}
+
+model Suppression {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  scope          String   @default("organization") // organization, course
+  reason         String   @default("student_opt_out")
+  interventionId String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, studentId, scope])
+  @@index([organizationId])
+  @@map("suppressions")
+}
+
+// ─── Trust and attribution ───────────────────────────────────
+
+model WebhookReceipt {
+  id             String        @id @default(cuid())
+  organizationId String
+  whopEventId    String        @unique
+  eventType      String
+  payloadHash    String
+  status         WebhookStatus @default(received)
+  attemptCount   Int           @default(0)
+  lastError      String?
+  receivedAt     DateTime      @default(now())
+  processedAt    DateTime?    
+  payloadJson    Json // stored for replay/audit
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@map("webhook_receipts")
+}
+
+model AuditLog {
+  id             String      @id @default(cuid())
+  organizationId String
+  actorId        String? // user ID or "system"
+  action         AuditAction
+  objectType     String // "intervention", "campaign", "organization"
+  objectId       String
+  interventionId String?
+  previousState  String?
+  newState       String?
+  reason         String?
+  metadataJson   Json?
+  createdAt      DateTime    @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  intervention Intervention? @relation(fields: [interventionId], references: [id])
+
+  @@index([organizationId, objectType, objectId])
+  @@index([interventionId])
+  @@map("audit_logs")
+}
+
+model ValueEvent {
+  id               String           @id @default(cuid())
+  organizationId   String
+  interventionId   String?
+  studentId        String?
+  event            String
+  attributionLevel AttributionState @default(unattributed)
+  amountCents      Int              @default(0)
+  currency         String           @default("USD")
+  formula          String? // explanation of how the amount was derived
+  policyVersion    String           @default("2026-08-01")
+  // Reference to the source payment event that created this value event.
+  // Unique constraint prevents one payment from creating duplicate value events.
+  paymentEventId   String?          @unique
+  createdAt        DateTime         @default(now())
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  intervention Intervention?         @relation(fields: [interventionId], references: [id])
+  evidence     AttributionEvidence[]
+
+  @@index([organizationId, attributionLevel])
+  @@index([interventionId])
+  @@map("value_events")
+}
+
+model AttributionEvidence {
+  id           String   @id @default(cuid())
+  valueEventId String
+  evidenceType String // "intervention_sent", "course_started", "payment_succeeded"
+  evidenceRef  String // reference to source record
+  timestamp    DateTime
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  valueEvent ValueEvent @relation(fields: [valueEventId], references: [id], onDelete: Cascade)
+
+  @@index([valueEventId])
+  @@map("attribution_evidence")
+}
+
+model DataDeletionRequest {
+  id             String             @id @default(cuid())
+  organizationId String
+  requestedById  String?
+  status         DataDeletionStatus @default(requested)
+  reason         String?
+  verifiedAt     DateTime?         
+  scheduledAt    DateTime?         
+  processedAt    DateTime?         
+  requestedAt    DateTime           @default(now())
+  completedAt    DateTime?         
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("data_deletion_requests")
+}
+
+model DataExportRequest {
+  id                String           @id @default(cuid())
+  organizationId    String
+  requestedById     String?
+  status            DataExportStatus @default(Requested)
+  downloadToken     String           @unique // Opaque time-limited download token
+  downloadExpiresAt DateTime        
+  createdAt         DateTime         @default(now())
+  completedAt       DateTime?       
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([downloadToken])
+  @@index([status])
+  @@map("data_export_requests")
+}
+
+// ─── Transactional outbox ────────────────────────────────────
+// Ensures job dispatch is durable. When application state requires a job:
+// 1. Write the domain mutation + OutboxEvent in the same DB transaction
+// 2. Commit
+// 3. Dispatcher reads pending events and dispatches to Inngest
+// 4. Marks dispatched (or failed → dead-letter after retries)
+
+enum OutboxState {
+  pending
+  dispatching
+  dispatched
+  failed
+  dead_letter
+}
+
+model OutboxEvent {
+  id              String      @id @default(cuid())
+  organizationId  String
+  eventType       String // e.g. "whop/webhook.received", "deliver/intervention"
+  payloadJson     Json
+  state           OutboxState @default(pending)
+  idempotencyKey  String      @unique
+  attemptCount    Int         @default(0)
+  maxAttempts     Int         @default(5)
+  lastError       String?
+  dispatchedAt    DateTime?  
+  nextAttemptAt   DateTime?  
+  externalEventId String? // Inngest event ID after successful dispatch
+  claimedBy       String? // Worker identifier that holds the lease
+  claimedAt       DateTime?   // When the lease was acquired
+  leaseExpiresAt  DateTime?   // When the lease expires
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([organizationId, state])
+  @@index([state, nextAttemptAt])
+  @@index([state, claimedBy, leaseExpiresAt])
+  @@map("outbox_events")
+}
+
+model JobExecution {
+  id             String    @id @default(cuid())
+  organizationId String
+  outboxEventId  String?
+  jobType        String // e.g. "process-webhook", "deliver-intervention"
+  runId          String? // Inngest run ID
+  status         String    @default("pending") // pending, running, completed, failed
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?
+  metadataJson   Json?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, status])
+  @@index([jobType, status])
+  @@map("job_executions")
+}
+
+model DeadLetterEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  outboxEventId  String?
+  eventType      String
+  payloadJson    Json
+  errorMessage   String
+  attemptCount   Int
+  deadLetteredAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("dead_letter_events")
+}
+
+// ─── Usage metering ──────────────────────────────────────────
+
+enum PlanTier {
+  rescue
+  growth
+  scale
+  internal
+  pilot
+}
+
+model Plan {
+  id                       String   @id @default(cuid())
+  tier                     PlanTier @unique
+  name                     String
+  maxMonitoredMembers      Int
+  maxCourses               Int
+  maxCampaigns             Int
+  maxSeats                 Int
+  maxCandidatesEvaluated   Int
+  maxInterventionsCreated  Int
+  maxNotificationsAccepted Int
+  maxStoredEvents          Int
+  maxExports               Int
+  priceCents               Int
+  currency                 String   @default("USD")
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@map("plans")
+}
+
+model SubscriptionEntitlement {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  planTier           PlanTier @default(pilot)
+  billingPeriodStart DateTime
+  billingPeriodEnd   DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("subscription_entitlements")
+}
+
+model UsageCounter {
+  id             String   @id @default(cuid())
+  organizationId String
+  metric         String // "monitored_members", "candidates_evaluated", etc.
+  period         String // "2026-08" (YYYY-MM)
+  count          Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, metric, period])
+  @@index([organizationId, period])
+  @@map("usage_counters")
+}
+
+model UsageEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  metric         String
+  increment      Int      @default(1)
+  idempotencyKey String?  @unique
+  metadataJson   Json?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, metric, occurredAt])
+  @@map("usage_events")
+}
+
+enum ReservationStatus {
+  reserved
+  committed
+  released
+}
+
+model UsageReservation {
+  id             String            @id @default(cuid())
+  organizationId String
+  metric         String
+  period         String
+  idempotencyKey String            @unique
+  status         ReservationStatus @default(reserved)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId, metric, period])
+  @@index([status])
+  @@map("usage_reservations")
+}
+
+model PlanOverride {
+  id             String   @id @default(cuid())
+  organizationId String
+  metric         String
+  overrideLimit  Int
+  reason         String
+  appliedBy      String
+  approvedBy     String
+  startsAt       DateTime
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, metric])
+  @@index([expiresAt])
+  @@map("plan_overrides")
+}
+
+// ─── Private pilot applications ──────────────────────────────
+
+enum PilotReviewStatus {
+  New
+  Reviewing
+  Qualified
+  Contacted
+  Accepted
+  Rejected
+  Withdrawn
+}
+
+model PilotApplication {
+  id                       String            @id @default(cuid())
+  fullName                 String
+  businessName             String
+  whopBusinessUrl          String?
+  email                    String
+  approximatePayingMembers Int?
+  courses                  String?
+  typicalMembershipPrice   Float?
+  monthlyNewMembers        Int?
+  currentFollowUpProcess   String?
+  primaryRetentionConcern  String?
+  preferredPilotTiming     String
+  consentToContact         Boolean
+  reviewStatus             PilotReviewStatus @default(New)
+  honeypot                 String?           @map("hp")
+  reviewNotes              String?
+  reviewedAt               DateTime?        
+  reviewedBy               String?
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+
+  @@index([reviewStatus])
+  @@index([email])
+  @@map("pilot_applications")
+}
+
+// ─── Internal audit trail ────────────────────────────────────
+// Records every action taken by internal operators for accountability.
+
+model InternalAuditLog {
+  id            String   @id @default(cuid())
+  actorId       String // internal operator identifier
+  action        String // e.g. "pilot.review", "sync.retry", "dead-letter.requeue"
+  objectType    String // "pilot_application", "outbox_event", "dead_letter", etc.
+  objectId      String
+  tenantScope   String? // organization ID if tenant-scoped, null if global
+  previousState String?
+  newState      String?
+  reason        String
+  metadataJson  Json?
+  createdAt     DateTime @default(now())
+
+  @@index([actorId])
+  @@index([objectType, objectId])
+  @@index([tenantScope])
+  @@map("internal_audit_logs")
+}
+
+// ─── Synchronization records ─────────────────────────────────
+
+enum SyncExecutionState {
+  pending
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum SyncStageState {
+  pending
+  running
+  completed
+  failed
+  skipped
+}
+
+enum SyncTrigger {
+  manual
+  scheduled
+  webhook
+  resumption
+}
+
+enum ReconciliationState {
+  pending
+  running
+  completed
+  failed
+}
+
+model SyncExecution {
+  id             String             @id @default(cuid())
+  organizationId String
+  provider       String             @default("whop")
+  environment    String             @default("production")
+  trigger        SyncTrigger        @default(manual)
+  requestedBy    String? // user ID or "system"
+  state          SyncExecutionState @default(pending)
+  startedAt      DateTime           @default(now())
+  completedAt    DateTime?         
+  errorSummary   String?
+  jobId          String? // Inngest / external job ID
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages          SyncStage[]
+  checkpoints     SyncCheckpoint[]
+  reconciliations ReconciliationRun[]
+
+  @@index([organizationId, state])
+  @@index([provider, state])
+  @@map("sync_executions")
+}
+
+model SyncStage {
+  id              String         @id @default(cuid())
+  syncExecutionId String
+  resourceType    String // "courses", "products", "memberships", "progress"
+  state           SyncStageState @default(pending)
+  startedAt       DateTime       @default(now())
+  completedAt     DateTime?     
+  pagesProcessed  Int            @default(0)
+  recordsRead     Int            @default(0)
+  recordsCreated  Int            @default(0)
+  recordsUpdated  Int            @default(0)
+  recordsSkipped  Int            @default(0)
+  retryCount      Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  syncExecution SyncExecution @relation(fields: [syncExecutionId], references: [id], onDelete: Cascade)
+
+  @@index([syncExecutionId])
+  @@index([resourceType, state])
+  @@map("sync_stages")
+}
+
+model SyncCheckpoint {
+  id                String   @id @default(cuid())
+  organizationId    String
+  syncExecutionId   String
+  resource          String // "courses", "products", "memberships", "progress"
+  cursor            String? // Provider cursor for resumption
+  sourceWatermark   String? // Provider timestamp / etag for staleness checks
+  lastCompletedPage Int      @default(0)
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  syncExecution SyncExecution @relation(fields: [syncExecutionId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, resource])
+  @@index([organizationId, resource])
+  @@map("sync_checkpoints")
+}
+
+enum ReconciliationOutcomeClassification {
+  matched
+  membership_without_course_activity
+  course_activity_without_membership
+  unmapped_product
+  missing_source_fields
+  stale_source_record
+}
+
+enum ReconciliationResolutionState {
+  pending
+  resolved
+  ignored
+  escalated
+}
+
+model ReconciliationOutcome {
+  id                  String                              @id @default(cuid())
+  reconciliationRunId String
+  organizationId      String
+  studentId           String
+  membershipId        String?
+  courseId            String
+  mappingId           String?
+  classification      ReconciliationOutcomeClassification
+  resolutionState     ReconciliationResolutionState       @default(pending)
+  evidenceJson        Json?
+  resolvedAt          DateTime?                          
+  createdAt           DateTime                            @default(now())
+
+  reconciliationRun ReconciliationRun @relation(fields: [reconciliationRunId], references: [id], onDelete: Cascade)
+
+  @@index([reconciliationRunId])
+  @@index([organizationId, classification])
+  @@index([studentId])
+  @@map("reconciliation_outcomes")
+}
+
+model OnboardingProgress {
+  id               String    @id @default(cuid())
+  organizationId   String
+  companyId        String
+  currentStep      String
+  stepsJson        String    // JSON-serialized step states
+  syncProgressJson String?   // JSON-serialized sync progress
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, companyId])
+  @@index([organizationId])
+  @@map("onboarding_progress")
+}
+
+model ReconciliationRun {
+  id                              String              @id @default(cuid())
+  organizationId                  String
+  courseId                        String
+  syncExecutionId                 String?
+  matched                         Int                 @default(0)
+  membershipWithoutCourseActivity Int                 @default(0)
+  courseActivityWithoutMembership Int                 @default(0)
+  unmappedProduct                 Int                 @default(0)
+  missingSourceFields             Int                 @default(0)
+  staleSourceRecord               Int                 @default(0)
+  totalEvaluated                  Int                 @default(0)
+  state                           ReconciliationState @default(pending)
+  startedAt                       DateTime            @default(now())
+  completedAt                     DateTime?          
+  createdAt                       DateTime            @default(now())
+  updatedAt                       DateTime            @updatedAt
+
+  organization  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  syncExecution SyncExecution?          @relation(fields: [syncExecutionId], references: [id], onDelete: SetNull)
+  outcomes      ReconciliationOutcome[]
+
+  @@index([organizationId, courseId])
+  @@index([state])
+  @@map("reconciliation_runs")
 }

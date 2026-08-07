@@ -555,3 +555,284 @@ Implemented the stable app shell with regional skeletons and content-region erro
 - All interactive elements have aria-labels
 - Error states use role="alert" + aria-live="assertive"
 - Warm cream design system colors (no indigo/blue)
+
+## Task 3e-3f: WP-03 Threshold/Candidate Preview, First-Value Completion, Fixture/Connected Separation, Root Page
+**Date:** 2026-08-07
+**Status:** Completed
+
+### Summary
+Implemented threshold/candidate preview, first-value completion, fixture/connected separation, and updated the root page to show the onboarding journey. All 7 files created/modified as specified.
+
+### Files Created
+
+1. **`src/components/rescueloop/onboarding/threshold-step.tsx`**
+   - Client component for setting inactivity threshold
+   - Slider (1–30 days) + numeric input with validation
+   - "Hypothesis" badge on threshold label
+   - 7-day default with "Suggested" callout based on common course patterns
+   - "Preview candidates" button → shows candidate count, percentage, sample list
+   - Safety implications panel (cooldown, quiet hours, max messages, threshold warning)
+   - "Nothing has been sent" / "Previewing never generates or sends" disclaimers
+   - Back/Next navigation
+
+2. **`src/components/rescueloop/onboarding/candidate-preview-step.tsx`**
+   - Full candidate list with: name/email, course, product, membership status badge, start date, progress evidence, inactivity duration (amber badge), eligibility reason, unknown evidence marker (amber badge), suppressed status (with snowflake icon), cooldown status
+   - "Nothing has been sent" banner (green ShieldCheck)
+   - "Previewing never generates or sends a message" disclaimer
+   - Candidates found → "Continue to Rescue Queue" button → routes to `/dashboard/[companyId]/rescue-queue`
+   - Zero candidates → inline zero-candidate success state
+
+3. **`src/components/rescueloop/onboarding/zero-candidate-state.tsx`**
+   - Zero candidates IS success (not failure) — restrained green checkmark Closing Signal
+   - Explains: scan completed, no members meet threshold, threshold adjustable, data freshness, monitoring promise
+   - "Go to dashboard" button → `/dashboard/[companyId]/overview`
+
+4. **`src/components/rescueloop/onboarding/completion-step.tsx`**
+   - Shows when all steps complete: Access ✓, Course mapped ✓, Sync ✓, Threshold ✓, Candidates ✓
+   - One restrained Closing Signal confirmation
+   - Summary stats: courses connected, members scanned, candidates found, safety exclusions
+   - Threshold badge
+   - "Nothing has been sent" final confirmation
+   - Conditional next action: "Go to Rescue Queue" (if candidates) + "Go to Dashboard"
+
+5. **`src/lib/onboarding/mode-guard.ts`**
+   - `isFixtureMode()` — checks `RESCUELOOP_FIXTURE_MODE` env var
+   - `ensureConnectedMode()` — throws `FixtureModeError` if fixture mode active and route requires real data
+   - `FixtureModeError` — typed error class with `code: "FIXTURE_MODE_GUARD"`
+   - `FixtureCandidate` / `FixtureOnboardingState` interfaces
+   - `getFixtureOnboardingState(thresholdDays)` — generates deterministic fixture data with 6 candidates
+   - `getFixtureCandidateCount(days)` / `getFixtureCandidateSamples(days, limit)` — preview helpers
+   - `FIXTURE_COMPANY_ID` exported for routing
+
+6. **`src/app/api/dashboard/[companyId]/onboarding/route.ts`**
+   - GET: returns current onboarding state + progress (fixture or connected mode)
+   - POST: advances onboarding to next step (validates with Zod schema)
+   - Both validate Whop admin access via `requireCompanyAdmin()`
+   - Uses `OnboardingProgress` model for step tracking (not Organization)
+   - Uses `SyncExecution` for lastSyncedAt
+   - Uses `StudentCourseState.lastActivityAt` for candidate counting
+   - **Never sends real notifications during onboarding** — enforced by design, `notificationsSent: 0` always
+
+7. **`src/app/page.tsx`** (modified)
+   - Fixture mode → demo onboarding journey with step indicator, progress bar, DEMO badge
+   - 4-step wizard: Welcome → Threshold → Candidates → Complete
+   - Whop mode → marketing landing page with logo, hero, "Get Started" → `/onboarding`
+   - Unconfigured → setup instructions with numbered steps + fixture mode hint
+   - Uses existing brand components (`RescueLoopLogo`), shadcn/ui components, motion animations
+   - Responsive design, brand tokens, no indigo/blue
+
+### Design Decisions
+- Threshold default 7 days labelled "Hypothesis" (not "configuration")
+- Zero-candidate state is explicitly success, not failure
+- Closing Signal (green checkmark) used sparingly — only at completion states
+- Fixture mode has amber "DEMO" banner at top of page
+- All "nothing sent" / "previewing never sends" disclaimers use ShieldCheck + green border
+- Candidate inactivity shown as amber badge with Clock icon
+- Unknown evidence and suppressed status shown as distinct badges
+
+### Verification
+- `bun run lint` — 0 new errors (pre-existing warning in student-rescue blocker page)
+- TypeScript compilation — 0 errors in new files
+- Dev server — GET / 200 responses confirmed
+- All components use existing shadcn/ui (Card, Button, Badge, Slider, Progress, Input, Label)
+- Brand tokens: var(--recovery-green), var(--ink-primary), var(--warning), etc.
+- Responsive design throughout
+- No indigo/blue colors
+
+---
+
+## Task 3c-3d: Onboarding state machine, permission diagnostics, course mapping, first sync (WP-03)
+**Date:** 2026-08-07
+**Status:** Completed
+
+### Summary
+Implemented the complete onboarding state machine, permission diagnostics system, course mapping with zero-course state, first sync with resume, and onboarding analytics. All components use the existing brand tokens, shadcn/ui library, and project patterns.
+
+### Files Created
+
+1. **`src/lib/onboarding/onboarding-state.ts`** — Onboarding state machine
+   - States: entry → access_check → mapping → first_sync → threshold → preview → complete
+   - Types: OnboardingStep, OnboardingStatus, OnboardingStepState, OnboardingState
+   - Functions: getNextStep, getStepIndex, isStepComplete, canAdvanceTo, createInitialState, completeStep, failStep, getProgressFraction, getProgressPercent
+   - Serialization: serializeOnboardingState, deserializeOnboardingState
+
+2. **`src/lib/onboarding/permission-diagnostics.ts`** — Permission diagnostics system
+   - 10 diagnostic categories: connected, missing_api_key, invalid_token, non_admin, missing_scopes, whop_temporary_failure, rate_limit, no_courses, db_unavailable, stale_connection
+   - DiagnosticResult type with safe ID generation (never exposes secrets)
+   - runDiagnostics(companyId, organizationId) — runs all checks and returns structured report
+   - Structured logging without sensitive payloads
+
+3. **`src/lib/onboarding/sync-progress.ts`** — Sync progress tracking
+   - 8 sync stages: company_refs, memberships, members, students, lessons, progress, reconciliation, candidate_eval
+   - SyncProgress type with stages, currentStage, recordsProcessed, totalRecords, lastProviderResponseAt, failure, startedAt
+   - Stale run detection (> 30 min since last update)
+   - DB persistence via persistSyncProgress/loadSyncProgress (OnboardingProgress model)
+   - Factory helpers: createInitialSyncProgress, startStage, completeStage, failStage
+
+4. **`src/lib/onboarding/analytics.ts`** — Allowlisted onboarding analytics
+   - 14 allowlisted event types covering the full journey
+   - Forbidden metadata keys: email, messageBody, freeText, rawPayload, apiKey, token, etc.
+   - safeDiagnosticId() — deterministic hash, never reversible to secrets
+   - trackOnboardingEvent() and trackDiagnosticResult() — safe event tracking
+   - Integrates with existing PostHog infrastructure
+
+5. **`src/components/rescueloop/onboarding/course-mapping-step.tsx`** — Course mapping UI
+   - Client component for the mapping step
+   - Real provider results with stable IDs
+   - Member counts shown when trustworthy
+   - Refresh button, duplicate prevention warning
+   - Previous mapping preservation on provider failure
+   - Explicit confirmation before remapping
+   - **ZeroCourseState** sub-component:
+     - Likely causes (permissions, API key, no published courses)
+     - Required permissions display
+     - Refresh button + diagnostic test link
+     - Support path with email + docs link
+     - Confirmation that no messages or student changes occurred
+
+6. **`src/components/rescueloop/onboarding/sync-step.tsx`** — Sync step UI
+   - Shows all 8 sync stages with status icons (pending/in_progress/completed/failed)
+   - Records processed count + last provider response time
+   - Failure state with retry button (retryable vs manual intervention)
+   - Stale run detection alert (> 30 min)
+   - Reassurance: "This may take a few minutes. You can leave and come back."
+   - Leave-and-return support (persisted state via OnboardingProgress in DB)
+
+7. **`src/components/rescueloop/onboarding/onboarding-wizard.tsx`** — Full wizard
+   - Step-based wizard with progress bar and stepper navigation
+   - StepContent router for all 7 steps (entry through complete)
+   - Integrates diagnostics, course mapping, sync, threshold, and preview steps
+   - Auto-advances entry step after welcome delay
+   - Persists state to API on each step completion
+
+8. **`src/app/api/onboarding/progress/route.ts`** — Progress API
+   - GET: Load onboarding progress by companyId/organizationId
+   - POST: Upsert onboarding progress with step state and sync progress JSON
+
+9. **`src/app/api/onboarding/diagnostics/route.ts`** — Diagnostics API
+   - GET: Run permission diagnostics, track results as analytics events, return safe report
+
+10. **`src/app/api/onboarding/sync/route.ts`** — Sync API
+    - POST: Trigger first sync, create initial sync progress, persist to DB
+
+### Files Modified
+
+1. **`prisma/schema.prisma`** — Added OnboardingProgress model
+   - Fields: id, organizationId, companyId, currentStep, stepsJson, syncProgressJson, completedAt, timestamps
+   - Unique constraint on [organizationId, companyId]
+   - Relation to Organization model (onboardingProgresses)
+
+2. **`src/lib/observability/posthog.ts`** — Added 14 onboarding event names to ALLOWED_EVENTS
+   - organization.onboarding_started through organization.onboarding_abandoned
+
+3. **`src/app/page.tsx`** — Updated to show the OnboardingWizard with demo data
+
+### Validation
+- `bun run lint` — 0 errors, 1 pre-existing warning (unrelated to this task)
+- `bun run db:push` — Schema synced successfully
+- Dev server compiling cleanly
+- All components use shadcn/ui (Card, Button, Badge, Progress, Alert, Input, Label, Select)
+- Brand tokens: var(--recovery-green), var(--ink-primary), var(--warning), var(--critical), etc.
+- Responsive design throughout
+- No indigo/blue colors
+
+## Task 3b: WP-03 Canonical Dashboard Routes
+**Date:** 2026-08-07
+**Status:** Completed
+
+### Summary
+Created canonical `/dashboard/[companyId]` route group and redirected all legacy `/companies/[companyId]` paths. This implements WP-03, establishing `/dashboard/` as the canonical base for all company-scoped routes.
+
+### Files Created
+
+1. **`src/app/dashboard/[companyId]/layout.tsx`** — Canonical dashboard layout
+   - Server component with `import "server-only"`
+   - Validates Whop token, company admin, app config, and onboarding state
+   - Reuses ConnectedShell from `src/components/shell/connected-shell`
+   - Handles fixture/whop/unconfigured modes identically to former companies layout
+   - `export const dynamic = "force-dynamic"` and noindex metadata
+
+2. **`src/app/dashboard/[companyId]/page.tsx`** — Dashboard overview/home
+   - Shows onboarding progress prompt, quick navigation cards, and detail cards
+   - Links to sub-routes (onboarding, rescue-queue, students, insights, settings)
+   - Full Whop mode with DB queries + fixture mode with fixture data
+   - Uses `resolveStrictCompanyAuth` and `renderCompanyAuthError`
+
+3. **`src/app/dashboard/[companyId]/onboarding/page.tsx`** — Canonical onboarding
+   - Server component verifying admin access via `requireCompanyAdmin`
+   - Fetches onboarding data and renders `OnboardingJourney` client component
+   - Shows safety promise banner ("Nothing will be sent automatically")
+
+4. **`src/app/dashboard/[companyId]/rescue-queue/page.tsx`** — Rescue queue
+   - Database-backed in Whop mode, fixture data only in fixture mode
+   - Shows awaiting-approval interventions with queue actions
+   - Uses `resolveStrictCompanyAuth` for auth
+
+5. **Sub-route placeholder pages:**
+   - `src/app/dashboard/[companyId]/students/page.tsx`
+   - `src/app/dashboard/[companyId]/responses/page.tsx`
+   - `src/app/dashboard/[companyId]/insights/page.tsx`
+   - `src/app/dashboard/[companyId]/value/page.tsx`
+   - `src/app/dashboard/[companyId]/activity/page.tsx`
+   - `src/app/dashboard/[companyId]/sync/page.tsx`
+   - `src/app/dashboard/[companyId]/usage/page.tsx`
+   - `src/app/dashboard/[companyId]/settings/page.tsx`
+   Each is a server component that verifies admin access via `resolveStrictCompanyAuth` and renders placeholder content with the appropriate icon and description.
+
+6. **`src/components/rescueloop/onboarding/onboarding-journey.tsx`** — Multi-step wizard
+   - Client component implementing the onboarding state machine
+   - Steps: Access → Connection → Mapping → Sync → Threshold → Preview → Complete
+   - URL search params track progress (`?step=access`, `?step=mapping`, etc.)
+   - Progress bar and step indicators
+   - "Nothing will be sent" safety promise visible on every step
+   - Uses shadcn/ui Card, Button, Badge, Progress components
+
+### Files Modified
+
+7. **`src/components/shell/connected-nav.tsx`** — Updated navigation
+   - `buildCompanyHref()` now generates `/dashboard/[companyId]/segment` paths
+   - `getActiveConnectedNavKey()` matches both `/dashboard/` and legacy `/companies/` prefixes
+   - "Overview" nav item renamed to "Dashboard" with segment `""` (root)
+   - "Queue" nav item segment changed from `"queue"` to `"rescue-queue"`
+
+8. **Legacy redirect pages** (all under `src/app/companies/[companyId]/`):
+   - `overview/page.tsx` → redirects to `/dashboard/[companyId]`
+   - `queue/page.tsx` → redirects to `/dashboard/[companyId]/rescue-queue`
+   - `onboarding/page.tsx` → redirects to `/dashboard/[companyId]/onboarding`
+   - `students/page.tsx` → redirects to `/dashboard/[companyId]/students`
+   - `responses/page.tsx` → redirects to `/dashboard/[companyId]/responses`
+   - `insights/page.tsx` → redirects to `/dashboard/[companyId]/insights`
+   - `value/page.tsx` → redirects to `/dashboard/[companyId]/value`
+   - `settings/page.tsx` → redirects to `/dashboard/[companyId]/settings`
+   - `sync/page.tsx` → redirects to `/dashboard/[companyId]/sync`
+   - `usage/page.tsx` → redirects to `/dashboard/[companyId]/usage`
+   - `campaigns/page.tsx` → redirects to `/dashboard/[companyId]/campaigns`
+   - `audit/page.tsx` → redirects to `/dashboard/[companyId]/audit`
+   All use `redirect()` from `next/navigation` with `export const dynamic = "force-dynamic"`.
+
+### Route Mapping (Legacy → Canonical)
+| Legacy Path | Canonical Path |
+|---|---|
+| `/companies/[id]/overview` | `/dashboard/[id]` |
+| `/companies/[id]/queue` | `/dashboard/[id]/rescue-queue` |
+| `/companies/[id]/onboarding` | `/dashboard/[id]/onboarding` |
+| `/companies/[id]/students` | `/dashboard/[id]/students` |
+| `/companies/[id]/responses` | `/dashboard/[id]/responses` |
+| `/companies/[id]/insights` | `/dashboard/[id]/insights` |
+| `/companies/[id]/value` | `/dashboard/[id]/value` |
+| `/companies/[id]/settings` | `/dashboard/[id]/settings` |
+| `/companies/[id]/sync` | `/dashboard/[id]/sync` |
+| `/companies/[id]/usage` | `/dashboard/[id]/usage` |
+| `/companies/[id]/campaigns` | `/dashboard/[id]/campaigns` |
+| `/companies/[id]/audit` | `/dashboard/[id]/audit` |
+
+### Validation
+- `bun run lint` — 0 errors in new code (1 pre-existing warning in unrelated file)
+- `tsc --noEmit` — 0 new type errors (all pre-existing)
+- Dev server compiling cleanly
+- All components use shadcn/ui + brand tokens (var(--recovery-green), var(--ink-primary), etc.)
+- Responsive design throughout
+- No indigo/blue colors
+- Every connected route validates Whop token + company admin
+- Connected routes never render fixture data (only fixture mode does)
+- "Nothing will be sent" safety promise shown throughout onboarding
