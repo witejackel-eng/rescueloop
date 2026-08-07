@@ -23,6 +23,7 @@ import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -157,6 +158,26 @@ const CONFIRMATION_COPY: Record<ResponseType, { title: string; body: string }> =
   },
 };
 
+// ─── Response type labels (for already-responded view) ───────
+
+const RESPONSE_TYPE_LABELS: Record<ResponseType, string> = {
+  continue_course: "Continue course",
+  stuck: "Something is blocking me",
+  remind_later: "Remind me later",
+  already_completed: "Already completed",
+  human_help: "I need help",
+  stop_reminders: "Stop reminders",
+};
+
+const BLOCKER_TYPE_LABELS: Record<BlockerType, string> = {
+  lack_of_time: "Not enough time",
+  material_difficult: "Material is difficult",
+  unsure_next_step: "Unsure of next step",
+  expected_something_different: "Expected something different",
+  technical_problem: "Technical problem",
+  needs_creator_help: "Need creator help",
+};
+
 // ─── Component ───────────────────────────────────────────────
 
 export function RescueExperience({
@@ -289,26 +310,26 @@ export function RescueExperience({
           {creatorName}
         </p>
         <h1 className="text-[28px] font-semibold leading-tight tracking-tight text-[var(--ink-primary)] sm:text-[32px]">
-          Hi {firstName} <span aria-hidden>👋</span>
+          Hi {firstName} <span aria-hidden="true">👋</span>
         </h1>
         <p className="text-[15px] text-[var(--ink-secondary)]">{courseName}</p>
       </motion.header>
 
-      {/* Why we're reaching out — calm, supportive */}
+      {/* Creator's intervention message */}
       <motion.section
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: 0.04 }}
-        aria-label="Why we're reaching out"
+        aria-label="Message from creator"
       >
         <Card className="gap-3 rounded-2xl border-[var(--hairline)] bg-[var(--surface)] p-5">
           <div className="flex items-start gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[var(--recovery-light)]">
-              <HelpCircle className="size-[18px] text-[var(--recovery-green)]" />
+              <MessageCircle className="size-[18px] text-[var(--recovery-green)]" />
             </div>
             <div className="flex flex-col gap-1">
               <p className="text-[13px] font-medium uppercase tracking-wide text-[var(--ink-muted)]">
-                Checking in
+                Message from {creatorName}
               </p>
               <p className="text-[15px] leading-relaxed text-[var(--ink-primary)]">
                 {messagePreview}
@@ -353,27 +374,34 @@ export function RescueExperience({
         </motion.section>
       )}
 
-      {/* Next lesson */}
+      {/* Primary choices */}
       <motion.section
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: 0.12 }}
-        aria-label="Next lesson"
+        aria-label="What would you like to do?"
+        className="flex flex-col gap-3"
       >
+        <h2 className="text-[18px] font-semibold leading-snug text-[var(--ink-primary)]">
+          What would you like to do?
+        </h2>
+
+        {/* Continue course — primary action */}
         <Card className="gap-5 rounded-2xl border-[var(--hairline)] bg-[var(--surface)] p-5">
           <div className="flex flex-col gap-1">
             <span className="text-[13px] font-medium uppercase tracking-wide text-[var(--recovery-green)]">
               Up next
             </span>
-            <h2 className="text-[18px] font-semibold leading-snug text-[var(--ink-primary)]">
+            <h3 className="text-[18px] font-semibold leading-snug text-[var(--ink-primary)]">
               Lesson {nextLessonIndex}
-            </h2>
+            </h3>
             <p className="text-[14px] text-[var(--ink-secondary)]">
               {lessonDuration}
             </p>
           </div>
           <Button
             size="lg"
+            aria-label="Continue course"
             className="h-12 w-full rounded-xl bg-[var(--recovery-green)] text-[15px] font-medium text-white shadow-sm hover:bg-[var(--recovery-green)]/90 disabled:opacity-60"
             disabled={busy !== null}
             onClick={() => respond("continue_course")}
@@ -388,6 +416,38 @@ export function RescueExperience({
             )}
           </Button>
         </Card>
+
+        {/* I need help — secondary primary action */}
+        <Button
+          variant="outline"
+          size="lg"
+          aria-label="I need help"
+          className="h-12 w-full justify-center gap-2 rounded-xl border-[var(--hairline)] bg-[var(--surface)] text-[15px] font-medium text-[var(--ink-primary)] hover:bg-[var(--canvas-elevated)] disabled:opacity-60"
+          disabled={busy !== null}
+          onClick={() => respond("human_help")}
+        >
+          {busy === "human_help" ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <>
+              <Heart className="size-4 text-[var(--recovery-green)]" />
+              I need help
+            </>
+          )}
+        </Button>
+
+        {/* Something is blocking me — secondary primary action */}
+        <Button
+          variant="outline"
+          size="lg"
+          aria-label="Something is blocking me"
+          className="h-12 w-full justify-center gap-2 rounded-xl border-[var(--hairline)] bg-[var(--surface)] text-[15px] font-medium text-[var(--ink-primary)] hover:bg-[var(--canvas-elevated)] disabled:opacity-60"
+          disabled={busy !== null}
+          onClick={() => setView("stuck")}
+        >
+          <HelpCircle className="size-4 text-[var(--recovery-green)]" />
+          Something is blocking me
+        </Button>
       </motion.section>
 
       {/* Secondary actions */}
@@ -398,18 +458,9 @@ export function RescueExperience({
         className="flex flex-col gap-2.5"
       >
         <Button
-          variant="outline"
-          size="lg"
-          className="h-12 w-full justify-center rounded-xl border-[var(--hairline)] bg-[var(--surface)] text-[15px] font-medium text-[var(--ink-primary)] hover:bg-[var(--canvas-elevated)] disabled:opacity-60"
-          disabled={busy !== null}
-          onClick={() => setView("stuck")}
-        >
-          <HelpCircle className="size-4 text-[var(--recovery-green)]" />
-          I&rsquo;m feeling stuck
-        </Button>
-        <Button
           variant="ghost"
           size="lg"
+          aria-label="Remind me later"
           className="h-11 w-full rounded-xl text-[15px] font-medium text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)] hover:text-[var(--ink-primary)] disabled:opacity-60"
           disabled={busy !== null}
           onClick={() => setView("remind")}
@@ -428,6 +479,7 @@ export function RescueExperience({
         <Button
           variant="ghost"
           size="sm"
+          aria-label="I already completed this"
           className="h-9 w-full justify-center text-[13px] font-medium text-[var(--ink-secondary)] hover:bg-[var(--canvas-elevated)] hover:text-[var(--ink-primary)] disabled:opacity-60"
           disabled={busy !== null}
           onClick={() => respond("already_completed")}
@@ -441,45 +493,30 @@ export function RescueExperience({
         <Button
           variant="ghost"
           size="sm"
-          className="h-9 w-full justify-center gap-1.5 text-[13px] font-medium text-[var(--critical)] hover:bg-[var(--critical-light)]/40 hover:text-[var(--critical)] disabled:opacity-60"
-          disabled={busy !== null}
-          onClick={() => respond("human_help")}
-        >
-          {busy === "human_help" ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <>
-              <Heart className="size-3.5" />
-              I need human help
-            </>
-          )}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
+          aria-label="Stop all reminders"
           className="h-9 w-full justify-center text-[12px] font-medium text-[var(--ink-muted)] hover:bg-[var(--canvas-elevated)] hover:text-[var(--ink-secondary)] disabled:opacity-60"
           disabled={busy !== null}
           onClick={() => setView("stop_confirm")}
         >
-          Stop reminders
+          I don&apos;t want reminders
         </Button>
       </motion.div>
 
-      {/* Encouragement */}
+      {/* Encouragement — no churn/revenue language */}
       <motion.p
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: 0.24 }}
         className="mt-1 text-center text-[14px] leading-relaxed text-[var(--ink-muted)]"
       >
-        You&rsquo;re making real progress. Every lesson gets you closer to your
+        You&apos;re making real progress. Every lesson gets you closer to your
         goal.
       </motion.p>
     </div>
   );
 }
 
-// ─── Stuck view ──────────────────────────────────────────────
+// ─── Stuck view (blocker taxonomy) ───────────────────────────
 
 function StuckView({
   selected,
@@ -503,6 +540,7 @@ function StuckView({
       <button
         onClick={onBack}
         className="inline-flex w-fit items-center gap-1 text-[14px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+        aria-label="Go back to main choices"
       >
         <ArrowLeft className="size-4" />
         Back
@@ -519,7 +557,7 @@ function StuckView({
         >
           <header className="flex flex-col gap-2">
             <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-[var(--ink-primary)] sm:text-[28px]">
-              What&rsquo;s getting in the way?
+              What&apos;s getting in the way?
             </h1>
             <p className="text-[15px] leading-relaxed text-[var(--ink-secondary)]">
               No pressure — this helps us send you the right help.
@@ -530,6 +568,7 @@ function StuckView({
             value={selected ?? ""}
             onValueChange={(v) => onSelect(v as BlockerType)}
             className="gap-2.5"
+            aria-label="Choose what's blocking you"
           >
             {BLOCKER_OPTIONS.map((opt) => {
               const isSelected = selected === opt.id;
@@ -573,6 +612,7 @@ function StuckView({
             })}
           </RadioGroup>
 
+          {/* Optional free-text note (sensitive: minimize retention) */}
           <div className="flex flex-col gap-2">
             <Label
               htmlFor="blocker-note"
@@ -587,14 +627,20 @@ function StuckView({
               onChange={(e) => onNoteChange(e.target.value)}
               placeholder="Share anything that would help us support you."
               rows={3}
+              maxLength={2000}
+              aria-label="Optional note about what's blocking you"
               className="min-h-[88px] rounded-xl border-[var(--hairline)] bg-[var(--surface)] text-[15px] text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--recovery-green)] focus-visible:ring-[var(--recovery-green)]/20"
             />
+            <p className="text-[12px] text-[var(--ink-muted)]">
+              Your note is stored securely and only shared with the course creator.
+            </p>
           </div>
 
           <Button
             size="lg"
             disabled={!selected || busy}
             onClick={onSubmit}
+            aria-label="Submit your feedback"
             className="h-12 w-full rounded-xl bg-[var(--recovery-green)] text-[15px] font-medium text-white shadow-sm hover:bg-[var(--recovery-green)]/90 disabled:opacity-50"
           >
             {busy ? (
@@ -629,6 +675,7 @@ function RemindView({
       <button
         onClick={onBack}
         className="inline-flex w-fit items-center gap-1 text-[14px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+        aria-label="Go back to main choices"
       >
         <ArrowLeft className="size-4" />
         Back
@@ -645,7 +692,7 @@ function RemindView({
             When should we remind you?
           </h1>
           <p className="text-[15px] leading-relaxed text-[var(--ink-secondary)]">
-            We&rsquo;ll send one gentle nudge. No follow-ups after that.
+            We&apos;ll send one gentle nudge. No follow-ups after that.
           </p>
         </header>
 
@@ -653,6 +700,7 @@ function RemindView({
           value={String(selectedHours)}
           onValueChange={(v) => onSelect(parseInt(v, 10))}
           className="gap-2.5"
+          aria-label="Choose when to be reminded"
         >
           {REMIND_OPTIONS.map((opt) => {
             const isSelected = selectedHours === opt.hours;
@@ -692,6 +740,7 @@ function RemindView({
           size="lg"
           disabled={busy}
           onClick={onSubmit}
+          aria-label="Set reminder"
           className="h-12 w-full rounded-xl bg-[var(--recovery-green)] text-[15px] font-medium text-white shadow-sm hover:bg-[var(--recovery-green)]/90"
         >
           {busy ? (
@@ -709,6 +758,8 @@ function RemindView({
 }
 
 // ─── Stop-reminders confirmation ─────────────────────────────
+// No dark patterns — clear, honest, immediately effective.
+// "I don't want reminders" creates a Suppression right away.
 
 function StopConfirmView({
   onBack,
@@ -724,6 +775,7 @@ function StopConfirmView({
       <button
         onClick={onBack}
         className="inline-flex w-fit items-center gap-1 text-[14px] font-medium text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+        aria-label="Go back to main choices"
       >
         <ArrowLeft className="size-4" />
         Back
@@ -743,8 +795,8 @@ function StopConfirmView({
             Stop all reminders?
           </h1>
           <p className="mx-auto max-w-sm text-[16px] leading-relaxed text-[var(--ink-secondary)]">
-            We won&rsquo;t send you any further messages about this course. You
-            can still continue on your own whenever you&rsquo;re ready.
+            We won&apos;t send you any further messages about this course. You
+            can still continue on your own whenever you&apos;re ready.
           </p>
         </div>
 
@@ -753,6 +805,7 @@ function StopConfirmView({
             size="lg"
             disabled={busy}
             onClick={onConfirm}
+            aria-label="Confirm: stop all reminders"
             className="h-12 w-full rounded-xl bg-[var(--critical)] text-[15px] font-medium text-white shadow-sm hover:bg-[var(--critical)]/90 disabled:opacity-50"
           >
             {busy ? (
@@ -827,6 +880,101 @@ function DoneScreen({
             className="h-12 w-full rounded-xl bg-[var(--recovery-green)] text-[15px] font-medium text-white shadow-sm hover:bg-[var(--recovery-green)]/90"
             onClick={() => {
               // Best-effort: send the student back to Whop
+              window.history.back();
+            }}
+          >
+            Back to course
+            <ArrowRight className="size-4" />
+          </Button>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+// ─── Already-responded view ──────────────────────────────────
+// Shown when the student has already submitted a response.
+// Never exposes churn/revenue/candidate ranking language.
+
+export function AlreadyRespondedView({
+  responseType,
+  blockerType,
+  studentName,
+  courseName,
+  creatorName,
+  respondedAt,
+}: {
+  responseType: string;
+  blockerType?: string | null;
+  studentName: string;
+  courseName: string;
+  creatorName: string;
+  respondedAt: Date;
+}) {
+  const firstName = studentName.split(" ")[0] || studentName;
+  const typeLabel =
+    RESPONSE_TYPE_LABELS[responseType as ResponseType] ?? responseType;
+  const blockerLabel =
+    blockerType && blockerType in BLOCKER_TYPE_LABELS
+      ? BLOCKER_TYPE_LABELS[blockerType as BlockerType]
+      : null;
+
+  const responseCopy = CONFIRMATION_COPY[responseType as ResponseType];
+
+  return (
+    <div className="mx-auto flex w-full max-w-[560px] flex-col items-center gap-5 px-4 py-12 text-center sm:py-20">
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 280, damping: 22 }}
+        className="flex size-16 items-center justify-center rounded-full bg-[var(--recovery-light)]"
+      >
+        <CheckCircle2 className="size-9 text-[var(--recovery-green)]" />
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, delay: 0.1 }}
+        className="flex flex-col gap-3"
+      >
+        <h1 className="text-[24px] font-semibold leading-tight tracking-tight text-[var(--ink-primary)]">
+          You&apos;ve already responded
+        </h1>
+        <p className="mx-auto max-w-sm text-[16px] leading-relaxed text-[var(--ink-secondary)]">
+          {responseCopy?.body ??
+            `You chose "${typeLabel}" for ${courseName}.`}
+        </p>
+      </motion.div>
+
+      {/* Show their choice */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, delay: 0.15 }}
+        className="flex flex-wrap items-center justify-center gap-2"
+      >
+        <Badge variant="outline" className="text-[13px]">
+          {typeLabel}
+        </Badge>
+        {blockerLabel && (
+          <Badge variant="secondary" className="text-[13px]">
+            {blockerLabel}
+          </Badge>
+        )}
+      </motion.div>
+
+      {responseType !== "stop_reminders" && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2, delay: 0.2 }}
+          className="mt-4 w-full"
+        >
+          <Button
+            size="lg"
+            className="h-12 w-full rounded-xl bg-[var(--recovery-green)] text-[15px] font-medium text-white shadow-sm hover:bg-[var(--recovery-green)]/90"
+            onClick={() => {
               window.history.back();
             }}
           >

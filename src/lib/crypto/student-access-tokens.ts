@@ -9,15 +9,53 @@
 // - Only the SHA-256 hash is stored in the database
 // - Look up by hash, verify expiry, revocation, and relationships
 // - Consume only one-time actions; allow reusable access when intended
+// - NEVER log raw token values
+// - Non-enumerating errors: don't reveal whether token exists vs is expired vs is wrong experience
 
 import { randomBytes, createHash } from "crypto";
 import { db } from "@/lib/db";
 
 const TOKEN_BYTES = 32; // 256 bits of entropy
 
+// ─── Non-enumerating error ────────────────────────────────────
+// All token validation failures return the same generic error to prevent
+// token enumeration attacks (don't reveal whether token exists, is expired,
+// is revoked, or belongs to a different experience).
+
+export class TokenValidationError extends Error {
+  readonly code = "TOKEN_INVALID" as const;
+  constructor() {
+    super("Invalid or expired link");
+  }
+}
+
+// ─── Validated token result ───────────────────────────────────
+
+export interface ValidatedToken {
+  tokenId: string;
+  organizationId: string;
+  interventionId: string;
+  studentId: string;
+  /** Whether this token was just consumed (first use) */
+  consumedJustNow: boolean;
+}
+
+// ─── Hash function ────────────────────────────────────────────
+
+/**
+ * Hash a raw token using SHA-256.
+ * Only the hash is stored — the raw token is never persisted.
+ */
+export function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+// ─── Token creation ───────────────────────────────────────────
+
 /**
  * Generate a new opaque access token for a student intervention.
  * Returns the raw token (to put in the URL) and stores only its hash.
+ * NEVER logs the raw token.
  */
 export async function createStudentAccessToken(params: {
   organizationId: string;
@@ -45,22 +83,29 @@ export async function createStudentAccessToken(params: {
   return { token, tokenHash };
 }
 
+// ─── Token validation (non-enumerating) ───────────────────────
+
 /**
- * Verify an opaque access token.
- * Returns the token record if valid, or null if:
- * - Token not found (hash doesn't match)
- * - Token expired
- * - Token revoked
- * - Intervention/student/org relationships don't match
+ * Validate an opaque student access token with full checks.
+ *
+ * Validates: hash, expiry, revocation, tenant/intervention linkage, and
+ * optionally the intended experience (experienceId).
+ *
+ * Returns non-enumerating errors — callers cannot distinguish between
+ * "token doesn't exist", "token expired", "token revoked", or
+ * "token belongs to different experience". This prevents enumeration attacks.
+ *
+ * Updates lastUsedAt on success (best-effort, non-blocking).
+ *
+ * NEVER logs the raw token value.
  */
-export async function verifyStudentAccessToken(
+export async function validateStudentAccessToken(
   token: string,
-): Promise<{
-  tokenId: string;
-  organizationId: string;
-  interventionId: string;
-  studentId: string;
-} | null> {
+  options?: {
+    /** If provided, verifies the token's intervention belongs to this experience */
+    expectedExperienceId?: string;
+  },
+): Promise<ValidatedToken> {
   const tokenHash = hashToken(token);
 
   const tokenRecord = await db.studentAccessToken.findUnique({
@@ -76,21 +121,50 @@ export async function verifyStudentAccessToken(
     },
   });
 
+  // Non-enumerating: any failure returns the same error
   if (!tokenRecord) {
-    return null;
+    throw new TokenValidationError();
   }
 
   // Check expiration
   if (Date.now() >= tokenRecord.expiresAt.getTime()) {
-    return null;
+    throw new TokenValidationError();
   }
 
   // Check revocation
   if (tokenRecord.revokedAt) {
-    return null;
+    throw new TokenValidationError();
   }
 
-  // Update lastUsedAt (but don't block on failure)
+  // Check experience linkage (if expectedExperienceId is provided)
+  if (options?.expectedExperienceId) {
+    const intervention = await db.intervention.findUnique({
+      where: { id: tokenRecord.interventionId },
+      select: {
+        campaign: {
+          select: {
+            confirmedMapping: {
+              select: {
+                course: {
+                  select: { externalExperienceId: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const experienceId =
+      intervention?.campaign?.confirmedMapping?.course?.externalExperienceId;
+
+    if (experienceId !== options.expectedExperienceId) {
+      // Non-enumerating: wrong experience → same error
+      throw new TokenValidationError();
+    }
+  }
+
+  // Update lastUsedAt (best-effort, non-blocking)
   await db.studentAccessToken.update({
     where: { id: tokenRecord.id },
     data: { lastUsedAt: new Date() },
@@ -101,12 +175,93 @@ export async function verifyStudentAccessToken(
     organizationId: tokenRecord.organizationId,
     interventionId: tokenRecord.interventionId,
     studentId: tokenRecord.studentId,
+    consumedJustNow: false,
   };
 }
+
+// ─── Legacy verify function (backward compatible) ─────────────
+
+/**
+ * Verify an opaque access token.
+ * Returns the token record if valid, or null if invalid.
+ * @deprecated Use validateStudentAccessToken() for new code — it throws
+ *   non-enumerating errors and supports experience validation.
+ */
+export async function verifyStudentAccessToken(
+  token: string,
+): Promise<{
+  tokenId: string;
+  organizationId: string;
+  interventionId: string;
+  studentId: string;
+} | null> {
+  try {
+    const result = await validateStudentAccessToken(token);
+    return {
+      tokenId: result.tokenId,
+      organizationId: result.organizationId,
+      interventionId: result.interventionId,
+      studentId: result.studentId,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Validate and consume ─────────────────────────────────────
+
+/**
+ * Validate a token and mark it as consumed on first use.
+ * After consumption, the token is still valid for read-only access
+ * but cannot be used to submit additional responses.
+ *
+ * Idempotent: if the token was already consumed, returns successfully
+ * with consumedJustNow = false.
+ */
+export async function validateAndConsumeToken(
+  token: string,
+  options?: {
+    expectedExperienceId?: string;
+  },
+): Promise<ValidatedToken> {
+  const result = await validateStudentAccessToken(token, options);
+
+  // If already consumed, return with consumedJustNow = false
+  if (result.consumedJustNow) {
+    return result;
+  }
+
+  // Check if already consumed
+  const tokenRecord = await db.studentAccessToken.findUnique({
+    where: { id: result.tokenId },
+    select: { consumedAt: true },
+  });
+
+  if (tokenRecord?.consumedAt) {
+    return { ...result, consumedJustNow: false };
+  }
+
+  // Consume: set consumedAt (only if not already set — race-safe via updateMany)
+  const updateResult = await db.studentAccessToken.updateMany({
+    where: {
+      id: result.tokenId,
+      consumedAt: null,
+    },
+    data: { consumedAt: new Date() },
+  });
+
+  return {
+    ...result,
+    consumedJustNow: updateResult.count > 0,
+  };
+}
+
+// ─── Revoke tokens ────────────────────────────────────────────
 
 /**
  * Consume a token for a one-time action.
  * After consumption, the token can no longer be used for that action.
+ * @deprecated Use validateAndConsumeToken() for new code.
  */
 export async function consumeStudentAccessToken(token: string): Promise<boolean> {
   const tokenHash = hashToken(token);
@@ -118,6 +273,22 @@ export async function consumeStudentAccessToken(token: string): Promise<boolean>
       revokedAt: null,
     },
     data: { consumedAt: new Date() },
+  });
+
+  return result.count > 0;
+}
+
+/**
+ * Revoke a specific token.
+ * After revocation, the token can no longer be used at all.
+ * Never logs the raw token.
+ */
+export async function revokeToken(token: string): Promise<boolean> {
+  const tokenHash = hashToken(token);
+
+  const result = await db.studentAccessToken.updateMany({
+    where: { tokenHash, revokedAt: null },
+    data: { revokedAt: new Date() },
   });
 
   return result.count > 0;
@@ -143,23 +314,7 @@ export async function revokeStudentTokens(params: {
 }
 
 /**
- * Revoke a specific token.
+ * Revoke a specific token by its raw value.
+ * @deprecated Use revokeToken() for new code.
  */
-export async function revokeStudentToken(token: string): Promise<boolean> {
-  const tokenHash = hashToken(token);
-
-  const result = await db.studentAccessToken.updateMany({
-    where: { tokenHash, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
-
-  return result.count > 0;
-}
-
-/**
- * Hash a raw token using SHA-256.
- * Only the hash is stored — the raw token is never persisted.
- */
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
+export const revokeStudentToken = revokeToken;
