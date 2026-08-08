@@ -209,3 +209,69 @@ Stage Summary:
 - Marketing truth: clean (no forbidden claims found)
 - ROI calculator: illustrative language throughout
 - Pricing: $29/$59/$119 + $699 done-for-you
+
+---
+Task ID: 6
+Agent: witejackel-eng
+Task: Verify GitHub Actions CI
+
+Work Log:
+
+1. Read `.github/workflows/ci.yml` (369 lines, 7 jobs)
+2. Confirmed `vercel-preview.yml` exists on repo (workflow ID 327738684, state: active)
+   - Trigger: deployment_status (Preview environment)
+   - No `|| true` or blanket suppression
+   - Health check uses `::warning::` for non-200 (acceptable for preview check)
+
+3. Verified all 7 required CI jobs exist as actual jobs:
+   | # | Job Key            | Display Name                  | Present |
+   |---|--------------------|-------------------------------|--------|
+   | 1 | lint-typecheck     | Lint & Typecheck              | YES    |
+   | 2 | unit-tests         | Unit Tests                    | YES    |
+   | 3 | integration-tests  | Integration Tests (PostgreSQL)| YES    |
+   | 4 | contract-tests     | Provider Contract Tests       | YES    |
+   | 5 | production-build   | Production Build              | YES    |
+   | 6 | e2e                | E2E (Playwright)              | YES    |
+   | 7 | security           | Security Scan                 | YES    |
+
+4. Triggers — FOUND MISSING: release/* was not in push or pull_request branches
+   - Original: push on [main, next, feat/*, integration/*]
+   - Fixed:    push on [main, next, feat/*, integration/*, release/*]
+   - Fixed:    pull_request on [main, next, release/*]
+   - Committed as 135be81, pushed to both main and release/v1.0.1-operational-certification
+
+5. Strict error handling — VERIFIED:
+   - No `|| true` in any step command (only in header comment as documentation)
+   - No `continue-on-error: true` on any step
+   - No `fail-fast: false` on any job
+   - Security audit is genuinely blocking (exit 1 on critical/high via audit-parser.ts)
+   - `if: always()` on artifact upload is correct (should upload even on failure)
+   - `if: failure()` on failure-artifact upload is correct (only on failure)
+
+6. Pushed release branch to origin — SUCCESS
+   - `git push origin release/v1.0.1-operational-certification`
+   - Remote SHA: 135be8125c108eb5480ee96663cc30b2f6daef0e
+
+7. CI triggered — CONFIRMED
+   - Run ID: 31253882150
+   - Workflow: CI
+   - Branch: release/v1.0.1-operational-certification
+   - SHA: 135be81
+
+8. Job results at time of check:
+   - Lint & Typecheck:        success
+   - Unit Tests:              success
+   - Provider Contract Tests: success
+   - Security Scan:           success
+   - Production Build:        success
+   - Integration Tests (PostgreSQL): FAILURE (step: "Run integration tests")
+   - E2E (Playwright):        in_progress (still running)
+
+Findings:
+- All 7 required CI jobs present
+- Triggers now include release/* (was missing, fixed)
+- Strict error handling verified
+- CI successfully triggered on release branch
+- 5/7 jobs passed, 1 failed (PostgreSQL Integration), 1 still running (E2E)
+- PostgreSQL Integration failure needs investigation (test:integration script)
+- gh CLI not available in environment; used GitHub REST API with token auth instead
