@@ -712,3 +712,36 @@ Work Log:
   • Preparation status for each gate (all code complete, real API call pending)
 - No secret values or connection strings included in any document
 - Git identity: witejackel-eng
+
+---
+Task ID: 2-wire
+Agent: witejackel-eng
+Task: PX01 wiring — close three remaining gaps
+
+Work Log:
+- Gap 1: Replaced sync placeholder page at src/app/dashboard/[companyId]/sync/page.tsx
+  • Now calls requireCompanyAccess(companyId) and captures the context
+  • Fixture mode: renders "Demo mode — no real sync data. Connect Whop to see live sync status."
+  • Connected mode: calls getSyncDetail(ctx.organizationId) from operation-read-model
+  • Passes initial data to SyncStatusView client component (already existed)
+  • SyncStatusView handles: state/stage display, timestamps, stage breakdown, webhook activity, provider delay warning, retry action, safe-to-leave messaging
+  • No sync case: SyncStatusView already renders "No sync has been run yet" messaging
+- Gap 2: Added HTTP 503 check in middleware for /dashboard/* routes
+  • Uses NEXT_PUBLIC_WHOP_APP_ID as proxy for Whop configuration (available in Edge Runtime)
+  • If not set, returns 503 with styled HTML page and X-RescueLoop-Unconfigured header
+  • Dashboard layout keeps its IntegrationNotConfiguredCard as fallback (when env var is set but full config missing)
+- Gap 3: Wired onboarding sync to Inngest
+  • Added import of sendInngestEvent and EVENTS from @/server/jobs/client
+  • After db.onboardingProgress.upsert(), dispatches syncMemberships event via Inngest
+  • Logs warning if Inngest is unconfigured (graceful degradation)
+  • Removed placeholder comment about "In production, this would enqueue..."
+
+Verification:
+- bun run typecheck: passed (0 errors)
+- bun run lint: passed (0 errors, 1 pre-existing warning)
+
+Stage Summary:
+- All 3 gaps closed
+- Sync page is fully wired with real data flow
+- Middleware returns proper 503 for unconfigured dashboard access
+- Onboarding sync dispatches to Inngest when configured

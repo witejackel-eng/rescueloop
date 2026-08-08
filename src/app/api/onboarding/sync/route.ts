@@ -11,6 +11,7 @@ import {
 } from "@/lib/onboarding/sync-progress";
 import { trackOnboardingEvent } from "@/lib/onboarding/analytics";
 import { createLogger } from "@/lib/observability/logger";
+import { sendInngestEvent, EVENTS } from "@/server/jobs/client";
 
 const log = createLogger({ route: "/api/onboarding/sync" });
 
@@ -71,9 +72,19 @@ export async function POST(req: NextRequest) {
       organizationId,
     });
 
-    // In production, this would enqueue the sync job via Inngest
-    // or a similar job runner. For now, we return the initial
-    // progress and the client will poll for updates.
+    // Dispatch sync job via Inngest
+    const dispatchResult = await sendInngestEvent(EVENTS.syncMemberships, {
+      organizationId,
+      trigger: "onboarding",
+    });
+
+    if (dispatchResult.state === "unconfigured") {
+      log.warn("Inngest not configured — sync not dispatched", {
+        action: "POST",
+        companyId,
+        organizationId,
+      });
+    }
 
     return NextResponse.json({
       syncProgress: updatedProgress,

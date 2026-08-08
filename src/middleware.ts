@@ -26,7 +26,28 @@ export function middleware(request: NextRequest) {
     response.headers.set("Content-Security-Policy", `frame-ancestors ${decision.frameAncestors}`);
   }
 
-  // ─── 2. Open-redirect rejection ─────────────────────────────
+  // ─── 2. Dashboard unconfigured check (503) ──────────────────
+  // If NEXT_PUBLIC_WHOP_APP_ID is not set, the Whop integration is
+  // not configured. Return 503 instead of rendering the dashboard
+  // (which would otherwise return HTTP 200 with an error card).
+  // NEXT_PUBLIC_WHOP_APP_ID is available in Edge Runtime since it's
+  // prefixed with NEXT_PUBLIC_.
+  if (pathname.startsWith("/dashboard/")) {
+    if (!process.env.NEXT_PUBLIC_WHOP_APP_ID) {
+      return new NextResponse(
+        `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>503 - Integration Not Configured</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:80px auto;padding:0 20px;color:#1a1a1a}h1{font-size:20px;margin-bottom:8px}p{font-size:14px;line-height:1.6;color:#666}</style></head><body><h1>503 · Integration not configured</h1><p>RescueLoop isn't connected to Whop yet. Required environment variables are not configured.</p><p>Open this app from your Whop dashboard after installing.</p></body></html>`,
+        {
+          status: 503,
+          headers: {
+            "Content-Type": "text/html",
+            "X-RescueLoop-Unconfigured": "true",
+          },
+        },
+      );
+    }
+  }
+
+  // ─── 3. Open-redirect rejection ─────────────────────────────
   // Any `?next=` / `?redirect=` param must be a same-origin relative path.
   const nextParam = searchParams.get("next") ?? searchParams.get("redirect");
   if (nextParam) {
