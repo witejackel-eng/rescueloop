@@ -36,7 +36,7 @@ const STEPS = [
     number: "V",
     title: "Observe",
     description:
-      "RescueLoop watches whether the student opened the support, replied, resumed lessons or reversed a cancellation.",
+      "RescueLoop watches whether the student responded to the support, replied, resumed lessons or reversed a cancellation.",
   },
   {
     number: "VI",
@@ -337,7 +337,7 @@ function ProcessVisualPanel({ step, reduced }: { step: number; reduced: boolean 
       <div className="space-y-3">
         <p className="font-mono text-[11px] tracking-wide text-[var(--dark-secondary)]">OBSERVED EVENTS</p>
         <RevealLine delay={0.1} reduced={reduced}>
-          <span className="font-mono text-[13px] text-white">Support opened</span>{" "}
+          <span className="font-mono text-[13px] text-white">Response received</span>{" "}
           <span className="text-[var(--dark-secondary)]">— 2 hours after send</span>
         </RevealLine>
         <RevealLine delay={0.3} reduced={reduced}>
@@ -369,7 +369,7 @@ function ProcessVisualPanel({ step, reduced }: { step: number; reduced: boolean 
           <span className="text-[var(--dark-secondary)]">Candidate detected → Creator approved → Intervention dispatched</span>
         </RevealLine>
         <RevealLine delay={0.3} reduced={reduced}>
-          <span className="text-[var(--dark-secondary)]">Student opened → Student resumed → Lesson completed</span>
+          <span className="text-[var(--dark-secondary)]">Student responded → Student resumed → Lesson completed</span>
         </RevealLine>
         <RevealLine delay={0.5} reduced={reduced}>
           <span className="text-[var(--dark-secondary)]">Cancellation reversed → Payment continued</span>

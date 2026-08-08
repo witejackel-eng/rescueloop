@@ -12,6 +12,10 @@ export const copy = {
   primaryCTA: "Explore the interactive demo",
   secondaryCTA: "See the student experience",
   trustLine: "Nothing sends without your approval.",
+  /** Micro trust strip — safety properties displayed in the hero. */
+  microTrustStrip: "Manual approval · Quiet hours · Cooldowns · Student opt-out",
+  /** Tertiary safety disclosure — appears below the micro trust strip. */
+  tertiaryDisclosure: "Interactive demo · simulated workspace — No customer data is connected. Nothing is sent.",
   disclosure: "Interactive demonstration. No messages are sent and no customer data is connected.",
 
   features: {

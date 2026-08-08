@@ -79,7 +79,7 @@ export const interventionStateMeta: Record<
   scheduled: { label: "Scheduled", color: "bg-[#E8F0FE] text-[#4C7ECF] border-[#C9DCF5]", dot: "bg-[#4C7ECF]" },
   queued: { label: "Queued", color: "bg-[#E8F0FE] text-[#4C7ECF] border-[#C9DCF5]", dot: "bg-[#4C7ECF]" },
   sent: { label: "Sent", color: "bg-[#E8F0FE] text-[#4C7ECF] border-[#C9DCF5]", dot: "bg-[#4C7ECF]" },
-  opened: { label: "Opened", color: "bg-[#E8F0FE] text-[#4C7ECF] border-[#C9DCF5]", dot: "bg-[#4C7ECF]" },
+  opened: { label: "Response received", color: "bg-[#E8F0FE] text-[#4C7ECF] border-[#C9DCF5]", dot: "bg-[#4C7ECF]" },
   responded: { label: "Responded", color: "bg-[#FEF3E2] text-[#D89222] border-[#F5E0C2]", dot: "bg-[#D89222]" },
   recovered: { label: "Recovered", color: "bg-[#E8F5EF] text-[#27966A] border-[#C7E6D5]", dot: "bg-[#27966A]" },
   not_recovered: { label: "Not recovered", color: "bg-[#F4E8E6] text-[#C64D45] border-[#E8C9C5]", dot: "bg-[#C64D45]" },

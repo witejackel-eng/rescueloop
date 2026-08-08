@@ -102,7 +102,7 @@ export function Org360View({ org }: Org360ViewProps) {
           <MetricTile icon={Target} label="Active Interventions" value={org.activeInterventions.toString()} />
           <MetricTile
             icon={RefreshCw}
-            label="Recovery Rate"
+            label="Re-engagement Rate"
             value={`${(org.recoveryRate * 100).toFixed(0)}%`}
           />
           <MetricTile

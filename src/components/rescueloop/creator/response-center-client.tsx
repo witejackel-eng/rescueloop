@@ -99,7 +99,7 @@ const BLOCKER_TYPE_LABELS: Record<string, string> = {
 
 const OUTCOME_STATE_LABELS: Record<string, string> = {
   no_response: "No response",
-  opened: "Opened",
+  opened: "Response received",
   responded: "Responded",
   reminded_later: "Reminded",
   requested_help: "Help requested",

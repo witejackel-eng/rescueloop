@@ -41,7 +41,7 @@ export default function TermsPage() {
         <h2 className="text-[18px] font-semibold text-[var(--ink-primary)]">Service availability</h2>
         <p>
           The service is provided &quot;as is&quot; without warranties. We do not guarantee uninterrupted
-          availability, specific recovery rates, or revenue outcomes. All metrics shown in the demo workspace
+          availability, specific re-engagement rates, or revenue outcomes. All metrics shown in the demo workspace
           are simulated for demonstration.
         </p>
 

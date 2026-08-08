@@ -35,7 +35,7 @@ const EMPTY_COPY: Record<QueueTab, { title: string; description: string }> = {
   sent: {
     title: "No interventions in flight",
     description:
-      "Sent messages and opened threads show up here while you wait for a response.",
+      "Sent messages and active threads show up here while you wait for a response.",
   },
   responded: {
     title: "No active responses",
