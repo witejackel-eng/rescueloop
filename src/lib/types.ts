@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────
 // RescueLoop domain models
-// These types define the core entities for the student-success
-// and revenue-recovery platform. Mock data conforms to these
+// These types define the core entities for the activation-rescue
+// platform for Whop creators. Mock data conforms to these
 // types so the real backend can replace mock-data.ts later.
 // ─────────────────────────────────────────────────────────────
 

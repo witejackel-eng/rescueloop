@@ -70,7 +70,7 @@ const PLANS: Plan[] = [
     price: 119,
     tagline: "Established communities, full attribution.",
     whoFor: "Established communities up to ~2,500 members and a small team.",
-    problemItHandles: "Defensible revenue recovery with cancellation rescue and confirmed attribution.",
+    problemItHandles: "Activation rescue with cancellation rescue and confirmed attribution.",
     economicValue: "A single high-value retention saves more than the annual plan cost.",
     includes: [
       "Up to ~2,500 members",

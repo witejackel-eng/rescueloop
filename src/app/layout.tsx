@@ -52,12 +52,12 @@ export const metadata: Metadata = {
     template: "%s — RescueLoop",
   },
   description:
-    "Find paying members who never started, approve respectful outreach, and see what changed.",
+    "RescueLoop helps Whop creators find students who are losing momentum, review the evidence, approve respectful support, and observe what happens next.",
   metadataBase: resolveMetadataBase(),
   openGraph: {
     title: "RescueLoop — Activation rescue for Whop creators",
     description:
-      "Find paying members who never started, approve respectful outreach, and see what changed.",
+      "RescueLoop helps Whop creators find students who are losing momentum, review the evidence, approve respectful support, and observe what happens next.",
     type: "website",
     siteName: "RescueLoop",
     images: [
@@ -73,7 +73,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "RescueLoop — Activation rescue for Whop creators",
     description:
-      "Find paying members who never started, approve respectful outreach, and see what changed.",
+      "RescueLoop helps Whop creators find students who are losing momentum, review the evidence, approve respectful support, and observe what happens next.",
     images: [
       {
         url: "/brand/twitter-default-1200x630.png",

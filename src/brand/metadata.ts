@@ -42,7 +42,7 @@ export function generateManifest(): MetadataRoute.Manifest {
   return {
     name: "RescueLoop",
     short_name: "RescueLoop",
-    description: "Activation rescue for Whop creators.",
+    description: "RescueLoop helps Whop creators find students who are losing momentum, review the evidence, approve respectful support, and observe what happens next.",
     start_url: "/",
     display: "standalone",
     background_color: "#F4F1EA",
