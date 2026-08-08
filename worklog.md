@@ -174,3 +174,38 @@ Verification:
 - Marketing truth guard tests: 16/16 pass
 - Marketplace truth tests: 8/8 pass
 - No lint errors in changed files
+---
+Task ID: final-visual-pass
+Agent: main
+Task: 10/10 Visual Pass + Release Closure — all 26 steps
+
+Work Log:
+- Audited RC branch at 89e2e51, verified on repair/final-release-candidate
+- Read all 12+ marketing components and design system
+- Captured BEFORE screenshot at 1440px
+- Hero: swapped layout to 45-50% copy / 50-55% visual, increased min-height, updated copy to 4-line product story
+- Created 3 hero-sized product moments: RescueQueueMoment, PlaybookMoment, CourseIntelligenceMoment
+- Created unified demo shell: /overview/layout.tsx with sidebar, top bar, mobile drawer
+- Added section rhythm CSS tokens: --section-warm, --section-secondary, --section-recovery-tint, --section-white, --section-neutral
+- Applied tonal variation to all 11 sections (no more "all cream")
+- Fixed footer dead links: /rescue-queue → /overview/rescue-queue, /settings → /overview/settings
+- Fixed marketing truth: Support sent→Intervention dispatched, Return confirmed→Return observed, confirmed attribution→attribution evidence
+- Fixed ROI calculator overselling: Conservative→Scenario, Value:cost→Illustrative value-to-plan-cost
+- Added Done-for-you implementation $699 section to pricing
+- Updated Final CTA to dark conclusion treatment with "Apply for done-for-you implementation"
+- Fixed Observe copy: "RescueLoop observes student responses and subsequent course activity where evidence is available."
+- Hard-guarded db:push and db:reset scripts in package.json
+- Fixed documentation date to 2025-08-10
+- TypeScript: clean, Lint: 0 errors, Tests: 674/674 pass
+- Pushed f7381b8 to origin/repair/final-release-candidate (verified via git ls-remote)
+- Captured AFTER screenshots at 390, 768, 1440px
+
+Stage Summary:
+- FINAL SHA: f7381b89eed9aa8d3816114818a1b385b6f0ffcc
+- Remote verified: git ls-remote shows f7381b8 on repair/final-release-candidate
+- All /overview routes (8 total) return 200 with unified shell
+- Database: PostgreSQL + DIRECT_URL confirmed, SQLite absent
+- Destructive scripts: hard-guarded (exit 1 with warning)
+- Marketing truth: clean (no forbidden claims found)
+- ROI calculator: illustrative language throughout
+- Pricing: $29/$59/$119 + $699 done-for-you
