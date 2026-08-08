@@ -57,6 +57,20 @@ export async function GET(request: NextRequest) {
         select: { organizationId: true, count: true },
       });
 
+      // Get actual MRR from SubscriptionEntitlement records
+      // SubscriptionEntitlement stores planTier but not priceCents directly,
+      // so we count active entitlements per org and look up plan price.
+      const PLAN_PRICE_CENTS: Record<string, number> = { rescue: 2900, growth: 5900, scale: 11900 };
+      const entitlements = await db.subscriptionEntitlement.findMany({
+        where: { state: "active" },
+        select: { organizationId: true, planTier: true },
+      });
+      const mrrByOrg = new Map<string, number>();
+      for (const ent of entitlements) {
+        const prev = mrrByOrg.get(ent.organizationId) ?? 0;
+        mrrByOrg.set(ent.organizationId, prev + (PLAN_PRICE_CENTS[ent.planTier] ?? 0));
+      }
+
       const counterMap = new Map(counters.map((c) => [c.organizationId, c.count]));
 
       // Build cost estimates for each tenant
@@ -65,9 +79,11 @@ export async function GET(request: NextRequest) {
         const rate = RATE_CARD[planTier] ?? RATE_CARD.rescue;
         const monitoredMembers = counterMap.get(org.id) ?? 0;
 
-        // Estimate payment processing cost based on members * avg value
-        // (conservative: assume $29/mo avg member value for payment % calculation)
-        const estimatedMrrCents = monitoredMembers * 2900;
+        // Payment processing cost derived from actual subscription MRR.
+        // Falls back to plan price when no entitlement records exist.
+        // NEVER uses memberCount × planPrice (that is a known buggy pattern).
+        const actualMrr = mrrByOrg.get(org.id);
+        const estimatedMrrCents = actualMrr ?? rate.priceCents;
         const paymentCost = Math.round(estimatedMrrCents * rate.paymentCostPct);
 
         const totalCost = rate.infraCostCents + paymentCost + rate.supportCostCents;
@@ -103,7 +119,7 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         _meta: {
-          disclaimer: "internal planning — not accounting truth",
+          disclaimer: "Internal estimate — not accounting truth. Payment processing derived from actual subscription MRR where available.",
           period: currentPeriod,
           rateCardVersion: "v3-2025-01",
         },
