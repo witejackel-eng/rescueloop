@@ -26,7 +26,7 @@ export function OutcomeStrip() {
   return (
     <section
       id="outcomes"
-      className="border-b border-[var(--hairline)] bg-[var(--canvas-elevated)]"
+      className="border-b border-[var(--hairline)] bg-[var(--section-secondary)]"
     >
       <div className="mx-auto max-w-[1400px] px-4 lg:px-8">
         {/* Section label */}

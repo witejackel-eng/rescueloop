@@ -14,10 +14,10 @@
     "test:contracts": "vitest run src/tests/contracts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:perf": "vitest run --config vitest.perf.config.ts",
-    "db:push": "prisma db push --accept-data-loss",
+    "db:push": "echo '⚠ Destructive: use prisma db push directly with --accept-data-loss only in dev' && exit 1",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset",
+    "db:reset": "echo '⚠ Destructive: use prisma migrate reset directly only in dev' && exit 1",
     "postinstall": "prisma generate"
   },
   "dependencies": {

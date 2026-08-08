@@ -6,10 +6,10 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
     title: "Product",
     links: [
       { label: "Overview", href: "/overview" },
-      { label: "Rescue queue", href: "/rescue-queue" },
-      { label: "Campaigns", href: "/campaigns" },
-      { label: "Insights", href: "/insights" },
-      { label: "Value ledger", href: "/value" },
+      { label: "Rescue queue", href: "/overview/rescue-queue" },
+      { label: "Campaigns", href: "/overview/campaigns" },
+      { label: "Insights", href: "/overview/insights" },
+      { label: "Value ledger", href: "/overview/value" },
     ],
   },
   {
@@ -17,7 +17,7 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
     links: [
       { label: "Onboarding", href: "/onboarding" },
       { label: "Explore demo", href: "/overview" },
-      { label: "Settings", href: "/settings" },
+      { label: "Settings", href: "/overview/settings" },
       { label: "Student view", href: "/student-rescue" },
     ],
   },
@@ -42,7 +42,7 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
 
 export function MarketingFooter() {
   return (
-    <footer className="border-t border-[var(--hairline)] bg-[var(--canvas)]">
+    <footer className="border-t border-[var(--hairline)] bg-[var(--section-secondary)]">
       <div className="mx-auto max-w-[1400px] px-4 py-16 lg:px-8 lg:py-20">
         <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr] lg:gap-10">
           {/* Brand */}

@@ -57,7 +57,7 @@ const ITEMS: QA[] = [
 
 export function FaqSection() {
   return (
-    <section id="faq" className="bg-[var(--canvas-elevated)]">
+    <section id="faq" className="bg-[var(--section-secondary)]">
       <div className="mx-auto max-w-[1100px] px-4 py-20 lg:px-8 lg:py-32">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
           <span className="size-1.5 rounded-full bg-[var(--recovery-green)]" />

@@ -59,7 +59,7 @@ export function CourseIntelligenceSection() {
   const maxStall = Math.max(...NODES.map((n) => n.stallRate));
 
   return (
-    <section className="bg-[var(--canvas-elevated)]">
+    <section className="bg-[var(--section-white)]">
       <div className="mx-auto max-w-[1400px] px-4 py-20 lg:px-8 lg:py-32">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
           <span className="size-1.5 rounded-full bg-[var(--recovery-green)]" />

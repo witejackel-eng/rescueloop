@@ -36,7 +36,7 @@ const STEPS = [
     number: "V",
     title: "Observe",
     description:
-      "RescueLoop watches whether the student responded to the support, replied, resumed lessons or reversed a cancellation.",
+      "RescueLoop observes student responses and subsequent course activity where evidence is available.",
   },
   {
     number: "VI",

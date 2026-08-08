@@ -47,7 +47,7 @@ const PRINCIPLES: Principle[] = [
 export function SafetySection() {
   const reduced = useReducedMotion();
   return (
-    <section id="safety" className="bg-[var(--canvas)]">
+    <section id="safety" className="bg-[var(--section-warm)]">
       <div className="mx-auto max-w-[1400px] px-4 py-20 lg:px-8 lg:py-32">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
           <span className="size-1.5 rounded-full bg-[var(--recovery-green)]" />

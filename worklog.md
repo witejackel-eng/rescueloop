@@ -27,3 +27,150 @@ Stage Summary:
 - Main branch untouched (ded8ef7)
 - All 8 demo routes return 200
 - Production build succeeds
+
+---
+Task ID: 2-a
+Agent: product-moments
+Task: Create THREE hero-sized product moment components
+
+Work Log:
+- Created /src/components/marketing/product-moments/rescue-queue-moment.tsx
+  • Large product-surface rescue queue table (Maya Thompson, Devon Park, Sara Klein, Jamal Wright)
+  • Column headers in mono font: Member, Trigger, Progress, Inactive, Value, Priority
+  • Progress bars with recovery-green fill
+  • Priority badges: HIGH (warning), URGENT (critical), MEDIUM (info)
+  • Maya row expandable — reveals evidence panel (previous pace 3.2 lessons/week, no activity since Module 4, no recent intervention, reminders allowed)
+  • Toolbar: "Awaiting approval · 4" with sync status and manual-approval indicator
+  • Inactivity color coding: 7+ days = critical, 5+ = warning
+  • Footer: "4 interventions · $286/mo represented"
+  • Scroll-reveal entrance animations, AnimatePresence for expand/collapse
+  • Full responsive: stacked mobile, table layout desktop
+
+- Created /src/components/marketing/product-moments/playbook-moment.tsx
+  • Substantial rule-builder product surface
+  • Three numbered rule clauses: progress band (20%–80%), inactivity threshold (interactive slider), membership status filter
+  • Interactive slider (1–30 days) with real-time eligibility updates
+  • Stat cards: Eligible members, Expected interventions, Excluded by cooldown, Near renewal
+  • Delta indicators when threshold differs from 7-day baseline
+  • "Editing · not yet published" badge
+  • "Nothing will be sent until you publish this rule" safety footer
+  • Deterministic stat computation from 742 students × $79/mo
+  • Uses shadcn/ui Slider component
+
+- Created /src/components/marketing/product-moments/course-intelligence-moment.tsx
+  • Large 12-lesson bar chart (L1–L12) with 260px height
+  • Clear friction point at L7 highlighted in recovery-green (24% stall rate)
+  • Friction severity markers: critical (red), watch (amber), ok (none)
+  • Animated bar entrance with staggered delays
+  • Interactive lesson selection with hover states
+  • 4-column detail panel: Lesson, Stall rate, Affected students, Recommended action
+  • L7 recommendation: "Add a setup walkthrough video to reduce stall by estimated 30%"
+  • Legend, axis labels, and footer
+  • AnimatePresence for detail panel transitions
+
+Design compliance:
+- All components use "use client"
+- Imports: useReducedMotion, motion tokens, cn, ScrollReveal, SectionEyebrow
+- CSS custom properties only (--canvas, --surface, --ink-primary, --recovery-green, --warning, --critical, --info, etc.)
+- framer-motion for entrance animations only (scroll reveal, stagger, expand/collapse)
+- Respects prefers-reduced-motion
+- Desktop: full-width product surface with surrounding copy
+- Mobile: stacked, logical information flow
+- No glassmorphism, no neon, no random blues/purples, no crypto aesthetics
+- Subtle borders (var(--hairline)), small shadows (shadow-sm), surface elevation
+
+Lint: 0 errors (1 pre-existing warning in unrelated file)
+
+---
+Task ID: 2-b
+Agent: demo-layout
+Task: Create a unified demo layout shell for /overview routes
+
+Work Log:
+- Created /src/app/overview/layout.tsx — unified demo shell wrapping ALL /overview/* routes
+  • Top bar (h-14): RescueLoopLogo (workspace/compact), vertical separator, workspace name "Creator Growth Lab", plan badge "Growth" (recovery-green outline), system status indicator (ping dot + "Healthy" label)
+  • Desktop sidebar (240px, lg+): always visible, framer-motion entrance (slide-from-left + fade)
+  • Mobile sidebar: Sheet drawer (Radix Dialog, side="left", 280px) triggered by hamburger Menu icon in top bar
+    - Built-in focus trap and Escape key close via Radix Dialog
+    - Drawer closes on route change (derived state pattern, no useEffect)
+    - Drawer closes on nav item click (onNavigate callback)
+    - SheetTitle with RescueLoopLogo, SheetDescription sr-only for a11y
+  • Sidebar navigation — Primary group:
+    - Overview → /overview (exact match for active state)
+    - Rescue Queue → /overview/rescue-queue
+    - Students → /overview/students
+    - Campaigns → /overview/campaigns
+    - Insights → /overview/insights
+    - Value Ledger → /overview/value
+  • Sidebar navigation — Secondary group (after separator, "System" label):
+    - System Health → /overview/settings/health
+    - Settings → /overview/settings
+  • Active nav item: recovery-green text + recovery-light/50 bg + animated left border accent (motion.div layoutId spring animation)
+  • Inactive nav item: ink-secondary text, hover → ink-primary + canvas-elevated bg
+  • Persistent disclosure banner at bottom of main content area:
+    - "Interactive demo · simulated workspace — No customer data is connected. Nothing is sent."
+    - CircleCheck icon in recovery-green
+    - hairline top border, canvas-elevated bg
+  • Main content area: flex-1 overflow-y-auto with AnimatePresence page transitions (fade + slide)
+  • Layout root: h-screen flex-col, overflow-hidden, canvas bg
+
+Design compliance:
+- "use client" for stateful mobile drawer toggle
+- CSS custom properties only: --canvas, --canvas-elevated, --surface, --ink-primary, --ink-secondary, --ink-muted, --hairline, --recovery-green, --recovery-light
+- framer-motion for sidebar entrance + page transitions + active indicator spring
+- shadcn/ui Sheet for mobile drawer (built on Radix Dialog)
+- shadcn/ui Badge, Separator
+- RescueLoopLogo from @/components/brand/logo
+- usePathname for active state detection
+- Link from next/link for client-side navigation
+- Responsive: sidebar hidden on <lg, hamburger visible on <lg
+- Touch target (44px) on hamburger button
+- aria-current="page" on active nav item
+- aria-label on hamburger and nav
+- No useEffect — derived state pattern for route-change drawer close
+- No glassmorphism, no neon, no random blues/purples
+
+Lint: 0 errors (1 pre-existing warning in unrelated file)
+
+---
+Task ID: 3-a
+Agent: marketing-truth-fix
+Task: Search and fix ALL marketing truth regressions
+
+Work Log:
+- Searched all .tsx, .ts, .md files in src/ and docs/ for 12 forbidden terms
+- Found 3 regressions in src/ and 2 in docs/
+
+Fixes applied:
+
+1. src/components/marketing/hero/closing-signal-visual.tsx
+   • "Support sent" → "Intervention dispatched" (label: "Intervention", sublabel: "dispatched")
+   • "Return confirmed" → "Return observed" (sublabel: "confirmed" → "observed")
+   • Updated JSDoc comment: "Support event" → "Intervention dispatched"
+
+2. src/components/marketing/pricing-section.tsx
+   • "confirmed attribution" → "attribution evidence" in Scale plan problemItHandles
+   • (not about the confirmed tier specifically — this is marketing copy)
+
+3. docs/implementation/FINAL_UI_SALVAGE_AUDIT.md
+   • "Live demo" → "Interactive demo" in donor component audit (2 occurrences)
+
+Terms confirmed already clean (no action needed):
+- "Support sent" — no other occurrences in src/ or docs/
+- "Return confirmed" — no other occurrences
+- "opened the support" — no occurrences
+- "confirmed payment attribution" — no occurrences
+- "Total defended value" — only in manifest.ts forbiddenClaims array and test files (correct: these define what's forbidden)
+- "$237 confirmed" — only in test guard patterns (correct)
+- "Confirmed recovered value $237" — no occurrences
+- "Live demo" / "live demo" — only in manifest.ts forbiddenClaims and test files (correct)
+- "Delivered"/"Opened"/"Read" as provider state labels — no occurrences in UI labels
+  • interventionStateMeta uses truthful labels: "Sent", "Response received", "Responded", "Recovered"
+  • brand/copy.ts states use truthful labels: "provider accepted", "outcome observed"
+- "confirmed attribution" in policy.ts/engine.ts — correct: these describe the technical classification system, not marketing copy
+
+Verification:
+- TypeScript: clean (tsc --noEmit passes)
+- Marketing truth guard tests: 16/16 pass
+- Marketplace truth tests: 8/8 pass
+- No lint errors in changed files
