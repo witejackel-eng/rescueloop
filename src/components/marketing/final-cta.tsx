@@ -24,7 +24,26 @@ export function FinalCta() {
 
   return (
     <section ref={sectionRef} className="relative overflow-hidden border-t border-[var(--hairline)] py-20 lg:py-32">
-      <div className="mx-auto max-w-[1400px] px-6 lg:px-12">
+      {/* Floating dot background — pure CSS */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage: `
+              radial-gradient(circle 1.5px at 20% 30%, var(--recovery-green), transparent),
+              radial-gradient(circle 1px at 50% 15%, var(--ink-primary), transparent),
+              radial-gradient(circle 1.5px at 80% 45%, var(--recovery-green), transparent),
+              radial-gradient(circle 1px at 35% 70%, var(--ink-primary), transparent),
+              radial-gradient(circle 1px at 65% 80%, var(--recovery-green), transparent),
+              radial-gradient(circle 1.5px at 10% 90%, var(--ink-primary), transparent),
+              radial-gradient(circle 1px at 90% 10%, var(--recovery-green), transparent),
+              radial-gradient(circle 1px at 45% 55%, var(--ink-primary), transparent)
+            `,
+          }}
+        />
+      </div>
+
+      <div className="relative mx-auto max-w-[1400px] px-6 lg:px-12">
         <ScrollReveal>
           <div
             className="relative border border-[var(--hairline)] bg-[var(--surface)]"
@@ -43,7 +62,17 @@ export function FinalCta() {
               <div className="flex-1">
                 <h2 className="mb-6 font-serif text-[clamp(2.25rem,5vw,4rem)] leading-[0.98] tracking-[-0.02em] text-[var(--ink-primary)]">
                   Help the right{" "}
-                  <span className="italic text-[var(--ink-secondary)]">students continue.</span>
+                  <span
+                    className="italic"
+                    style={{
+                      backgroundImage: "linear-gradient(135deg, var(--recovery-green), var(--ink-secondary))",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
+                    }}
+                  >
+                    students continue.
+                  </span>
                 </h2>
                 <p className="mb-10 max-w-[480px] text-[16px] leading-relaxed text-[var(--ink-secondary)] lg:text-[17px]">
                   Explore the RescueLoop demonstration and see how one

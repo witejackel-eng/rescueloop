@@ -88,9 +88,9 @@ export function HeroPreview() {
             </span>
           </motion.div>
 
-          {/* Main preview card */}
+          {/* Main preview card — glassmorphism */}
           <div
-            className="relative overflow-hidden rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_12px_40px_-12px_rgba(17,17,15,0.18),0_2px_8px_-2px_rgba(17,17,15,0.05)]"
+            className="relative overflow-hidden rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)]/80 shadow-[0_12px_40px_-12px_rgba(17,17,15,0.18),0_2px_8px_-2px_rgba(17,17,15,0.05)] backdrop-blur-xl"
           >
             {/* Premium gradient wash */}
             <div
@@ -118,14 +118,14 @@ export function HeroPreview() {
               </span>
             </div>
 
-            {/* Body: 2-column grid */}
+            {/* Body: 2-column grid — staggered reveal */}
             <div className="relative grid grid-cols-1 gap-4 p-5 lg:grid-cols-3 lg:gap-5">
               {/* Left: Recovery Pulse */}
               <motion.div
-                initial={reduced ? false : { opacity: 0, y: 12 }}
+                initial={reduced ? false : { opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: 0.15, duration: 0.5, ease: easeOut }}
+                transition={{ delay: 0.1, duration: 0.5, ease: easeOut }}
                 className="lg:col-span-2"
               >
                 <RecoveryPulseCard />
@@ -133,20 +133,20 @@ export function HeroPreview() {
 
               {/* Right: System Health */}
               <motion.div
-                initial={reduced ? false : { opacity: 0, y: 12 }}
+                initial={reduced ? false : { opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: 0.28, duration: 0.5, ease: easeOut }}
+                transition={{ delay: 0.22, duration: 0.5, ease: easeOut }}
               >
                 <SystemHealthCard />
               </motion.div>
 
               {/* Full-width: Rescue Queue preview */}
               <motion.div
-                initial={reduced ? false : { opacity: 0, y: 12 }}
+                initial={reduced ? false : { opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: 0.4, duration: 0.5, ease: easeOut }}
+                transition={{ delay: 0.34, duration: 0.5, ease: easeOut }}
                 className="lg:col-span-3"
               >
                 <RescueQueuePreview />
@@ -190,7 +190,7 @@ function CardLabel({
 function RecoveryPulseCard() {
   const max = FUNNEL[0].value;
   return (
-    <div className="rounded-[10px] border border-[var(--hairline)] bg-[var(--canvas-elevated)] p-5">
+    <div className="rounded-[10px] border border-[var(--hairline)] bg-[var(--canvas-elevated)]/70 p-5 backdrop-blur-sm">
       <div className="mb-4 flex items-center justify-between">
         <CardLabel icon={TrendingUp}>Recovery Pulse</CardLabel>
         <span className="font-mono text-[10px] text-[var(--ink-muted)]">
@@ -252,7 +252,7 @@ function SystemHealthCard() {
     { name: "Notifications", ok: true },
   ];
   return (
-    <div className="flex h-full flex-col rounded-[10px] border border-[var(--hairline)] bg-[var(--canvas-elevated)] p-5">
+    <div className="flex h-full flex-col rounded-[10px] border border-[var(--hairline)] bg-[var(--canvas-elevated)]/70 p-5 backdrop-blur-sm">
       <div className="mb-4 flex items-center justify-between">
         <CardLabel icon={Activity}>System Health</CardLabel>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(20,125,104,0.25)] bg-[rgba(20,125,104,0.08)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--recovery-green)]">
@@ -283,7 +283,7 @@ function SystemHealthCard() {
 
 function RescueQueuePreview() {
   return (
-    <div className="rounded-[10px] border border-[var(--hairline)] bg-[var(--canvas-elevated)] p-5">
+    <div className="rounded-[10px] border border-[var(--hairline)] bg-[var(--canvas-elevated)]/70 p-5 backdrop-blur-sm">
       <div className="mb-4 flex items-center justify-between">
         <CardLabel icon={Users}>Rescue Queue</CardLabel>
         <span className="font-mono text-[10px] text-[var(--ink-muted)]">

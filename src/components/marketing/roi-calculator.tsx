@@ -78,6 +78,9 @@ function SliderRow({
   value: number;
   onChange: (v: number) => void;
 }) {
+  // Compute the fill percentage for the custom track
+  const pct = ((value - def.min) / (def.max - def.min)) * 100;
+
   return (
     <div className="border-b border-[var(--hairline)] px-5 py-5 lg:px-6 lg:py-6">
       <div className="flex items-baseline justify-between gap-3">
@@ -92,24 +95,40 @@ function SliderRow({
             {def.description}
           </div>
         </div>
-        <div className="font-mono text-[20px] tabular-nums text-[var(--ink-primary)]">
+        <motion.div
+          key={value}
+          initial={{ y: -4, opacity: 0.6 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.15 }}
+          className="font-mono text-[20px] tabular-nums text-[var(--ink-primary)]"
+        >
           {def.prefix}
           {value.toLocaleString("en-US")}
           {def.suffix}
-        </div>
+        </motion.div>
       </div>
       <div className="mt-3 flex items-center gap-4">
-        <input
-          id={def.id}
-          type="range"
-          min={def.min}
-          max={def.max}
-          step={def.step}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="flex-1 accent-[var(--recovery-green)]"
-          aria-label={def.label}
-        />
+        {/* Custom-styled range input */}
+        <div className="relative flex-1">
+          {/* Track background */}
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[var(--surface)]" />
+          {/* Filled portion */}
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full bg-[var(--recovery-green)] transition-[width] duration-150"
+            style={{ width: `${pct}%` }}
+          />
+          <input
+            id={def.id}
+            type="range"
+            min={def.min}
+            max={def.max}
+            step={def.step}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="relative z-10 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--recovery-green)] [&::-webkit-slider-thumb]:shadow-[0_2px_6px_rgba(20,125,104,0.3)] [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[var(--recovery-green)] [&::-moz-range-thumb]:shadow-[0_2px_6px_rgba(20,125,104,0.3)]"
+            aria-label={def.label}
+          />
+        </div>
         <input
           type="number"
           min={def.min}
@@ -117,7 +136,7 @@ function SliderRow({
           step={def.step}
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="w-20 rounded-[4px] border border-[var(--hairline)] bg-[var(--surface)] px-2 py-1 text-right font-mono text-[13px] tabular-nums text-[var(--ink-primary)] focus:outline-none focus:border-[var(--recovery-green)]"
+          className="w-20 rounded-[4px] border border-[var(--hairline)] bg-[var(--surface)] px-2 py-1 text-right font-mono text-[13px] tabular-nums text-[var(--ink-primary)] transition-colors focus:outline-none focus:border-[var(--recovery-green)]"
           aria-label={`${def.label} number input`}
         />
       </div>
@@ -179,9 +198,19 @@ export function RoiCalculator() {
             ))}
           </div>
 
-          {/* Outputs panel */}
-          <div className="bg-[var(--canvas)]">
-            <div className="border-b border-[var(--hairline)] px-5 py-4">
+          {/* Outputs panel — gradient accent */}
+          <div className="relative bg-[var(--canvas)]">
+            {/* Subtle gradient accent for results */}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(180deg, rgba(20,125,104,0.03) 0%, transparent 40%, rgba(20,125,104,0.02) 100%)",
+              }}
+              aria-hidden="true"
+            />
+
+            <div className="relative border-b border-[var(--hairline)] px-5 py-4">
               <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--ink-muted)]">
                 Computed outcomes
               </span>
@@ -193,8 +222,16 @@ export function RoiCalculator() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-40px" }}
               transition={standard}
-              className="border-b border-[var(--hairline)] px-5 py-7 lg:px-6"
+              className="relative border-b border-[var(--hairline)] px-5 py-7 lg:px-6"
             >
+              {/* Gradient highlight bar */}
+              <div
+                className="absolute inset-y-0 left-0 w-[3px]"
+                style={{
+                  background: "linear-gradient(180deg, var(--recovery-green), rgba(20,125,104,0.3))",
+                }}
+                aria-hidden="true"
+              />
               <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--ink-muted)]">
                 Monthly revenue currently exposed
               </div>
@@ -211,7 +248,11 @@ export function RoiCalculator() {
             </motion.div>
 
             {/* 3-month retained */}
-            <div className="border-b border-[var(--hairline)] px-5 py-6 lg:px-6">
+            <div className="relative border-b border-[var(--hairline)] px-5 py-6 lg:px-6">
+              <div
+                className="absolute inset-y-0 left-0 w-[3px] bg-[var(--recovery-green)]"
+                aria-hidden="true"
+              />
               <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--ink-muted)]">
                 Conservative 3-month retained value
               </div>
@@ -237,9 +278,11 @@ export function RoiCalculator() {
                   const needed = Math.max(1, Math.ceil(plan.cost / price));
                   const ratio = threeMonthRetained / plan.cost;
                   return (
-                    <div
+                    <motion.div
                       key={plan.name}
-                      className="border border-[var(--hairline)] bg-[var(--surface)] p-3"
+                      whileHover={reduced ? undefined : { y: -2 }}
+                      transition={{ duration: 0.15 }}
+                      className="border border-[var(--hairline)] bg-[var(--surface)] p-3 transition-shadow duration-200 hover:shadow-[0_4px_12px_-4px_rgba(17,17,15,0.08)]"
                     >
                       <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
                         {plan.name}
@@ -256,7 +299,7 @@ export function RoiCalculator() {
                           {ratio.toFixed(1)}×
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -269,7 +312,7 @@ export function RoiCalculator() {
               </div>
               <p className="mt-1.5 text-[12px] leading-snug text-[var(--ink-muted)]">
                 Conservative estimates. Not a guarantee of revenue. Recoveries
-                assume the plan’s safety rules and your approval queue remain
+                assume the plan's safety rules and your approval queue remain
                 active.
               </p>
             </div>

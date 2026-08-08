@@ -18,23 +18,25 @@ import { MarketingFooter } from "@/components/marketing/footer";
 
 export default function MarketingPage() {
   return (
-    <main className="bg-[var(--canvas)]">
+    <main className="flex min-h-screen flex-col bg-[var(--canvas)]">
       <FloatingNav />
-      <RescueHero />
-      <TrustStrip />
-      <HeroPreview />
-      <OutcomeStrip />
-      <FeatureRows />
-      <RevenueLeakageSection />
-      <RecoveryProcessSection />
-      <WorkflowShowcase />
-      <CourseIntelligenceSection />
-      <SafetySection />
-      <RoiCalculator />
-      <PricingSection />
-      <FaqSection />
-      <FinalCta />
-      <ClosingCta />
+      <div className="flex-1">
+        <RescueHero />
+        <TrustStrip />
+        <HeroPreview />
+        <OutcomeStrip />
+        <FeatureRows />
+        <RevenueLeakageSection />
+        <RecoveryProcessSection />
+        <WorkflowShowcase />
+        <CourseIntelligenceSection />
+        <SafetySection />
+        <RoiCalculator />
+        <PricingSection />
+        <FaqSection />
+        <FinalCta />
+        <ClosingCta />
+      </div>
       <MarketingFooter />
     </main>
   );

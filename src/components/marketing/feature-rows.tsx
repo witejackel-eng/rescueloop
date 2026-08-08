@@ -7,6 +7,8 @@ import { SignalDetectionIllustration } from "@/components/marketing/illustration
 import { RescueQueueIllustration } from "@/components/marketing/illustrations/rescue-queue-illustration";
 import { StudentSupportIllustration } from "@/components/marketing/illustrations/student-support-illustration";
 import { AttributionIllustration } from "@/components/marketing/illustrations/attribution-illustration";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { easeOut } from "@/design-system/motion";
 
 const FEATURES = [
   {
@@ -66,7 +68,10 @@ interface FeatureRowProps {
   index: number;
 }
 
-function FeatureRow({ feature }: FeatureRowProps) {
+function FeatureRow({ feature, index }: FeatureRowProps) {
+  const reduced = useReducedMotion();
+  const isReversed = index % 2 === 1;
+
   return (
     <ScrollReveal
       direction="none"
@@ -80,8 +85,14 @@ function FeatureRow({ feature }: FeatureRowProps) {
           </span>
         </div>
 
-        {/* Title + description */}
-        <div>
+        {/* Title + description — alternate order on odd rows for desktop */}
+        <motion.div
+          initial={reduced ? false : { opacity: 0, x: isReversed ? 24 : -24 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.6, ease: easeOut }}
+          className={isReversed ? "lg:order-3" : ""}
+        >
           <motion.h3
             className="font-serif text-[clamp(1.5rem,3vw,2.25rem)] leading-tight tracking-[-0.02em] text-[var(--ink-primary)] transition-transform duration-500 group-hover:translate-x-2"
           >
@@ -90,14 +101,20 @@ function FeatureRow({ feature }: FeatureRowProps) {
           <p className="mt-4 max-w-[440px] text-[15px] leading-relaxed text-[var(--ink-secondary)] lg:text-[16px]">
             {feature.description}
           </p>
-        </div>
+        </motion.div>
 
-        {/* Illustration */}
-        <div className="flex items-center justify-center lg:justify-end">
-          <div className="h-[200px] w-full max-w-[340px] border border-[var(--hairline)] bg-[var(--canvas-elevated)] p-4 transition-all duration-500 group-hover:border-[var(--hairline-strong)]">
+        {/* Illustration — alternate order on odd rows for desktop */}
+        <motion.div
+          initial={reduced ? false : { opacity: 0, x: isReversed ? -24 : 24 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.6, delay: 0.08, ease: easeOut }}
+          className={`flex items-center justify-center lg:justify-end ${isReversed ? "lg:order-2" : ""}`}
+        >
+          <div className="h-[200px] w-full max-w-[340px] border border-[var(--hairline)] bg-[var(--canvas-elevated)] p-4 transition-all duration-500 group-hover:border-[var(--hairline-strong)] group-hover:shadow-[0_4px_16px_-4px_rgba(17,17,15,0.08)]">
             <feature.Illustration />
           </div>
-        </div>
+        </motion.div>
       </div>
     </ScrollReveal>
   );

@@ -1,11 +1,9 @@
 "use client";
 
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { easeOut } from "@/design-system/motion";
 
 interface QA {
   q: string;
@@ -56,6 +54,9 @@ const ITEMS: QA[] = [
 ];
 
 export function FaqSection() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const reduced = useReducedMotion();
+
   return (
     <section id="faq" className="bg-[var(--canvas-elevated)]">
       <div className="mx-auto max-w-[1100px] px-4 py-20 lg:px-8 lg:py-32">
@@ -73,27 +74,63 @@ export function FaqSection() {
         </p>
 
         <div className="mt-12 border-t border-[var(--hairline)]">
-          <Accordion type="single" collapsible className="w-full">
-            {ITEMS.map((item, i) => (
-              <AccordionItem
+          {ITEMS.map((item, i) => {
+            const isOpen = openIndex === i;
+            return (
+              <div
                 key={i}
-                value={`item-${i}`}
-                className="border-b border-[var(--hairline)]"
+                className="relative border-b border-[var(--hairline)]"
               >
-                <AccordionTrigger className="py-6 text-left text-[16px] font-medium text-[var(--ink-primary)] hover:no-underline">
-                  <span className="flex items-baseline gap-4">
-                    <span className="font-mono text-[12px] tabular-nums text-[var(--ink-muted)]">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <span>{item.q}</span>
+                {/* Left border highlight when open */}
+                <div
+                  className="absolute inset-y-0 left-0 w-[3px] bg-[var(--recovery-green)] transition-opacity duration-300"
+                  style={{ opacity: isOpen ? 1 : 0 }}
+                  aria-hidden="true"
+                />
+
+                {/* Trigger */}
+                <button
+                  onClick={() => setOpenIndex(isOpen ? null : i)}
+                  className="flex w-full items-baseline gap-4 py-6 pl-6 text-left transition-colors hover:text-[var(--ink-primary)]"
+                  aria-expanded={isOpen}
+                >
+                  <span className="font-mono text-[12px] tabular-nums text-[var(--ink-muted)]">
+                    {String(i + 1).padStart(2, "0")}
                   </span>
-                </AccordionTrigger>
-                <AccordionContent className="pb-6 pl-10 text-[14px] leading-relaxed text-[var(--ink-secondary)]">
-                  {item.a}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+                  <span className="flex-1 text-[16px] font-medium text-[var(--ink-primary)]">
+                    {item.q}
+                  </span>
+                  <motion.span
+                    animate={{ rotate: isOpen ? 180 : 0 }}
+                    transition={reduced ? { duration: 0 } : { duration: 0.25, ease: easeOut }}
+                    className="shrink-0 text-[var(--ink-muted)]"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </motion.span>
+                </button>
+
+                {/* Content with AnimatePresence */}
+                <AnimatePresence initial={false}>
+                  {isOpen && (
+                    <motion.div
+                      key="content"
+                      initial={reduced ? false : { height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={reduced ? false : { height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3, ease: easeOut }}
+                      className="overflow-hidden"
+                    >
+                      <div className="pb-6 pl-[calc(1.5rem+1rem+1rem)] text-[14px] leading-relaxed text-[var(--ink-secondary)]">
+                        {item.a}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

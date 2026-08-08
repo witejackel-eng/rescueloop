@@ -94,17 +94,24 @@ function PlanCard({ plan }: { plan: Plan }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ ...standard, delay: plan.featured ? 0.05 : 0 }}
+      whileHover={reduced ? undefined : { y: -4 }}
       className={cn(
-        "relative flex flex-col border bg-[var(--surface)]",
+        "relative flex flex-col border bg-[var(--surface)] transition-shadow duration-300",
         plan.featured
-          ? "border-[var(--ink-primary)] shadow-[0_2px_0_var(--ink-primary)]"
-          : "border-[var(--hairline)]",
+          ? "border-[var(--ink-primary)] shadow-[0_2px_0_var(--ink-primary)] hover:shadow-[0_8px_24px_-8px_rgba(17,17,15,0.15),0_2px_0_var(--ink-primary)]"
+          : "border-[var(--hairline)] hover:shadow-[0_8px_24px_-8px_rgba(17,17,15,0.1)]",
       )}
     >
       {plan.featured && (
-        <div className="absolute -top-px left-1/2 -translate-x-1/2 bg-[var(--ink-primary)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white">
+        <motion.div
+          initial={reduced ? false : { opacity: 0, scale: 0.8, y: -4 }}
+          whileInView={{ opacity: 1, scale: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.2, duration: 0.4, type: "spring", stiffness: 300, damping: 24 }}
+          className="absolute -top-px left-1/2 -translate-x-1/2 bg-[var(--ink-primary)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white"
+        >
           Most popular
-        </div>
+        </motion.div>
       )}
 
       <div className="border-b border-[var(--hairline)] px-6 py-6">
@@ -174,17 +181,24 @@ function PlanCard({ plan }: { plan: Plan }) {
         </p>
       </div>
 
-      {/* CTA */}
+      {/* CTA with shimmer */}
       <div className="px-6 py-5">
         <Link
           href="/onboarding"
           className={cn(
-            "press inline-flex w-full items-center justify-center gap-2 rounded-[8px] px-4 py-3 text-[14px] font-medium transition-colors",
+            "press group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-[8px] px-4 py-3 text-[14px] font-medium transition-colors",
             plan.featured
               ? "bg-[var(--ink-primary)] text-white"
               : "border border-[var(--hairline)] bg-[var(--surface)] text-[var(--ink-primary)] hover:border-[var(--ink-primary)]",
           )}
         >
+          {/* Shimmer effect for featured CTA */}
+          {plan.featured && (
+            <span
+              className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_2.5s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent"
+              aria-hidden="true"
+            />
+          )}
           Apply for the private pilot
           <ArrowRight className="size-4" />
         </Link>
@@ -209,6 +223,12 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 export function PricingSection() {
   return (
     <section id="pricing" className="bg-[var(--canvas)]">
+      <style>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
       <div className="mx-auto max-w-[1400px] px-4 py-20 lg:px-8 lg:py-32">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
           <span className="size-1.5 rounded-full bg-[var(--recovery-green)]" />

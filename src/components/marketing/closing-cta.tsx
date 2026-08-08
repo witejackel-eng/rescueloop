@@ -47,6 +47,24 @@ export function ClosingCta() {
         aria-hidden="true"
       />
 
+      {/* Floating dot background — pure CSS */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div
+          className="absolute inset-0 opacity-[0.08]"
+          style={{
+            backgroundImage: `
+              radial-gradient(circle 2px at 15% 25%, rgba(20,125,104,0.8), transparent),
+              radial-gradient(circle 1.5px at 70% 15%, rgba(255,255,255,0.6), transparent),
+              radial-gradient(circle 2px at 85% 55%, rgba(20,125,104,0.8), transparent),
+              radial-gradient(circle 1px at 40% 75%, rgba(255,255,255,0.5), transparent),
+              radial-gradient(circle 1.5px at 55% 90%, rgba(20,125,104,0.7), transparent),
+              radial-gradient(circle 1px at 25% 60%, rgba(255,255,255,0.4), transparent),
+              radial-gradient(circle 2px at 95% 80%, rgba(20,125,104,0.6), transparent)
+            `,
+          }}
+        />
+      </div>
+
       <div className="relative z-10 mx-auto max-w-[1400px] px-6 py-20 lg:px-12 lg:py-28">
         <div className="mx-auto max-w-[820px] text-center">
           {/* Eyebrow */}
@@ -63,7 +81,7 @@ export function ClosingCta() {
             </span>
           </motion.div>
 
-          {/* Headline */}
+          {/* Headline with gradient text */}
           <motion.h2
             initial={reduced ? false : { opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -72,7 +90,15 @@ export function ClosingCta() {
             className="font-serif text-[clamp(2.25rem,5.5vw,4.5rem)] leading-[0.98] tracking-[-0.02em] text-white"
           >
             Start your{" "}
-            <span className="italic text-[var(--recovery-green)]">
+            <span
+              className="italic"
+              style={{
+                backgroundImage: "linear-gradient(135deg, #14C88C, var(--recovery-green), #8BE8C8)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
               free recovery audit.
             </span>
           </motion.h2>

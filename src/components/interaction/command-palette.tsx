@@ -31,6 +31,8 @@ import {
   Zap,
   Wrench,
   File,
+  Megaphone,
+  Gauge,
 } from "lucide-react";
 import {
   CommandDialog,
@@ -90,6 +92,8 @@ const ICON_MAP: Record<string, typeof LayoutDashboard> = {
   Zap,
   Wrench,
   File,
+  Megaphone,
+  Gauge,
 };
 
 function iconFromName(name: string): typeof LayoutDashboard {
@@ -99,13 +103,14 @@ function iconFromName(name: string): typeof LayoutDashboard {
 // ── Demo workspace navigation (top-level routes) ───────────────
 
 const DEMO_NAV_COMMANDS: NavCommand[] = [
-  { label: "Go to Overview", href: "/overview", icon: LayoutDashboard, keywords: "dashboard home" },
-  { label: "Go to Rescue Queue", href: "/rescue-queue", icon: ListChecks, keywords: "queue triage approve" },
-  { label: "Go to Students", href: "/students", icon: Users, keywords: "members directory" },
+  { label: "Go to Overview", href: "/overview", icon: LayoutDashboard, keywords: "dashboard home", shortcut: "⌘0" },
+  { label: "Go to Rescue Queue", href: "/rescue-queue", icon: ListChecks, keywords: "queue triage approve", shortcut: "⌘1" },
+  { label: "Go to Students", href: "/students", icon: Users, keywords: "members directory", shortcut: "⌘2" },
   { label: "Go to Campaigns", href: "/campaigns", icon: Activity, keywords: "automation messages" },
-  { label: "Go to Insights", href: "/insights", icon: BarChart3, keywords: "analytics friction lessons" },
+  { label: "Go to Insights", href: "/insights", icon: BarChart3, keywords: "analytics friction lessons", shortcut: "⌘3" },
   { label: "Go to Value Ledger", href: "/value", icon: CreditCard, keywords: "revenue roi attribution" },
-  { label: "Go to Settings", href: "/settings", icon: Settings, keywords: "configuration whop" },
+  { label: "Go to Settings", href: "/settings", icon: Settings, keywords: "configuration whop", shortcut: "⌘," },
+  { label: "Go to System Health", href: "/settings/health", icon: Heart, keywords: "system health status diagnostics" },
 ];
 
 // ── Company-scoped dashboard navigation (relative to basePath) ──
@@ -256,6 +261,45 @@ export function CommandPalette({ basePath }: CommandPaletteProps) {
     setShortcutsOpen(true);
   }
 
+  // ── Recently used commands tracking ──────────────────────────
+
+  const RECENT_COMMANDS_KEY = "rescueloop-recent-commands";
+  const MAX_RECENT_COMMANDS = 5;
+
+  interface RecentCommand {
+    id: string;
+    label: string;
+    icon: string;
+    timestamp: number;
+  }
+
+  function getRecentCommands(): RecentCommand[] {
+    try {
+      const raw = localStorage.getItem(RECENT_COMMANDS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function addRecentCommand(id: string, label: string, icon: typeof LayoutDashboard) {
+    try {
+      const prev = getRecentCommands();
+      const filtered = prev.filter((c: RecentCommand) => c.id !== id);
+      const next: RecentCommand[] = [
+        { id, label, icon: serializeIcon(icon), timestamp: Date.now() },
+        ...filtered,
+      ].slice(0, MAX_RECENT_COMMANDS);
+      localStorage.setItem(RECENT_COMMANDS_KEY, JSON.stringify(next));
+    } catch {
+      // localStorage unavailable
+    }
+  }
+
+  const recentCommands = useMemo(() => getRecentCommands(), [open]);
+
   // ── Theme icon ─────────────────────────────────────────────
 
   const ThemeIcon = theme === "dark" ? Sun : Moon;
@@ -313,26 +357,88 @@ export function CommandPalette({ basePath }: CommandPaletteProps) {
           </CommandGroup>
           <CommandSeparator />
 
+          {/* ── Recently Used Commands ──────────────────────────── */}
+          {recentCommands.length > 0 && (
+            <CommandGroup heading="Recently Used Commands">
+              {recentCommands.map((cmd: { id: string; label: string; icon: string; timestamp: number }) => {
+                const CmdIcon = iconFromName(cmd.icon);
+                return (
+                  <CommandItem
+                    key={cmd.id}
+                    value={`recent-cmd ${cmd.label}`}
+                    onSelect={() => {
+                      // Re-execute by navigating if it's a nav command
+                      const match = [...navCommands].find((n) => n.label === cmd.label);
+                      if (match) {
+                        const target = basePath ? `${basePath}${match.href}` : match.href;
+                        goAndRecord(match.label, target, match.icon);
+                      }
+                    }}
+                  >
+                    <CmdIcon className="size-4 text-[var(--ink-secondary)]" />
+                    <HighlightMatch text={cmd.label} query={searchQuery} />
+                    <span className="ml-auto text-[11px] text-muted-foreground">
+                      <Clock className="inline size-3 mr-0.5 -mt-0.5" />
+                      {timeAgo(cmd.timestamp)}
+                    </span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          )}
+          {recentCommands.length > 0 && <CommandSeparator />}
+
           {/* ── Quick Actions ─────────────────────────────────── */}
-          <CommandGroup heading="Quick Actions">
+          <CommandGroup heading="Actions">
             <CommandItem
               value="toggle dark mode light theme appearance"
-              onSelect={handleToggleDarkMode}
+              onSelect={() => {
+                addRecentCommand("toggle-theme", themeLabel, ThemeIcon);
+                handleToggleDarkMode();
+              }}
             >
               <ThemeIcon className="size-4 text-[var(--ink-secondary)]" />
               <HighlightMatch text={themeLabel} query={searchQuery} />
               <CommandShortcut>⌘D</CommandShortcut>
             </CommandItem>
             <CommandItem
+              value="switch to dark mode"
+              onSelect={() => {
+                addRecentCommand("dark-mode", "Switch to dark mode", Moon);
+                setOpen(false);
+                setTheme("dark");
+              }}
+            >
+              <Moon className="size-4 text-[var(--ink-secondary)]" />
+              <HighlightMatch text="Switch to dark mode" query={searchQuery} />
+            </CommandItem>
+            <CommandItem
+              value="switch to light mode"
+              onSelect={() => {
+                addRecentCommand("light-mode", "Switch to light mode", Sun);
+                setOpen(false);
+                setTheme("light");
+              }}
+            >
+              <Sun className="size-4 text-[var(--ink-secondary)]" />
+              <HighlightMatch text="Switch to light mode" query={searchQuery} />
+            </CommandItem>
+            <CommandItem
               value="mark all notifications read clear"
-              onSelect={handleMarkAllRead}
+              onSelect={() => {
+                addRecentCommand("mark-read", "Mark all notifications read", CheckCircle2);
+                handleMarkAllRead();
+              }}
             >
               <CheckCircle2 className="size-4 text-[var(--ink-secondary)]" />
               <HighlightMatch text="Mark all notifications read" query={searchQuery} />
             </CommandItem>
             <CommandItem
               value="refresh data reload refetch"
-              onSelect={handleRefreshData}
+              onSelect={() => {
+                addRecentCommand("refresh", "Refresh data", RefreshCw);
+                handleRefreshData();
+              }}
             >
               <RefreshCw className="size-4 text-[var(--ink-secondary)]" />
               <HighlightMatch text="Refresh data" query={searchQuery} />
@@ -343,8 +449,10 @@ export function CommandPalette({ basePath }: CommandPaletteProps) {
               onSelect={() => {
                 if (automationState === "paused") {
                   resumeAutomation();
+                  addRecentCommand("resume-auto", "Resume automation", Play);
                 } else {
                   pauseAutomation();
+                  addRecentCommand("pause-auto", "Pause automation", Pause);
                 }
                 setOpen(false);
               }}
@@ -360,14 +468,21 @@ export function CommandPalette({ basePath }: CommandPaletteProps) {
             </CommandItem>
             <CommandItem
               value="review rescue queue open awaiting"
-              onSelect={() => goAndRecord("Rescue Queue", queueHref, ListChecks)}
+              onSelect={() => {
+                addRecentCommand("review-queue", "Review rescue queue", ListChecks);
+                goAndRecord("Rescue Queue", queueHref, ListChecks);
+              }}
             >
               <ListChecks className="size-4 text-[var(--ink-secondary)]" />
               <HighlightMatch text="Review rescue queue" query={searchQuery} />
+              <CommandShortcut>⌘1</CommandShortcut>
             </CommandItem>
             <CommandItem
               value="open unresolved creator actions notifications"
-              onSelect={() => go(actionsHomeHref)}
+              onSelect={() => {
+                addRecentCommand("notifications", "Open unresolved creator actions", Bell);
+                go(actionsHomeHref);
+              }}
             >
               <Bell className="size-4 text-[var(--ink-secondary)]" />
               <HighlightMatch text="Open unresolved creator actions" query={searchQuery} />
@@ -379,14 +494,20 @@ export function CommandPalette({ basePath }: CommandPaletteProps) {
           <CommandGroup heading="Settings">
             <CommandItem
               value="open onboarding wizard setup"
-              onSelect={handleOpenOnboarding}
+              onSelect={() => {
+                addRecentCommand("onboarding", "Open onboarding wizard", Rocket);
+                handleOpenOnboarding();
+              }}
             >
               <Rocket className="size-4 text-[var(--ink-secondary)]" />
               <HighlightMatch text="Open onboarding wizard" query={searchQuery} />
             </CommandItem>
             <CommandItem
               value="open keyboard shortcuts help"
-              onSelect={handleOpenShortcuts}
+              onSelect={() => {
+                addRecentCommand("shortcuts", "Open keyboard shortcuts", Keyboard);
+                handleOpenShortcuts();
+              }}
             >
               <Keyboard className="size-4 text-[var(--ink-secondary)]" />
               <HighlightMatch text="Open keyboard shortcuts" query={searchQuery} />
@@ -399,10 +520,14 @@ export function CommandPalette({ basePath }: CommandPaletteProps) {
           <CommandGroup heading="Search">
             <CommandItem
               value="search student find member"
-              onSelect={() => go(studentsHref)}
+              onSelect={() => {
+                addRecentCommand("search-students", "Search students", Search);
+                go(studentsHref);
+              }}
             >
               <Search className="size-4 text-[var(--ink-secondary)]" />
               <HighlightMatch text="Search students" query={searchQuery} />
+              <CommandShortcut>⌘2</CommandShortcut>
             </CommandItem>
           </CommandGroup>
         </CommandList>

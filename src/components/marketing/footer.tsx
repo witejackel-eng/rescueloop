@@ -35,7 +35,16 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
 
 export function MarketingFooter() {
   return (
-    <footer className="border-t-[1.5px] border-[var(--hairline-strong)] bg-[var(--canvas)]">
+    <footer className="relative border-t border-[var(--hairline)] bg-[var(--canvas)]">
+      {/* Gradient top border accent */}
+      <div
+        className="absolute inset-x-0 top-0 h-[2px]"
+        style={{
+          background: "linear-gradient(90deg, transparent, var(--recovery-green), rgba(61,107,140,0.5), transparent)",
+        }}
+        aria-hidden="true"
+      />
+
       <div className="mx-auto max-w-[1400px] px-4 py-16 lg:px-8 lg:py-20">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr] lg:gap-10">
           {/* Brand */}
@@ -62,7 +71,7 @@ export function MarketingFooter() {
                   <li key={link.label}>
                     <Link
                       href={link.href}
-                      className="text-[13px] text-[var(--ink-secondary)] transition-colors hover:text-[var(--ink-primary)]"
+                      className="text-[13px] text-[var(--ink-secondary)] transition-colors duration-200 hover:text-[var(--ink-primary)]"
                     >
                       {link.label}
                     </Link>
