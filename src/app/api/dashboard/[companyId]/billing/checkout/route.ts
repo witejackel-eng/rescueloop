@@ -22,6 +22,7 @@ import {
 } from "@/lib/billing/plans";
 import { PLANS } from "@/lib/usage/plans";
 import { recordAuditEvent } from "@/lib/audit";
+import { checkRateLimitOrReject, RATE_LIMITS } from "@/lib/rate-limit/rate-limiter";
 import type { PlanTier } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -42,6 +43,18 @@ export async function POST(
     context = await requireCompanyAccess(companyId);
   } catch {
     return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  }
+
+  // ─── Rate limiting (plan mutation — 5 req/min per org) ────
+  const rateLimitResponse = await checkRateLimitOrReject(
+    context.organizationId,
+    RATE_LIMITS.planMutation,
+  );
+  if (rateLimitResponse) {
+    return NextResponse.json(
+      { error: { code: "RATE_LIMITED", message: "Too many checkout requests. Please try again later." } },
+      { status: 429 },
+    );
   }
 
   // ─── Request validation ────────────────────────────────────

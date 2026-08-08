@@ -76,7 +76,7 @@ export function AttributionWaterfall({ events }: AttributionWaterfallProps) {
     <div className="border border-[var(--hairline)] bg-[var(--surface)]">
       <div className="flex items-baseline justify-between border-b border-[var(--hairline)] px-5 py-3">
         <h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-[var(--ink-secondary)]">
-          Recovered revenue — by attribution tier
+          Attributed value — by evidence tier
         </h2>
         <span className="font-mono text-[11px] text-[var(--ink-muted)]">
           {events.length} events
