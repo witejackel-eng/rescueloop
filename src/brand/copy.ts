@@ -8,7 +8,7 @@
 export const copy = {
   eyebrow: "Activation rescue for Whop creators",
   hero: "Close the loop before they leave.",
-  support: "Find who needs help. Approve the right message. See what changed.",
+  support: "Find students losing momentum. Review the evidence. Approve respectful support.",
   primaryCTA: "Explore the interactive demo",
   secondaryCTA: "See the student experience",
   trustLine: "Nothing sends without your approval.",
