@@ -680,3 +680,35 @@ Work Log:
 - typecheck: clean | lint: 0 errors (1 pre-existing warning unrelated to changes)
 - No prisma/schema.prisma modifications
 - Fixture mode preserved (no changes to fixture paths)
+
+---
+Task ID: 8-25
+Agent: witejackel-eng
+Task: Database rehearsal and release documentation for v1.0.1
+
+Work Log:
+- Read worklog.md for full project history
+- Ran `bunx prisma validate` — PASS (schema valid, no connection needed with placeholder env vars)
+- Ran `bunx prisma migrate status` — cannot connect (no live DB), documented static migration inspection
+- Verified migration chain: 20260806000000_init + 20260807000000_add_onboarding_progress — both CREATE-only, no destructive SQL
+- Confirmed all 7 critical models present in schema: SyncExecution, SyncCheckpoint, OnboardingProgress, DataExportRequest, DataDeletionRequest, SubscriptionEntitlement, WhopInstallation
+- Created docs/releases/V1_0_1_DATABASE_REHEARSAL.md
+  • Migration chain verification (2 migrations, 0 destructive SQL)
+  • No schema changes in v1.0.1 (logic-only release)
+  • Critical model survival confirmation (7/7 PASS)
+  • Production deployment commands (names only, no secrets)
+  • Result: PASS
+- Created docs/releases/V1_0_1_OPERATIONAL_CERTIFICATION.md
+  • Branch: release/v1.0.1-operational-certification
+  • Starting SHA: 450c50dad0a2883c6286346f48dae9e63189e8b7
+  • Changes: PX01, HTTP 503, billing wiring, CI fixes, cost formula
+  • PX01 architecture description (6 principles)
+  • Environment variables by name only (21 vars, PRESENT/MISSING/NOT REQUIRED)
+  • Remaining blockers: 3 external gates
+- Created docs/releases/V1_0_1_EXTERNAL_GATES.md
+  • Gate A: One real Whop notification — REQUIRES OWNER APPROVAL
+  • Gate B: One real $29 checkout — REQUIRES OWNER APPROVAL
+  • Neither gate executed
+  • Preparation status for each gate (all code complete, real API call pending)
+- No secret values or connection strings included in any document
+- Git identity: witejackel-eng
