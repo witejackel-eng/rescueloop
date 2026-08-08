@@ -10,7 +10,7 @@ import { easeOut } from "@/design-system/motion";
 import { copy } from "@/brand/copy";
 
 // RescueHero — product-led, premium hero.
-// Layout: ~55% copy / ~45% product story visual (desktop).
+// Layout: ~45-50% copy / ~50-55% product story visual (desktop).
 // Mobile: stacked — copy then simplified product card.
 // Preserves the closing-signal identity inside the product composition.
 
@@ -48,7 +48,7 @@ export function RescueHero() {
       />
 
       {/* ── Desktop + Tablet layout ───────────────────────────────── */}
-      <div className="relative z-10 mx-auto hidden max-w-[1400px] lg:grid lg:min-h-[100svh] lg:grid-cols-[1.15fr_1fr] lg:items-center lg:gap-8 lg:px-12 lg:py-20 xl:grid-cols-[1.2fr_1fr]">
+      <div className="relative z-10 mx-auto hidden max-w-[1400px] lg:grid lg:min-h-[100svh] lg:grid-cols-[1fr_1.15fr] lg:items-center lg:gap-8 lg:px-12 lg:py-20 xl:grid-cols-[1fr_1.25fr]">
 
         {/* Left: copy column */}
         <div className="flex flex-col justify-center py-12">
@@ -66,7 +66,7 @@ export function RescueHero() {
           </motion.div>
 
           {/* Headline — split for staggered animation */}
-          <h1 className="max-w-[680px] font-serif text-[clamp(2.75rem,5.5vw,5rem)] font-normal leading-[0.95] tracking-[-0.03em] text-[var(--ink-primary)]">
+          <h1 className="max-w-[680px] font-serif text-[clamp(2.75rem,5.8vw,4.75rem)] font-normal leading-[0.95] tracking-[-0.03em] text-[var(--ink-primary)]">
             <motion.span
               className="block"
               initial={fade(0.1)}
@@ -85,15 +85,18 @@ export function RescueHero() {
             </motion.span>
           </h1>
 
-          {/* Supporting line */}
-          <motion.p
+          {/* Supporting copy — concise 4-line product story */}
+          <motion.div
             initial={fade(0.4)}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4, duration: 0.65, ease: easeOut }}
-            className="mt-8 max-w-[480px] text-[17px] leading-relaxed text-[var(--ink-secondary)]"
+            className="mt-8 max-w-[480px] space-y-2 text-[16px] leading-relaxed text-[var(--ink-secondary)]"
           >
-            {copy.support}
-          </motion.p>
+            <p>Find students losing momentum.</p>
+            <p>Review the evidence.</p>
+            <p>Approve respectful support.</p>
+            <p className="text-[var(--ink-primary)] font-medium">See what happens next.</p>
+          </motion.div>
 
           {/* CTAs */}
           <motion.div
@@ -148,7 +151,7 @@ export function RescueHero() {
           initial={reduced ? { opacity: 1 } : { opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2, duration: 0.8, ease: easeOut }}
-          className="relative flex min-h-[540px] items-center justify-center xl:min-h-[580px]"
+          className="relative flex min-h-[580px] items-center justify-center xl:min-h-[640px]"
           aria-label="RescueLoop workflow illustration"
         >
           <ProductStoryVisual />

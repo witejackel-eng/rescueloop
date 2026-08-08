@@ -2,7 +2,7 @@
 
 **Branch**: `repair/final-release-candidate` (from `repair/px01-px07-production-safe` @ 12c3cb3)
 **Donor**: `feat/local-dev-polish`
-**Date**: 2025-03-04
+**Date**: 2025-08-10
 **Author**: witejackel-eng
 
 ---
@@ -65,11 +65,11 @@
 
 **Verdict: ADAPT**
 
-- **What it brings**: Polished hero preview with window chrome, RecoveryPulseCard, SystemHealthCard, RescueQueuePreview, "Live demo" badge, glassmorphism card.
+- **What it brings**: Polished hero preview with window chrome, RecoveryPulseCard, SystemHealthCard, RescueQueuePreview, "Interactive demo" badge, glassmorphism card.
 - **What needs adaptation**:
   - The donor file has **severe syntax corruption** starting around line 80. The JSX is malformed with mixed brackets and incomplete expressions.
   - The glassmorphism (`backdrop-blur-xl`, `bg-[var(--surface)]/80`) violates spec section 4 — must be toned down to solid backgrounds.
-  - The "Live demo" badge with `animate-ping` is acceptable but the pulsing green dot could be reduced for reduced-motion users.
+  - The "Interactive demo" badge with `animate-ping` is acceptable but the pulsing green dot could be reduced for reduced-motion users.
   - The file relies on internal sub-components (RecoveryPulseCard, SystemHealthCard, RescueQueuePreview) that reference data constants (FUNNEL, QUEUE, STATUS_STYLES) which are not visible in the corrupted output — would need full reconstruction.
 - **Port decision**: Port with glassmorphism removal and syntax reconstruction. Medium effort.
 

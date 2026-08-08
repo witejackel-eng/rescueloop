@@ -60,7 +60,7 @@ const PLANS: Plan[] = [
       "Team action queue",
       "Expanded Value Ledger",
     ],
-    excludes: ["Cancellation rescue", "Confirmed payment attribution", "Control groups"],
+    excludes: ["Cancellation rescue", "Advanced attribution evidence", "Control groups"],
     valueLogic: "Two $79/month members retained for three months represent $474 in subscription value.",
     featured: true,
   },
@@ -70,12 +70,12 @@ const PLANS: Plan[] = [
     price: 119,
     tagline: "Established communities, full attribution.",
     whoFor: "Established communities up to ~2,500 members and a small team.",
-    problemItHandles: "Activation rescue with cancellation rescue and confirmed attribution.",
+    problemItHandles: "Activation rescue with cancellation rescue and attribution evidence.",
     economicValue: "A single high-value retention saves more than the annual plan cost.",
     includes: [
       "Up to ~2,500 members",
       "Cancellation rescue",
-      "Confirmed payment attribution",
+      "Advanced attribution evidence",
       "Multiple team users",
       "Advanced simulation + control groups",
       "Data export",
@@ -261,6 +261,59 @@ export function PricingSection() {
               modelled projection — never summed into a single &ldquo;total
               value&rdquo; figure.
             </p>
+          </div>
+        </div>
+
+        {/* Done-for-you implementation */}
+        <div className="mt-10 border border-[var(--hairline)] bg-[var(--surface)]">
+          <div className="grid grid-cols-1 gap-0 lg:grid-cols-[1fr_1.5fr]">
+            <div className="border-b border-[var(--hairline)] p-6 lg:border-b-0 lg:border-r lg:p-8">
+              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--recovery-green)]">
+                Optional
+              </div>
+              <h3 className="mt-3 font-serif text-[clamp(1.5rem,3vw,2rem)] leading-tight tracking-[-0.02em] text-[var(--ink-primary)]">
+                Done-for-you implementation
+              </h3>
+              <p className="mt-3 text-[14px] leading-relaxed text-[var(--ink-secondary)]">
+                For creators who want RescueLoop configured with them.
+              </p>
+              <div className="mt-6">
+                <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                  Founder-led implementation
+                </div>
+                <div className="mt-1 flex items-baseline gap-1">
+                  <span className="font-serif text-[32px] leading-none tracking-[-0.02em] text-[var(--ink-primary)]">$699</span>
+                  <span className="text-[13px] text-[var(--ink-muted)]">one-time</span>
+                </div>
+                <p className="mt-2 text-[12px] text-[var(--ink-muted)]">
+                  Then RescueLoop subscription separately.
+                </p>
+              </div>
+            </div>
+            <div className="p-6 lg:p-8">
+              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--ink-muted)]">
+                Includes
+              </div>
+              <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {[
+                  "Whop setup",
+                  "Course/member mapping",
+                  "Activation audit",
+                  "Custom rescue playbooks",
+                  "Safety settings",
+                  "First Rescue Queue review",
+                  "30-day optimization review",
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-[13px] text-[var(--ink-primary)]">
+                    <span className="mt-1.5 size-1 shrink-0 rounded-full bg-[var(--recovery-green)]" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-4 text-[12px] text-[var(--ink-muted)]">
+                This is a configuration service. It does not describe or guarantee revenue recovery.
+              </p>
+            </div>
           </div>
         </div>
       </div>

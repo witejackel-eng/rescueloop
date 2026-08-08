@@ -12,7 +12,7 @@ import { hex } from "@/brand/tokens";
  * Tells the exact product story through sequenced animation:
  *   1. Student signal detected → open loop appears
  *   2. Creator reviews → approves support
- *   3. Support event → student returns → loop closes
+ *   3. Intervention dispatched → student returns → loop closes
  *   4. Evidence remains
  *
  * NOT a generic radar, random orbiting dots, or decorative particle field.
@@ -39,15 +39,15 @@ const STAGES = [
   },
   {
     id: "support",
-    label: "Support",
-    sublabel: "sent",
+    label: "Intervention",
+    sublabel: "dispatched",
     angle: 225,
     colorVar: "var(--info)",
   },
   {
     id: "return",
     label: "Return",
-    sublabel: "confirmed",
+    sublabel: "observed",
     angle: 330,
     colorVar: "var(--recovery-green)",
   },

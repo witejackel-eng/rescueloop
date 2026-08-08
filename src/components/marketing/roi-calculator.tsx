@@ -54,12 +54,12 @@ const INPUTS: InputDef[] = [
   },
   {
     id: "recoveryRate",
-    label: "Conservative re-engagement rate",
+    label: "Scenario re-engagement assumption",
     min: 5,
     max: 60,
     step: 1,
     suffix: "%",
-    description: "Share of exposed revenue opportunity you expect to re-engage.",
+    description: "Share of exposed revenue opportunity you assume might re-engage. This is an illustrative scenario assumption, not a forecast.",
   },
 ];
 
@@ -147,14 +147,14 @@ export function RoiCalculator() {
   const threeMonthRetained = monthlyExposed * (recoveryRate / 100) * 3;
 
   return (
-    <section className="bg-[var(--canvas-elevated)]">
+    <section className="bg-[var(--section-neutral)]">
       <div className="mx-auto max-w-[1400px] px-4 py-20 lg:px-8 lg:py-32">
         <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--ink-muted)]">
           <span className="size-1.5 rounded-full bg-[var(--recovery-green)]" />
           The math
         </div>
         <h2 className="mt-8 max-w-[22ch] font-serif text-[clamp(2rem,4.4vw,3.75rem)] leading-[1.05] tracking-[-0.02em] text-[var(--ink-primary)]">
-          What is your exposed revenue?
+          What is your exposed revenue opportunity?
         </h2>
         <p className="mt-6 max-w-[60ch] text-[15px] leading-relaxed text-[var(--ink-secondary)]">
           Drag the inputs. Outputs update live. Nothing is sent, nothing is
@@ -213,7 +213,7 @@ export function RoiCalculator() {
             {/* 3-month retained */}
             <div className="border-b border-[var(--hairline)] px-5 py-6 lg:px-6">
               <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--ink-muted)]">
-                Conservative 3-month retained value
+                Scenario recovery assumption
               </div>
               <div className="mt-2 font-serif text-[32px] leading-none tracking-[-0.02em] text-[var(--recovery-green)]">
                 <AnimatedCounter
@@ -250,7 +250,7 @@ export function RoiCalculator() {
                       <div className="font-mono text-[10px] text-[var(--ink-muted)]">recoveries / mo</div>
                       <div className="mt-2 border-t border-[var(--hairline)] pt-2">
                         <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ink-muted)]">
-                          Value : cost
+                          Illustrative value-to-plan-cost
                         </div>
                         <div className="mt-0.5 font-mono text-[14px] tabular-nums text-[var(--recovery-green)]">
                           {ratio.toFixed(1)}×
@@ -268,7 +268,7 @@ export function RoiCalculator() {
                 Assumptions
               </div>
               <p className="mt-1.5 text-[12px] leading-snug text-[var(--ink-muted)]">
-                Conservative estimates. Not a guarantee of revenue. Recoveries
+                This calculator is illustrative and is not a forecast or guarantee. Scenario assumptions. Not a guarantee of revenue. Recoveries
                 assume the plan’s safety rules and your approval queue remain
                 active.
               </p>
