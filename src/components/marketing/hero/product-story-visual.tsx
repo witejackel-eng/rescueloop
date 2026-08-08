@@ -297,15 +297,11 @@ function EvidenceItem({ text }: { text: string }) {
 
 // ── Stage progression hook ─────────────────────────────────────────
 function useWorkflowStage() {
-  const [stage, setStage] = useState<Stage>("idle");
   const reduced = useReducedMotion();
+  const [stage, setStage] = useState<Stage>(() => reduced ? "observed" : "idle");
 
   useEffect(() => {
-    if (reduced) {
-      // For reduced-motion: show the final "observed" state immediately
-      setStage("observed");
-      return;
-    }
+    if (reduced) return;
 
     let timeout: ReturnType<typeof setTimeout>;
     let currentIndex = -1; // -1 = idle
