@@ -11,8 +11,8 @@ import { formatCurrency } from "@/lib/format";
  * ROI panel — based on CONFIRMED value only (per the spec).
  * Shows:
  *   - Plan price: $29/month (mono)
- *   - Confirmed value this period: $237 (mono)
- *   - Confirmed value-to-cost: 8.2× (large, serif)
+ *   - Confirmed value this period: $0 (mono)
+ *   - Confirmed value-to-cost: 0× (large, serif)
  *   - Break-even recoveries: "1 recovery covers 1 month" (since $79 > $29)
  *   - Methodology link (expandable)
  */

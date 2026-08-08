@@ -44,7 +44,7 @@ function buildEvidenceChain(event: ValueEvent): EvidenceNode[] {
     return formatShortDate(d.toISOString().split("T")[0]);
   };
 
-  // Common chain — order matters: risk → intervention → opened → completed → reversed → payment
+  // Common chain — order matters: risk → intervention → response received → completed → reversed → payment
   const chain: EvidenceNode[] = [
     {
       timestamp: dayMinus(4),
@@ -67,8 +67,8 @@ function buildEvidenceChain(event: ValueEvent): EvidenceNode[] {
     {
       timestamp: dayMinus(3),
       source: "Email channel",
-      title: "Student opened rescue experience",
-      description: `Message opened 4 minutes after delivery.`,
+      title: "Student responded to rescue experience",
+      description: `Response received 4 minutes after send.`,
       icon: Mail,
       iconBg: "bg-[var(--canvas-elevated)]",
       iconColor: "text-[var(--ink-secondary)]",

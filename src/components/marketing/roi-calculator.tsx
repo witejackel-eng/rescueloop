@@ -54,12 +54,12 @@ const INPUTS: InputDef[] = [
   },
   {
     id: "recoveryRate",
-    label: "Conservative recovery rate",
+    label: "Conservative re-engagement rate",
     min: 5,
     max: 60,
     step: 1,
     suffix: "%",
-    description: "Share of exposed revenue you expect to recover.",
+    description: "Share of exposed revenue opportunity you expect to re-engage.",
   },
 ];
 
@@ -223,7 +223,7 @@ export function RoiCalculator() {
                 />
               </div>
               <div className="mt-2 font-mono text-[11px] text-[var(--ink-muted)]">
-                exposed × {recoveryRate}% recovery × 3 months · ≈ {recoveredMembers} recoveries
+                exposed × {recoveryRate}% re-engagement × 3 months · ≈ {recoveredMembers} re-engagements
               </div>
             </div>
 

@@ -28,7 +28,7 @@ const STATE_BADGE_CONFIG: Record<
   scheduled: { label: "Scheduled", variant: "default" },
   queued: { label: "Queued", variant: "default" },
   sent: { label: "Sent", variant: "default" },
-  opened: { label: "Opened", variant: "default" },
+  opened: { label: "Response received", variant: "default" },
   responded: { label: "Responded", variant: "default" },
   recovered: { label: "Recovered", variant: "default" },
   not_recovered: { label: "Not recovered", variant: "destructive" },
@@ -38,7 +38,7 @@ const STATE_BADGE_CONFIG: Record<
   drafted: { label: "Draft", variant: "outline" },
   delivery_attempted: { label: "Delivering", variant: "default" },
   notification_accepted: { label: "Accepted", variant: "default" },
-  delivered: { label: "Delivered", variant: "default" },
+  delivered: { label: "Accepted by provider", variant: "default" },
   failed: { label: "Failed", variant: "destructive" },
 };
 

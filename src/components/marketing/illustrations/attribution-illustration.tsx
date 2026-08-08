@@ -46,7 +46,7 @@ export function AttributionIllustration({ active = true }: { active?: boolean })
 
       {/* Three tier columns */}
       {[
-        { x: 130, label: "CONFIRMED", value: "$237", color: "var(--recovery-green)", bg: "var(--recovery-light)", delay: 1.4, active: true },
+        { x: 130, label: "CONFIRMED", value: "$0", color: "var(--recovery-green)", bg: "var(--recovery-light)", delay: 1.4, active: true },
         { x: 200, label: "ASSOCIATED", value: "$79", color: "var(--info)", bg: "rgba(61,107,140,0.12)", delay: 1.6 },
         { x: 270, label: "ESTIMATED", value: "$711", color: "var(--warning)", bg: "var(--warning-light)", delay: 1.8 },
       ].map((tier, i) => (
@@ -131,7 +131,7 @@ export function AttributionIllustration({ active = true }: { active?: boolean })
             <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" begin="2s" />
           </circle>
           <text x="162" y="49" fontFamily="var(--font-jetbrains-mono)" fontSize="7" fill="var(--recovery-green)">
-            8.2× ROI
+            Illustrative
           </text>
         </g>
       )}

@@ -86,12 +86,12 @@ export const KPIS = {
   studentsReengaged: 31,
   firstTimeActivations: 9,
   cancellationsReversed: 3,
-  confirmedRecoveredRevenue: 237,
+  confirmedRecoveredRevenue: 0,
   estimated90DayRetainedValue: 711,
   creatorActionRequests: 11,
   planCost: 29,
   creatorActionsAvoided: 63,
-  confirmedValueToCost: 8.2,
+  confirmedValueToCost: 0,
 } as const;
 
 // ── Recovery funnel ──────────────────────────────────────────
