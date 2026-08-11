@@ -23,16 +23,22 @@ import { getOperation } from "@/lib/operations/operation-read-model";
 import { sendInngestEvent, EVENTS } from "@/server/jobs/client";
 import { db } from "@/lib/db";
 import { createLogger } from "@/lib/observability/logger";
+import { checkRateLimitOrReject, RATE_LIMITS, RateLimiter, getClientIp } from "@/lib/rate-limit/rate-limiter";
 
 const log = createLogger({ route: "/api/dashboard/operations/retry" });
 
 export async function POST(
-  _req: Request,
+  req: Request,
   {
     params,
   }: { params: Promise<{ companyId: string; operationId: string }> },
 ) {
   const { companyId, operationId } = await params;
+
+  // Rate limit: 20 retries/min per IP
+  const rlKey = RateLimiter.buildKey("retry", getClientIp(req));
+  const rlRejection = await checkRateLimitOrReject(rlKey, RATE_LIMITS.internalRetry);
+  if (rlRejection) return rlRejection;
 
   let context;
   try {
