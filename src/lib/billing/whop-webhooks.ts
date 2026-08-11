@@ -74,7 +74,35 @@ export async function handlePaymentSucceeded(
     };
   }
 
-  const planTier: PlanTier = (rawTier as PlanTier) ?? "rescue";
+  // FAIL CLOSED: If tier is not provided or is not a valid PlanTier,
+  // do NOT default to rescue — that would silently grant entitlement.
+  const VALID_TIERS: PlanTier[] = ["rescue", "growth", "scale", "internal", "pilot"];
+  const planTier = (rawTier && VALID_TIERS.includes(rawTier as PlanTier))
+    ? (rawTier as PlanTier)
+    : null;
+
+  if (!planTier) {
+    // No authoritative tier — do NOT grant entitlement.
+    // Return current state unchanged.
+    const org = await db.organization.findUnique({
+      where: { id: companyId },
+      select: { planTier: true, entitlementState: true },
+    });
+    await recordAuditEvent({
+      organizationId: companyId,
+      actorId: "whop-billing",
+      action: "warning",
+      objectType: "billing",
+      objectId: eventId,
+      newState: "tier_resolution_failed",
+      reason: `payment.succeeded with unmapped tier="${rawTier ?? "missing"}". Entitlement NOT granted.`,
+    });
+    return {
+      entitlementState: org?.entitlementState ?? "inactive",
+      planTier: (org?.planTier as PlanTier) ?? "rescue",
+      processed: false,
+    };
+  }
 
   // Update organization entitlement
   const org = await db.organization.update({
@@ -179,7 +207,30 @@ export async function handleMembershipActivated(
     };
   }
 
-  const planTier: PlanTier = (rawTier as PlanTier) ?? "rescue";
+  // FAIL CLOSED: If tier is not provided or is not a valid PlanTier,
+  // do NOT default to rescue — that would silently grant entitlement.
+  const VALID_TIERS: PlanTier[] = ["rescue", "growth", "scale", "internal", "pilot"];
+  const planTier = (rawTier && VALID_TIERS.includes(rawTier as PlanTier))
+    ? (rawTier as PlanTier)
+    : null;
+
+  if (!planTier) {
+    // No authoritative tier — do NOT grant entitlement.
+    await recordAuditEvent({
+      organizationId: companyId,
+      actorId: "whop-billing",
+      action: "warning",
+      objectType: "billing",
+      objectId: eventId,
+      newState: "tier_resolution_failed",
+      reason: `membership.activated with unmapped tier="${rawTier ?? "missing"}". Entitlement NOT granted.`,
+    });
+    return {
+      entitlementState: "inactive",
+      planTier: "rescue",
+      processed: false,
+    };
+  }
 
   await db.organization.update({
     where: { id: companyId },

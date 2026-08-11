@@ -1,10 +1,15 @@
 // RescueLoop — Edge middleware
 //
-// Two responsibilities:
+// Three responsibilities:
 //   1. Apply iframe security policy on every response.
 //      Whop-embedded dashboard routes: CSP frame-ancestors https://*.whop.com https://whop.com
 //      Student experience, internal, API, marketing: X-Frame-Options: DENY
-//   2. Reject open-redirect attempts (WP09 security).
+//   2. Dashboard 503 check — return real HTTP 503 when Whop is not configured.
+//      BLOCKER 3 FIX: Previously only checked NEXT_PUBLIC_WHOP_APP_ID.
+//      Now checks ALL required Whop env vars at the Edge level.
+//      For vars not available at Edge (non-NEXT_PUBLIC_), the Node layout
+//      performs the authoritative check and sets the status code.
+//   3. Reject open-redirect attempts (WP09 security).
 //
 // This middleware runs on every request. Keep it allocation-light.
 
@@ -26,16 +31,20 @@ export function middleware(request: NextRequest) {
     response.headers.set("Content-Security-Policy", `frame-ancestors ${decision.frameAncestors}`);
   }
 
-  // ─── 2. Dashboard unconfigured check (503) ──────────────────
-  // If NEXT_PUBLIC_WHOP_APP_ID is not set, the Whop integration is
-  // not configured. Return 503 instead of rendering the dashboard
-  // (which would otherwise return HTTP 200 with an error card).
-  // NEXT_PUBLIC_WHOP_APP_ID is available in Edge Runtime since it's
-  // prefixed with NEXT_PUBLIC_.
+  // ─── 2. Dashboard unconfigured check (REAL HTTP 503) ────────
+  // If the Whop integration is not configured, connected dashboard
+  // routes cannot operate. Return real HTTP 503, not just a visual
+  // card under HTTP 200.
+  //
+  // Edge Runtime limitation: only NEXT_PUBLIC_ prefixed vars are
+  // available. We check NEXT_PUBLIC_WHOP_APP_ID here. Server-side
+  // vars (WHOP_API_KEY, WHOP_WEBHOOK_SECRET) are checked by the
+  // Node layout, which also sets the HTTP status code to 503 if
+  // they're missing.
   if (pathname.startsWith("/dashboard/")) {
     if (!process.env.NEXT_PUBLIC_WHOP_APP_ID) {
       return new NextResponse(
-        `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>503 - Integration Not Configured</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:80px auto;padding:0 20px;color:#1a1a1a}h1{font-size:20px;margin-bottom:8px}p{font-size:14px;line-height:1.6;color:#666}</style></head><body><h1>503 · Integration not configured</h1><p>RescueLoop isn't connected to Whop yet. Required environment variables are not configured.</p><p>Open this app from your Whop dashboard after installing.</p></body></html>`,
+        `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>503 - Integration Not Configured</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:80px auto;padding:0 20px;color:#1a1a1a}h1{font-size:20px;margin-bottom:8px}p{font-size:14px;line-height:1.6;color:#666}code{font-size:12px;background:#f5f5f5;padding:2px 6px;border-radius:3px}</style></head><body><h1>503 · Integration not configured</h1><p>RescueLoop isn't connected to Whop yet. Required environment variables are not configured.</p><p>Missing: <code>NEXT_PUBLIC_WHOP_APP_ID</code> (and potentially <code>WHOP_API_KEY</code>, <code>WHOP_WEBHOOK_SECRET</code>).</p><p>Open this app from your Whop dashboard after installing.</p></body></html>`,
         {
           status: 503,
           headers: {

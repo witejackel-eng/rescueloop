@@ -7,6 +7,14 @@
 // In connected mode, verifies the operation is retryable,
 // then dispatches a new sync via Inngest.
 //
+// TRUTHFULNESS INVARIANT:
+//   retrying: true  ONLY if a retry job was genuinely accepted/dispatched.
+//   If the job provider is unavailable or unconfigured:
+//     - do NOT mutate the previous operation into a fake running state
+//     - return HTTP 503 with retrying: false
+//     - preserve the prior operation state
+//     - return a useful customer-facing message
+//
 // FAIL-CLOSED: Uses requireCompanyAccess() — never takes action without auth.
 
 import { NextResponse } from "next/server";
@@ -80,16 +88,55 @@ export async function POST(
       trigger: "manual",
     });
 
+    // ─── TRUTHFULNESS: Handle dispatch result ───────────────
     if (dispatchResult.state === "unconfigured") {
-      log.warn("Inngest not configured — retry sync not dispatched", {
+      // Provider is not configured — CANNOT retry.
+      // Return 503 with retrying: false and a clear message.
+      // Do NOT mutate the operation into a fake running state.
+      log.warn("Retry rejected — background processing is unconfigured", {
         action: "POST",
         organizationId: context.organizationId,
         operationId,
       });
-      // Still return success — the user can see the state
-      // The sync won't actually start, but we've recorded the intent
+
+      return NextResponse.json(
+        {
+          retrying: false,
+          operationId,
+          dispatchState: "unconfigured",
+          message:
+            "Retry could not be started. Background processing is currently unavailable.",
+        },
+        { status: 503 },
+      );
     }
 
+    if (dispatchResult.state === "failed") {
+      // Provider rejected the event or network error.
+      // Return 503 with retrying: false if not retryable, 502 if retryable.
+      const status = dispatchResult.retryable ? 502 : 503;
+      log.error("Retry dispatch failed", {
+        action: "POST",
+        organizationId: context.organizationId,
+        operationId,
+        errorCode: dispatchResult.errorCode,
+        retryable: dispatchResult.retryable,
+      });
+
+      return NextResponse.json(
+        {
+          retrying: false,
+          operationId,
+          dispatchState: "failed",
+          message: dispatchResult.retryable
+            ? "Retry could not be started due to a temporary issue. Please try again."
+            : "Retry could not be started. Background processing is currently unavailable.",
+        },
+        { status },
+      );
+    }
+
+    // dispatchResult.state === "accepted" — job genuinely dispatched
     log.info("Retry sync dispatched", {
       action: "POST",
       organizationId: context.organizationId,

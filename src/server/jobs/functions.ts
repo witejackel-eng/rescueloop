@@ -28,6 +28,8 @@ import {
   type BillingWebhookPayload,
 } from "@/lib/billing/whop-webhooks";
 import type { EntitlementState, PlanTier } from "@prisma/client";
+import { getTierForWhopPlanId, isBillingConfigured } from "@/lib/billing/plans";
+import { createLogger } from "@/lib/observability/logger";
 
 // ─── Job function definitions (lazy) ─────────────────────────
 
@@ -83,15 +85,33 @@ export function getJobFunctions(): any[] {
         // Wire billing webhook handler + SubscriptionEntitlement upsert
         await step.run("entitlement-membership-activated", async () => {
           const memEvent = eventPayload as unknown as WhopMembershipEvent;
+          // AUTHORITATIVE TIER RESOLUTION:
+          // Tier is derived from the Whop plan_id, never from price.
+          // If plan_id is missing or unmapped, we FAIL CLOSED — no entitlement granted.
+          const resolvedTier = resolveTierFromWhopEvent(memEvent.data.plan?.id, receipt.organizationId!);
           const billingPayload: BillingWebhookPayload = {
             eventType: "membership.activated",
             eventId: receiptId,
             companyId: receipt.organizationId!,
             membershipId: memEvent.data.id,
-            planTier: (memEvent.data.plan?.price != null)
-              ? inferPlanTierFromPrice(memEvent.data.plan.price)
-              : undefined,
+            planTier: resolvedTier ?? undefined,
+            // priceCents retained for display/reconciliation only — never authoritative
+            priceCents: memEvent.data.plan?.price,
           };
+          if (!resolvedTier) {
+            // FAIL CLOSED: Unknown plan ID — do NOT grant any entitlement.
+            // The organization stays at its current (or default) tier.
+            await recordAuditEvent({
+              organizationId: receipt.organizationId!,
+              actorId: "billing-engine",
+              action: "warning",
+              objectType: "billing",
+              objectId: receiptId,
+              newState: "tier_resolution_failed",
+              reason: `membership.activated with unmapped plan_id="${memEvent.data.plan?.id ?? "missing"}". No entitlement granted. Billing must map this plan ID.`,
+            });
+            return;
+          }
           await handleBillingWebhook(billingPayload);
           await upsertSubscriptionEntitlementFromBilling(receipt.organizationId!, billingPayload, memEvent.data.renewal_period_end_date ?? null);
         });
@@ -939,19 +959,48 @@ async function processDataDeletion(
 // helpers create/update rows so that entitlement is functional in
 // production (not just pilot override).
 
+const billingLog = createLogger({ module: "billing/engine" });
+
 /**
- * Infer a PlanTier from a Whop plan price (in cents).
- * This is a heuristic — the authoritative mapping is the
- * rescueloop_plan_tier metadata field on the checkout config.
+ * Resolve a PlanTier from a Whop plan_id using the authoritative
+ * environment-backed mapping (getTierForWhopPlanId).
+ *
+ * FAIL CLOSED: If the plan_id is missing, unmapped, or billing
+ * env vars are not configured, returns null — callers MUST NOT
+ * grant any entitlement.
+ *
+ * Price is NEVER used to infer tier. It is retained only for
+ * display, reconciliation, and non-authoritative diagnostics.
  */
-function inferPlanTierFromPrice(priceCents: number): PlanTier {
-  // Standard RescueLoop pricing (adjust if plans change):
-  //   rescue  = $29/mo  → 2900 cents
-  //   growth  = $79/mo  → 7900 cents
-  //   scale   = $199/mo → 19900 cents
-  if (priceCents >= 15000) return "scale";
-  if (priceCents >= 5000) return "growth";
-  return "rescue";
+function resolveTierFromWhopEvent(
+  planId: string | undefined,
+  organizationId: string,
+): PlanTier | null {
+  if (!planId) {
+    billingLog.warn("No plan_id in Whop event — cannot resolve tier", {
+      organizationId,
+    });
+    return null;
+  }
+
+  if (!isBillingConfigured()) {
+    billingLog.warn("Billing env not configured — cannot resolve tier from plan_id", {
+      organizationId,
+      planId,
+    });
+    return null;
+  }
+
+  const tier = getTierForWhopPlanId(planId);
+  if (!tier) {
+    billingLog.warn("Unmapped Whop plan_id — FAIL CLOSED, no entitlement granted", {
+      organizationId,
+      planId,
+    });
+    return null;
+  }
+
+  return tier;
 }
 
 /**
@@ -974,7 +1023,31 @@ async function upsertSubscriptionEntitlementFromBilling(
 
   // Determine entitlement state from event type
   let entitlementState: EntitlementState;
-  let effectivePlanTier: PlanTier = (rawTier as PlanTier) ?? "rescue";
+  // FAIL CLOSED: If rawTier is not provided or invalid, do NOT default to rescue.
+  const VALID_TIERS: PlanTier[] = ["rescue", "growth", "scale", "internal", "pilot"];
+  let effectivePlanTier: PlanTier | null = (rawTier && VALID_TIERS.includes(rawTier as PlanTier))
+    ? (rawTier as PlanTier)
+    : null;
+
+  // If no authoritative tier, skip the upsert — we cannot create an
+  // entitlement row without knowing the tier. The caller already
+  // handled the fail-closed audit event.
+  if (!effectivePlanTier && eventType !== "membership.deactivated" && eventType !== "payment.failed") {
+    billingLog.warn("Skipping SubscriptionEntitlement upsert — no authoritative tier", {
+      organizationId,
+      eventType,
+      rawTier,
+    });
+    return;
+  }
+  // For deactivation/failure events, use the existing tier if available
+  if (!effectivePlanTier) {
+    const existingEntitlement = await db.subscriptionEntitlement.findFirst({
+      where: { organizationId, whopMembershipId: membershipId ?? undefined },
+      orderBy: { createdAt: "desc" },
+    });
+    effectivePlanTier = existingEntitlement?.planTier as PlanTier ?? "rescue";
+  }
 
   switch (eventType) {
     case "membership.activated":
