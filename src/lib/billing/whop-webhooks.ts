@@ -91,7 +91,7 @@ export async function handlePaymentSucceeded(
     await recordAuditEvent({
       organizationId: companyId,
       actorId: "whop-billing",
-      action: "warning",
+      action: "configuration_changed",
       objectType: "billing",
       objectId: eventId,
       newState: "tier_resolution_failed",
@@ -219,7 +219,7 @@ export async function handleMembershipActivated(
     await recordAuditEvent({
       organizationId: companyId,
       actorId: "whop-billing",
-      action: "warning",
+      action: "configuration_changed",
       objectType: "billing",
       objectId: eventId,
       newState: "tier_resolution_failed",

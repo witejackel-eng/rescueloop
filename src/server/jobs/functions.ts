@@ -104,7 +104,7 @@ export function getJobFunctions(): any[] {
             await recordAuditEvent({
               organizationId: receipt.organizationId!,
               actorId: "billing-engine",
-              action: "warning",
+              action: "configuration_changed",
               objectType: "billing",
               objectId: receiptId,
               newState: "tier_resolution_failed",
