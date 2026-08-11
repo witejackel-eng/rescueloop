@@ -21,7 +21,11 @@ export interface WhopMembershipData {
   member?: { id: string };
   product?: { id: string };
   renewal_period_end_date?: string | null;
-  plan?: { price: number };
+  // Whop plan identity — the authoritative source for tier mapping.
+  // plan_id is the Whop plan UUID used by getTierForWhopPlanId().
+  // price is retained ONLY for display, reconciliation, and diagnostics —
+  // it is NEVER used to infer entitlement.
+  plan?: { id: string; price: number };
 }
 
 export interface WhopMembershipEvent {

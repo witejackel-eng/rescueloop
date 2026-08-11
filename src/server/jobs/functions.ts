@@ -23,6 +23,13 @@ import type {
   WhopPaymentEvent,
   WhopLessonInteractionEvent,
 } from "@/lib/whop/whop-types";
+import {
+  handleBillingWebhook,
+  type BillingWebhookPayload,
+} from "@/lib/billing/whop-webhooks";
+import type { EntitlementState, PlanTier } from "@prisma/client";
+import { getTierForWhopPlanId, isBillingConfigured } from "@/lib/billing/plans";
+import { createLogger } from "@/lib/observability/logger";
 
 // ─── Job function definitions (lazy) ─────────────────────────
 
@@ -75,13 +82,88 @@ export function getJobFunctions(): any[] {
         await step.run("handle-membership-activated", async () => {
           await handleMembershipActivated(receipt.organizationId, eventPayload as unknown as WhopMembershipEvent, receiptId);
         });
+        // Wire billing webhook handler + SubscriptionEntitlement upsert
+        await step.run("entitlement-membership-activated", async () => {
+          const memEvent = eventPayload as unknown as WhopMembershipEvent;
+          // AUTHORITATIVE TIER RESOLUTION:
+          // Tier is derived from the Whop plan_id, never from price.
+          // If plan_id is missing or unmapped, we FAIL CLOSED — no entitlement granted.
+          const resolvedTier = resolveTierFromWhopEvent(memEvent.data.plan?.id, receipt.organizationId!);
+          const billingPayload: BillingWebhookPayload = {
+            eventType: "membership.activated",
+            eventId: receiptId,
+            companyId: receipt.organizationId!,
+            membershipId: memEvent.data.id,
+            planTier: resolvedTier ?? undefined,
+            // priceCents retained for display/reconciliation only — never authoritative
+            priceCents: memEvent.data.plan?.price,
+          };
+          if (!resolvedTier) {
+            // FAIL CLOSED: Unknown plan ID — do NOT grant any entitlement.
+            // The organization stays at its current (or default) tier.
+            await recordAuditEvent({
+              organizationId: receipt.organizationId!,
+              actorId: "billing-engine",
+              action: "configuration_changed",
+              objectType: "billing",
+              objectId: receiptId,
+              newState: "tier_resolution_failed",
+              reason: `membership.activated with unmapped plan_id="${memEvent.data.plan?.id ?? "missing"}". No entitlement granted. Billing must map this plan ID.`,
+            });
+            return;
+          }
+          await handleBillingWebhook(billingPayload);
+          await upsertSubscriptionEntitlementFromBilling(receipt.organizationId!, billingPayload, memEvent.data.renewal_period_end_date ?? null);
+        });
       } else if (receipt.eventType === "membership.deactivated") {
         await step.run("handle-membership-deactivated", async () => {
           await handleMembershipDeactivated(receipt.organizationId, eventPayload as unknown as WhopMembershipEvent, receiptId);
         });
+        // Wire billing webhook handler + SubscriptionEntitlement upsert
+        await step.run("entitlement-membership-deactivated", async () => {
+          const memEvent = eventPayload as unknown as WhopMembershipEvent;
+          const billingPayload: BillingWebhookPayload = {
+            eventType: "membership.deactivated",
+            eventId: receiptId,
+            companyId: receipt.organizationId!,
+            membershipId: memEvent.data.id,
+          };
+          await handleBillingWebhook(billingPayload);
+          await upsertSubscriptionEntitlementFromBilling(receipt.organizationId!, billingPayload, null);
+        });
       } else if (receipt.eventType === "payment.succeeded") {
         await step.run("handle-payment-succeeded", async () => {
           await handlePaymentSucceeded(receipt.organizationId, eventPayload as unknown as WhopPaymentEvent, receiptId);
+        });
+        // Wire billing webhook handler + SubscriptionEntitlement upsert
+        await step.run("entitlement-payment-succeeded", async () => {
+          const payEvent = eventPayload as unknown as WhopPaymentEvent;
+          const billingPayload: BillingWebhookPayload = {
+            eventType: "payment.succeeded",
+            eventId: receiptId,
+            companyId: receipt.organizationId!,
+            membershipId: payEvent.data.membership?.id,
+            priceCents: payEvent.data.amount,
+          };
+          await handleBillingWebhook(billingPayload);
+          await upsertSubscriptionEntitlementFromBilling(receipt.organizationId!, billingPayload, null);
+        });
+      } else if (receipt.eventType === "payment.failed") {
+        await step.run("handle-payment-failed", async () => {
+          await handlePaymentFailedLocal(receipt.organizationId, eventPayload as unknown as WhopPaymentEvent, receiptId);
+        });
+        // Wire billing webhook handler + SubscriptionEntitlement upsert
+        await step.run("entitlement-payment-failed", async () => {
+          const payEvent = eventPayload as unknown as WhopPaymentEvent;
+          const billingPayload: BillingWebhookPayload = {
+            eventType: "payment.failed",
+            eventId: receiptId,
+            companyId: receipt.organizationId!,
+            membershipId: payEvent.data.membership?.id,
+            priceCents: payEvent.data.amount,
+          };
+          await handleBillingWebhook(billingPayload);
+          await upsertSubscriptionEntitlementFromBilling(receipt.organizationId!, billingPayload, null);
         });
       } else if (receipt.eventType === "course_lesson_interaction.completed") {
         await step.run("handle-lesson-completed", async () => {
@@ -867,5 +949,224 @@ async function processDataDeletion(
     objectId: deletionRequestId,
     newState: result.success ? "completed" : "failed",
     metadata: result.evidence as Record<string, unknown>,
+  });
+}
+
+// ─── SubscriptionEntitlement upsert (billing gap fix) ──────────
+//
+// computeEntitlement() reads from the SubscriptionEntitlement table,
+// but nothing was populating it from the Inngest job flow. These
+// helpers create/update rows so that entitlement is functional in
+// production (not just pilot override).
+
+const billingLog = createLogger({ module: "billing/engine" });
+
+/**
+ * Resolve a PlanTier from a Whop plan_id using the authoritative
+ * environment-backed mapping (getTierForWhopPlanId).
+ *
+ * FAIL CLOSED: If the plan_id is missing, unmapped, or billing
+ * env vars are not configured, returns null — callers MUST NOT
+ * grant any entitlement.
+ *
+ * Price is NEVER used to infer tier. It is retained only for
+ * display, reconciliation, and non-authoritative diagnostics.
+ */
+function resolveTierFromWhopEvent(
+  planId: string | undefined,
+  organizationId: string,
+): PlanTier | null {
+  if (!planId) {
+    billingLog.warn("No plan_id in Whop event — cannot resolve tier", {
+      organizationId,
+    });
+    return null;
+  }
+
+  if (!isBillingConfigured()) {
+    billingLog.warn("Billing env not configured — cannot resolve tier from plan_id", {
+      organizationId,
+      planId,
+    });
+    return null;
+  }
+
+  const tier = getTierForWhopPlanId(planId);
+  if (!tier) {
+    billingLog.warn("Unmapped Whop plan_id — FAIL CLOSED, no entitlement granted", {
+      organizationId,
+      planId,
+    });
+    return null;
+  }
+
+  return tier;
+}
+
+/**
+ * Upsert a SubscriptionEntitlement row from a billing webhook payload.
+ *
+ * This is the critical bridge that makes computeEntitlement() return
+ * real (non-pilot) entitlements in production.
+ *
+ * Idempotent — uses whopMembershipId as the unique key for upsert.
+ * For events without a membershipId (unlikely), falls back to finding
+ * the current active entitlement by organizationId.
+ */
+async function upsertSubscriptionEntitlementFromBilling(
+  organizationId: string,
+  payload: BillingWebhookPayload,
+  renewalPeriodEndDate: string | null,
+): Promise<void> {
+  const { eventType, membershipId, planTier: rawTier, manageUrl } = payload;
+  const now = new Date();
+
+  // Determine entitlement state from event type
+  let entitlementState: EntitlementState;
+  // FAIL CLOSED: If rawTier is not provided or invalid, do NOT default to rescue.
+  const VALID_TIERS: PlanTier[] = ["rescue", "growth", "scale", "internal", "pilot"];
+  let effectivePlanTier: PlanTier | null = (rawTier && VALID_TIERS.includes(rawTier as PlanTier))
+    ? (rawTier as PlanTier)
+    : null;
+
+  // If no authoritative tier, skip the upsert — we cannot create an
+  // entitlement row without knowing the tier. The caller already
+  // handled the fail-closed audit event.
+  if (!effectivePlanTier && eventType !== "membership.deactivated" && eventType !== "payment.failed") {
+    billingLog.warn("Skipping SubscriptionEntitlement upsert — no authoritative tier", {
+      organizationId,
+      eventType,
+      rawTier,
+    });
+    return;
+  }
+  // For deactivation/failure events, use the existing tier if available
+  if (!effectivePlanTier) {
+    const existingEntitlement = await db.subscriptionEntitlement.findFirst({
+      where: { organizationId, whopMembershipId: membershipId ?? undefined },
+      orderBy: { createdAt: "desc" },
+    });
+    effectivePlanTier = existingEntitlement?.planTier as PlanTier ?? "rescue";
+  }
+
+  switch (eventType) {
+    case "membership.activated":
+      entitlementState = "active";
+      break;
+    case "membership.deactivated":
+      entitlementState = "inactive";
+      break;
+    case "payment.succeeded":
+      entitlementState = "active";
+      break;
+    case "payment.failed":
+      entitlementState = "billing_error";
+      break;
+    default:
+      return; // Don't update for unknown event types
+  }
+
+  // Calculate billing period
+  const billingPeriodStart = now;
+  const billingPeriodEnd = renewalPeriodEndDate
+    ? new Date(renewalPeriodEndDate)
+    : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // Default 30 days
+
+  if (membershipId) {
+    // We have a membership ID — use the unique constraint for upsert
+    await db.subscriptionEntitlement.upsert({
+      where: { whopMembershipId: membershipId },
+      create: {
+        organizationId,
+        planTier: effectivePlanTier,
+        state: entitlementState,
+        whopMembershipId: membershipId,
+        manageUrl: manageUrl ?? null,
+        billingPeriodStart,
+        billingPeriodEnd,
+      },
+      update: {
+        planTier: effectivePlanTier,
+        state: entitlementState,
+        ...(manageUrl ? { manageUrl } : {}),
+        billingPeriodStart,
+        billingPeriodEnd,
+      },
+    });
+  } else {
+    // No membership ID — find the current active entitlement and update it
+    const existing = await db.subscriptionEntitlement.findFirst({
+      where: {
+        organizationId,
+        billingPeriodStart: { lte: now },
+        billingPeriodEnd: { gte: now },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existing) {
+      await db.subscriptionEntitlement.update({
+        where: { id: existing.id },
+        data: {
+          state: entitlementState,
+          billingPeriodEnd, // Extend or adjust period
+        },
+      });
+    }
+    // If no existing entitlement and no membershipId, we cannot create
+    // a row (whopMembershipId is unique-nullable but we prefer not to
+    // create rows without it). The Organization-level entitlementState
+    // set by handleBillingWebhook serves as a fallback.
+  }
+}
+
+// ─── Local handler for payment.failed ─────────────────────────
+//
+// Records a failed payment event and marks any existing membership
+// payment record. Does NOT grant or revoke entitlement — that is
+// handled by the billing webhook handler + SubscriptionEntitlement upsert.
+
+async function handlePaymentFailedLocal(
+  organizationId: string | null,
+  event: WhopPaymentEvent,
+  webhookReceiptId: string,
+) {
+  if (!organizationId) return;
+
+  const payment = event.data;
+  const whopMembershipId = payment.membership?.id;
+
+  if (!whopMembershipId) return;
+
+  const membership = await db.membership.findUnique({
+    where: { whopMembershipId },
+  });
+
+  if (!membership) return;
+
+  // Record the payment event (idempotent via unique whopPaymentId)
+  await db.paymentEvent.upsert({
+    where: { whopPaymentId: payment.id },
+    create: {
+      organizationId,
+      membershipId: membership.id,
+      whopPaymentId: payment.id,
+      status: "failed",
+      amountCents: payment.amount ?? 0,
+      occurredAt: new Date(event.timestamp),
+      webhookReceiptId,
+    },
+    update: {},
+  });
+
+  // Audit the payment failure
+  await recordAuditEvent({
+    organizationId,
+    actorId: "whop-billing",
+    action: "updated",
+    objectType: "billing",
+    objectId: payment.id,
+    newState: "payment_failed",
+    reason: "Whop payment.failed — grace period applies",
   });
 }
